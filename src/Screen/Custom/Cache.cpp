@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,14 +24,19 @@ Copyright_License {
 #include "Cache.hpp"
 #include "Screen/Point.hpp"
 #include "Screen/Font.hpp"
-#include "Util/Cache.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/Cache.hxx"
+#include "Util/StringCompare.hxx"
+#include "Util/StringAPI.hxx"
 
 #ifdef ENABLE_OPENGL
 #include "Screen/OpenGL/Texture.hpp"
 #include "Screen/OpenGL/Debug.hpp"
 #else
 #include "Thread/Mutex.hpp"
+#endif
+
+#ifdef UNICODE
+#include "Util/ConvertString.hpp"
 #endif
 
 #include <assert.h>
@@ -48,14 +53,12 @@ struct TextCacheKey {
   const Font *font;
   const char *text;
   char *allocated;
-  size_t hash;
 
   TextCacheKey(const TextCacheKey &other) = delete;
 
   TextCacheKey(TextCacheKey &&other)
     :font(other.font),
-     text(other.text), allocated(other.allocated),
-     hash(other.hash) {
+     text(other.text), allocated(other.allocated) {
     other.allocated = nullptr;
   }
 
@@ -82,7 +85,6 @@ struct TextCacheKey {
     font = other.font;
     text = other.text;
     std::swap(allocated, other.allocated);
-    hash = other.hash;
     return *this;
   }
 
@@ -133,15 +135,15 @@ struct RenderedText {
 #ifdef USE_FREETYPE
   RenderedText(unsigned width, unsigned height, const uint8_t *buffer) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    texture = new GLTexture(GL_ALPHA, width, height,
+    texture = new GLTexture(GL_ALPHA, PixelSize(width, height),
                             GL_ALPHA, GL_UNSIGNED_BYTE,
                             buffer);
   }
 #elif defined(ANDROID)
   RenderedText(int id, unsigned width, unsigned height,
                unsigned allocated_width, unsigned allocated_height)
-    :texture(new GLTexture(id, width, height,
-                           allocated_width, allocated_height)) {}
+    :texture(new GLTexture(id, PixelSize(width, height),
+                           PixelSize(allocated_width, allocated_height))) {}
 #endif
 #else
   RenderedText(RenderedText &&other)
@@ -191,8 +193,8 @@ struct RenderedText {
 static Mutex text_cache_mutex;
 #endif
 
-static Cache<TextCacheKey, PixelSize, 1024u, TextCacheKey::Hash> size_cache;
-static Cache<TextCacheKey, RenderedText, 256u, TextCacheKey::Hash> text_cache;
+static Cache<TextCacheKey, PixelSize, 1024u, 701u, TextCacheKey::Hash> size_cache;
+static Cache<TextCacheKey, RenderedText, 256u, 211u, TextCacheKey::Hash> text_cache;
 
 PixelSize
 TextCache::GetSize(const Font &font, const char *text)
@@ -206,7 +208,11 @@ TextCache::GetSize(const Font &font, const char *text)
   if (cached != nullptr)
     return *cached;
 
+#ifdef UNICODE
+  PixelSize size = font.TextSize(UTF8ToWideConverter(text));
+#else
   PixelSize size = font.TextSize(text);
+#endif
 
   key.Allocate();
   size_cache.Put(std::move(key), std::move(size));
@@ -269,7 +275,12 @@ TextCache::Get(const Font &font, const char *text)
   /* render the text into a OpenGL texture */
 
 #ifdef USE_FREETYPE
-  PixelSize size = font.TextSize(text);
+#if defined(USE_FREETYPE) && defined(UNICODE)
+  UTF8ToWideConverter text2(text);
+#else
+  const TCHAR* text2 = text;
+#endif
+  PixelSize size = font.TextSize(text2);
   size_t buffer_size = font.BufferSize(size);
   if (buffer_size == 0) {
 #ifdef ENABLE_OPENGL
@@ -288,7 +299,7 @@ TextCache::Get(const Font &font, const char *text)
 #endif
   }
 
-  font.Render(text, size, buffer);
+  font.Render(text2, size, buffer);
   RenderedText rt(size.cx, size.cy, buffer);
 #ifdef ENABLE_OPENGL
   delete[] buffer;

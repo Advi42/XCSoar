@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,13 +23,15 @@ Copyright_License {
 
 #define ENABLE_CMDLINE
 #define ENABLE_SCREEN
+#define ENABLE_BUTTON_LOOK
 #define USAGE "flights.log"
 
 #include "Main.hpp"
 #include "Screen/SingleWindow.hpp"
-#include "Screen/ButtonWindow.hpp"
 #include "Screen/Timer.hpp"
 #include "Screen/Canvas.hpp"
+#include "Form/Button.hpp"
+#include "Form/ActionListener.hpp"
 #include "Fonts.hpp"
 #include "Renderer/FlightListRenderer.hpp"
 #include "FlightInfo.hpp"
@@ -37,10 +39,6 @@ Copyright_License {
 #include "IO/FileLineReader.hpp"
 
 #include <vector>
-
-enum Buttons {
-  CLOSE = 1,
-};
 
 static std::vector<FlightInfo> flights;
 
@@ -60,9 +58,13 @@ protected:
   }
 };
 
-class MainWindow final : public SingleWindow
+class MainWindow final : public SingleWindow, ActionListener
 {
-  ButtonWindow close_button;
+  enum Buttons {
+    CLOSE = 1,
+  };
+
+  Button close_button;
   TestWindow test_window;
 
 public:
@@ -73,7 +75,9 @@ public:
     style.Disable();
 
     const PixelRect rc = GetClientRect();
-    close_button.Create(*this, _T("Close"), CLOSE, GetButtonRect(rc));
+    close_button.Create(*this, *button_look, _T("Close"), GetButtonRect(rc),
+                        WindowStyle(),
+                        *this, CLOSE);
     test_window.Create(*this, rc, style);
   }
 
@@ -85,17 +89,7 @@ private:
   }
 
 protected:
-  virtual bool OnCommand(unsigned id, unsigned code) override {
-    switch (id) {
-    case CLOSE:
-      Close();
-      return true;
-    }
-
-    return SingleWindow::OnCommand(id, code);
-  }
-
-  virtual void OnResize(PixelSize size) override {
+  void OnResize(PixelSize size) override {
     SingleWindow::OnResize(size);
 
     const PixelRect rc = GetClientRect();
@@ -106,27 +100,31 @@ protected:
       close_button.Move(GetButtonRect(rc));
   }
 
-  virtual bool OnKeyUp(unsigned key_code) {
+  bool OnKeyUp(unsigned key_code) override {
     Close();
     return true;
   }
 
-  virtual bool OnMouseUp(PixelScalar x, PixelScalar y) {
+  bool OnMouseUp(PixelPoint p) override {
     Close();
     return true;
+  }
+
+  /* virtual methods from class ActionListener */
+  void OnAction(int id) override {
+    switch (id) {
+    case CLOSE:
+      Close();
+      break;
+    }
   }
 };
 
 static void
 ParseCommandLine(Args &args)
 {
-  tstring path = args.ExpectNextT();
-  FileLineReaderA file(path.c_str());
-  if (file.error()) {
-    _ftprintf(stderr, _T("Failed to open %s\n"), path.c_str());
-    return;
-  }
-
+  const auto path = args.ExpectNextPath();
+  FileLineReaderA file(path);
   FlightParser parser(file);
   FlightInfo flight;
   while (parser.Read(flight))

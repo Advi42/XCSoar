@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,34 +21,29 @@ Copyright_License {
 }
 */
 
-#include "Profile/Profile.hpp"
-#include "IO/KeyValueFileWriter.hpp"
+#include "Profile.hpp"
+#include "Map.hpp"
+#include "File.hpp"
+#include "Current.hpp"
 #include "LogFile.hpp"
 #include "Asset.hpp"
 #include "LocalPath.hpp"
 #include "Util/StringUtil.hpp"
-#include "Util/Macros.hpp"
-#include "IO/KeyValueFileReader.hpp"
-#include "IO/FileLineReader.hpp"
-#include "IO/TextWriter.hpp"
-#include "IO/FileTransaction.hpp"
+#include "Util/StringCompare.hxx"
+#include "Util/StringAPI.hxx"
+#include "Util/tstring.hpp"
 #include "OS/FileUtil.hpp"
-#include "OS/PathName.hpp"
-#include "Compatibility/path.h"
+#include "OS/Path.hpp"
 
-#include <string.h>
 #include <windef.h> /* for MAX_PATH */
+#include <assert.h>
 
 #define XCSPROFILE "default.prf"
 #define OLDXCSPROFILE "xcsoar-registry.prf"
 
-namespace Profile {
-  static bool SaveFile(const FileTransaction &transaction);
-}
+static AllocatedPath startProfileFile = nullptr;
 
-static TCHAR startProfileFile[MAX_PATH];
-
-const TCHAR *
+Path
 Profile::GetPath()
 {
   return startProfileFile;
@@ -57,27 +52,22 @@ Profile::GetPath()
 void
 Profile::Load()
 {
+  assert(!startProfileFile.IsNull());
+
   LogFormat("Loading profiles");
   LoadFile(startProfileFile);
   SetModified(false);
 }
 
 void
-Profile::LoadFile(const TCHAR *szFile)
+Profile::LoadFile(Path path)
 {
-  if (StringIsEmpty(szFile))
-    return;
-
-  FileLineReaderA reader(szFile);
-  if (reader.error())
-    return;
-
-  LogFormat(_T("Loading profile from %s"), szFile);
-
-  KeyValueFileReader kvreader(reader);
-  KeyValuePair pair;
-  while (kvreader.Read(pair))
-    Set(pair.key, pair.value);
+  try {
+    LoadFile(map, path);
+    LogFormat(_T("Loaded profile from %s"), path.c_str());
+  } catch (const std::runtime_error &e) {
+    LogError("Failed to load profile", e);
+  }
 }
 
 void
@@ -87,120 +77,59 @@ Profile::Save()
     return;
 
   LogFormat("Saving profiles");
-  if (StringIsEmpty(startProfileFile))
-    SetFiles(_T(""));
+  if (startProfileFile.IsNull())
+    SetFiles(nullptr);
+
+  assert(!startProfileFile.IsNull());
   SaveFile(startProfileFile);
 }
 
-bool
-Profile::SaveFile(const FileTransaction &transaction)
+void
+Profile::SaveFile(Path path)
 {
-  TextWriter writer(transaction.GetTemporaryPath());
-  // ... on error -> return
-  if (!writer.IsOpen())
-    return false;
-
-  KeyValueFileWriter kvwriter(writer);
-  Export(kvwriter);
-
-  return writer.Flush();
+  LogFormat(_T("Saving profile to %s"), path.c_str());
+  SaveFile(map, path);
 }
 
 void
-Profile::SaveFile(const TCHAR *szFile)
-{
-  if (StringIsEmpty(szFile))
-    return;
-
-  LogFormat(_T("Saving profile to %s"), szFile);
-
-  // Try to open the file for writing
-  FileTransaction transaction(szFile);
-  if (SaveFile(transaction))
-    transaction.Commit();
-}
-
-void
-Profile::SetFiles(const TCHAR *override_path)
+Profile::SetFiles(Path override_path)
 {
   /* set the "modified" flag, because we are potentially saving to a
      new file now */
   SetModified(true);
 
-  if (!StringIsEmpty(override_path)) {
-    if (IsBaseName(override_path)) {
-      LocalPath(startProfileFile, override_path);
-
-      if (_tcschr(override_path, '.') == NULL)
-        _tcscat(startProfileFile, _T(".prf"));
+  if (!override_path.IsNull()) {
+    if (override_path.IsBase()) {
+      if (StringFind(override_path.c_str(), '.') != nullptr)
+        startProfileFile = LocalPath(override_path);
+      else {
+        tstring t(override_path.c_str());
+        t += _T(".prf");
+        startProfileFile = LocalPath(t.c_str());
+      }
     } else
-      CopyString(startProfileFile, override_path, MAX_PATH);
+      startProfileFile = Path(override_path);
     return;
   }
 
   // Set the default profile file
-  LocalPath(startProfileFile, _T(XCSPROFILE));
+  startProfileFile = LocalPath(_T(XCSPROFILE));
+}
 
-  if (IsAltair() && !File::Exists(startProfileFile)) {
-    /* backwards compatibility with old Altair firmware */
-    LocalPath(startProfileFile, _T("config/") _T(OLDXCSPROFILE));
-    if (!File::Exists(startProfileFile))
-      LocalPath(startProfileFile, _T(XCSPROFILE));
-  }
+AllocatedPath
+Profile::GetPath(const char *key)
+{
+  return map.GetPath(key);
 }
 
 bool
-Profile::GetPath(const char *key, TCHAR *value)
+Profile::GetPathIsEqual(const char *key, Path value)
 {
-  TCHAR buffer[MAX_PATH];
-  if (!Get(key, buffer, ARRAY_SIZE(buffer)))
-      return false;
-
-  if (StringIsEmpty(buffer))
-    return false;
-
-  ExpandLocalPath(value, buffer);
-  return true;
-}
-
-bool
-Profile::GetPathIsEqual(const char *key, const TCHAR *value)
-{
-  TCHAR saved[MAX_PATH];
-  if (!GetPath(key, saved))
-    return false;
-
-  return StringIsEqual(saved, value);
-}
-
-const TCHAR *
-Profile::GetPathBase(const char *key)
-{
-  TCHAR buffer[MAX_PATH];
-  if (!Get(key, buffer, ARRAY_SIZE(buffer)))
-      return nullptr;
-
-  const TCHAR *p = buffer;
-  if (DIR_SEPARATOR != '\\') {
-    const TCHAR *backslash = _tcsrchr(p, _T('\\'));
-    if (backslash != NULL)
-      p = backslash + 1;
-  }
-
-  return BaseName(p);
+  return map.GetPathIsEqual(key, value);
 }
 
 void
-Profile::SetPath(const char *key, const TCHAR *value)
+Profile::SetPath(const char *key, Path value)
 {
-  TCHAR path[MAX_PATH];
-
-  if (StringIsEmpty(value))
-    path[0] = '\0';
-  else {
-    CopyString(path, value, MAX_PATH);
-    ContractLocalPath(path);
-  }
-
-  Set(key, path);
+  map.SetPath(key, value);
 }

@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@ struct FinishConstraints;
  */
 class FinishPoint final : public OrderedTaskPoint
 {
-  fixed safety_height;
+  double safety_height;
 
   /**
    * A copy of OrderedTaskSettings::finish_constraints, managed by
@@ -47,7 +47,7 @@ class FinishPoint final : public OrderedTaskPoint
    */
   FinishConstraints constraints;
 
-  fixed fai_finish_height;
+  double fai_finish_height = 0;
 
 public:
   /**
@@ -61,7 +61,7 @@ public:
    *
    * @return Partially-initialised object
    */
-  FinishPoint(ObservationZonePoint *_oz, const Waypoint &wp,
+  FinishPoint(ObservationZonePoint *_oz, WaypointPtr &&wp,
               const TaskBehaviour &tb,
               const FinishConstraints &constraints,
               bool boundary_scored=false);
@@ -71,27 +71,27 @@ public:
    *
    * @param height FAI finish height (m)
    */
-  void set_fai_finish_height(const fixed height);
+  void SetFaiFinishHeight(double height);
 
   /* virtual methods from class TaskPoint */
-  virtual fixed GetElevation() const override;
+  double GetElevation() const override;
 
   /* virtual methods from class ScoredTaskPoint */
-  virtual void Reset() override;
-  virtual bool CheckEnterTransition(const AircraftState &ref_now,
-                                    const AircraftState &ref_last) const override;
+  void Reset() override;
+  bool CheckEnterTransition(const AircraftState &ref_now,
+                            const AircraftState &ref_last) const override;
 
   /* virtual methods from class OrderedTaskPoint */
-  virtual void SetTaskBehaviour(const TaskBehaviour &tb) override;
-  virtual void SetOrderedTaskSettings(const OrderedTaskSettings &otb) override;
-  virtual void SetNeighbours(OrderedTaskPoint *prev,
-                             OrderedTaskPoint *next) override;
-  virtual bool IsInSector(const AircraftState &ref) const override;
+  void SetTaskBehaviour(const TaskBehaviour &tb) override;
+  void SetOrderedTaskSettings(const OrderedTaskSettings &otb) override;
+  void SetNeighbours(OrderedTaskPoint *prev,
+                     OrderedTaskPoint *next) override;
+  bool IsInSector(const AircraftState &ref) const override;
 
 private:
   /* virtual methods from class ScoredTaskPoint */
-  virtual bool EntryPrecondition() const override;
-  virtual bool ScoreFirstEntry() const override {
+  bool EntryPrecondition() const override;
+  bool ScoreFirstEntry() const override {
     return true;
   }
 
@@ -100,7 +100,7 @@ private:
    * @param state
    * @return true if state is within valid height for sector
    */
-  bool is_in_height_limit(const AircraftState &state) const;
+  bool InInHeightLimit(const AircraftState &state) const;
 };
 
 #endif

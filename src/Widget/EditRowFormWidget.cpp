@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -31,12 +31,13 @@ Copyright_License {
 #include "Form/DataField/Enum.hpp"
 #include "Form/DataField/String.hpp"
 #include "Form/DataField/Password.hpp"
-#include "Form/DataField/FileReader.hpp"
 #include "Form/DataField/Time.hpp"
 #include "Form/DataField/RoughTime.hpp"
 #include "Time/RoughTime.hpp"
 #include "Language/Language.hpp"
 #include "Math/Angle.hpp"
+#include "Util/StringAPI.hxx"
+#include "Util/TruncateString.hpp"
 
 #include <assert.h>
 
@@ -86,12 +87,11 @@ RowFormWidget::AddReadOnly(const TCHAR *label, const TCHAR *help,
 void
 RowFormWidget::AddReadOnly(const TCHAR *label, const TCHAR *help,
                            const TCHAR *display_format,
-                           fixed value)
+                           double value)
 {
   WndProperty *edit = Add(label, help, true);
   DataFieldFloat *df = new DataFieldFloat(display_format, display_format,
-                                          fixed(0), fixed(0),
-                                          value, fixed(1), false);
+                                          0, 0, value, 1, false);
   edit->SetDataField(df);
 }
 
@@ -144,9 +144,9 @@ WndProperty *
 RowFormWidget::AddFloat(const TCHAR *label, const TCHAR *help,
                         const TCHAR *display_format,
                         const TCHAR *edit_format,
-                        fixed min_value, fixed max_value,
-                        fixed step, bool fine,
-                        fixed value,
+                        double min_value, double max_value,
+                        double step, bool fine,
+                        double value,
                         DataFieldListener *listener)
 {
   WndProperty *edit = Add(label, help);
@@ -278,7 +278,7 @@ RowFormWidget::LoadValueEnum(unsigned i, unsigned value)
 }
 
 void
-RowFormWidget::LoadValue(unsigned i, fixed value)
+RowFormWidget::LoadValue(unsigned i, double value)
 {
   WndProperty &control = GetControl(i);
   DataFieldFloat &df = *(DataFieldFloat *)control.GetDataField();
@@ -342,7 +342,7 @@ RowFormWidget::GetValueInteger(unsigned i) const
   return GetDataField(i).GetAsInteger();
 }
 
-fixed
+double
 RowFormWidget::GetValueFloat(unsigned i) const
 {
   const DataFieldFloat &df =
@@ -425,9 +425,9 @@ RowFormWidget::SaveValue(unsigned i, uint16_t &value) const
 }
 
 bool
-RowFormWidget::SaveValue(unsigned i, fixed &value) const
+RowFormWidget::SaveValue(unsigned i, double &value) const
 {
-  fixed new_value = GetValueFloat(i);
+  auto new_value = GetValueFloat(i);
   if (new_value == value)
     return false;
 
@@ -464,9 +464,9 @@ RowFormWidget::SaveValue(unsigned i, TCHAR *string, size_t max_size) const
   const TCHAR *new_value = GetDataField(i).GetAsString();
   assert(new_value != nullptr);
 
-  if (_tcscmp(string, new_value) == 0)
+  if (StringIsEqual(string, new_value))
     return false;
 
-  CopyString(string, new_value, max_size);
+  CopyTruncateString(string, max_size, new_value);
   return true;
 }

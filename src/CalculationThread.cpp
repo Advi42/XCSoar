@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -46,7 +46,7 @@ CalculationThread::SetComputerSettings(const ComputerSettings &new_value)
 }
 
 void
-CalculationThread::SetScreenDistanceMeters(fixed new_value)
+CalculationThread::SetScreenDistanceMeters(double new_value)
 {
   ScopeLock protect(mutex);
   screen_distance_meters = new_value;
@@ -61,9 +61,6 @@ CalculationThread::Tick()
 #ifdef HAVE_CPU_FREQUENCY
   const ScopeLockCPU cpu;
 #endif
-
-  const Validity previous_warning =
-    glide_computer.Calculated().airspace_warnings.latest;
 
   bool gps_updated;
 
@@ -80,7 +77,7 @@ CalculationThread::Tick()
   bool force;
   {
     ScopeLock protect(mutex);
-    // Copy settings form ComputerSettingsBlackboard to GlideComputerBlackboard
+    // Copy settings from ComputerSettingsBlackboard to GlideComputerBlackboard
     glide_computer.ReadComputerSettings(settings_computer);
 
     force = this->force;
@@ -114,17 +111,6 @@ CalculationThread::Tick()
   if (do_idle) {
     // do slow calculations last, to minimise latency
     glide_computer.ProcessIdle();
-
-    if (glide_computer.Calculated().airspace_warnings.latest != previous_warning) {
-      /* there's a new airspace warning */
-
-      {
-        ScopeLock protect(device_blackboard->mutex);
-        device_blackboard->ReadBlackboard(glide_computer.Calculated());
-      }
-
-      TriggerAirspaceWarning();
-    }
   }
 }
 

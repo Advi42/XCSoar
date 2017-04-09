@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -40,10 +40,21 @@ TopWindow::Create(const TCHAR *text, PixelSize size,
 {
   invalidated = true;
 
+#if defined(USE_X11) || defined(USE_WAYLAND) || defined(ENABLE_SDL)
+  CreateNative(text, size, style);
+#endif
+
   delete screen;
   screen = new TopCanvas();
-#if defined(ENABLE_SDL) && (SDL_MAJOR_VERSION >= 2)
-  screen->Create(text, size, style.GetFullScreen(), style.GetResizable());
+
+#ifdef ENABLE_SDL
+  screen->Create(window, size);
+#elif defined(USE_GLX)
+  screen->Create(x_display, x_window, fb_cfg);
+#elif defined(USE_X11)
+  screen->Create(x_display, x_window);
+#elif defined(USE_WAYLAND)
+  screen->Create(native_display, native_window);
 #else
   screen->Create(size, style.GetFullScreen(), style.GetResizable());
 #endif
@@ -55,10 +66,6 @@ TopWindow::Create(const TCHAR *text, PixelSize size,
   }
 
   ContainerWindow::Create(nullptr, screen->GetRect(), style);
-
-#if defined(ENABLE_SDL) && (SDL_MAJOR_VERSION < 2)
-  SetCaption(text);
-#endif
 }
 
 #ifdef SOFTWARE_ROTATE_DISPLAY
@@ -70,7 +77,7 @@ TopWindow::SetDisplayOrientation(DisplayOrientation orientation)
   assert(screen->IsDefined());
 
   screen->SetDisplayOrientation(orientation);
-  Resize(screen->GetWidth(), screen->GetHeight());
+  Resize(screen->GetSize());
 }
 
 #endif
@@ -79,12 +86,6 @@ void
 TopWindow::CancelMode()
 {
   OnCancelMode();
-}
-
-void
-TopWindow::Fullscreen()
-{
-  screen->Fullscreen();
 }
 
 void
@@ -114,6 +115,13 @@ TopWindow::Refresh()
     /* the application is paused/suspended, and we don't have an
        OpenGL surface - ignore all drawing requests */
     return;
+
+#ifdef USE_X11
+  if (!IsVisible())
+    /* don't bother to invoke the renderer if we're not visible on the
+       X11 display */
+    return;
+#endif
 
   if (!invalidated)
     return;

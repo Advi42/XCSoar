@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,20 +21,15 @@ Copyright_License {
 }
 */
 
-/*
- * This program demonstrates the OZRenderer library.  It
- * shows a list of shapes, and draws the selected shape on the right.
- *
- */
-
 #define ENABLE_DIALOG_LOOK
 
 #include "Main.hpp"
 #include "Screen/SingleWindow.hpp"
-#include "Screen/ButtonWindow.hpp"
-#include "Screen/BufferCanvas.hpp"
+#include "Screen/Canvas.hpp"
 #include "Look/ChartLook.hpp"
 #include "Form/List.hpp"
+#include "Form/Button.hpp"
+#include "Form/ActionListener.hpp"
 #include "Util/Macros.hpp"
 #include "Renderer/ChartRenderer.hpp"
 
@@ -76,46 +71,48 @@ ChartWindow::OnPaint(Canvas &canvas)
 void
 ChartWindow::DrawChart(ChartRenderer &renderer)
 {
-  renderer.ScaleXFromValue(fixed(0));
-  renderer.ScaleXFromValue(fixed(100));
+  renderer.ScaleXFromValue(0);
+  renderer.ScaleXFromValue(100);
 
-  renderer.ScaleYFromValue(fixed(0));
-  renderer.ScaleYFromValue(fixed(100));
+  renderer.ScaleYFromValue(0);
+  renderer.ScaleYFromValue(100);
 
   if (chart == 0) {
-    renderer.DrawLine(fixed(0), fixed(10), fixed(100), fixed(70),
-                      look.GetPen(ChartLook::STYLE_BLUETHIN));
+    renderer.DrawLine(0, 10, 100, 70,
+                      look.GetPen(ChartLook::STYLE_BLUETHINDASH));
   } else if (chart == 1) {
-    renderer.ScaleXFromValue(fixed(-50));
-    renderer.ScaleXFromValue(fixed(110));
-    renderer.ScaleYFromValue(fixed(110));
+    renderer.ScaleXFromValue(-50);
+    renderer.ScaleXFromValue(110);
+    renderer.ScaleYFromValue(110);
 
-    renderer.DrawLine(fixed(0), fixed(10), fixed(100), fixed(70),
-                      look.GetPen(ChartLook::STYLE_BLUETHIN));
+    renderer.DrawLine(0, 10, 100, 70,
+                      look.GetPen(ChartLook::STYLE_BLUETHINDASH));
 
-    renderer.DrawLine(fixed(0), fixed(10), fixed(100), fixed(80),
-                      look.GetPen(ChartLook::STYLE_DASHGREEN));
+    renderer.DrawLine(0, 10, 100, 80,
+                      look.GetPen(ChartLook::STYLE_GREENDASH));
 
-    renderer.DrawLine(fixed(0), fixed(10), fixed(100), fixed(100),
-                      look.GetPen(ChartLook::STYLE_MEDIUMBLACK));
+    renderer.DrawLine(0, 10, 100, 100,
+                      look.GetPen(ChartLook::STYLE_BLACK));
 
-    renderer.DrawXGrid(fixed(20), look.GetPen(ChartLook::STYLE_THINDASHPAPER),
-                       fixed(20), true);
+    renderer.DrawXGrid(20, 20, ChartRenderer::UnitFormat::NUMERIC);
 
-    renderer.DrawYGrid(fixed(20), look.GetPen(ChartLook::STYLE_THINDASHPAPER),
-                       fixed(20), true);
-}
+    renderer.DrawYGrid(20, 20, ChartRenderer::UnitFormat::NUMERIC);
+
+    renderer.DrawLabel(_T("hello"), 50, 50);
+    renderer.DrawXLabel(_T("VVV"),_T("m/s"));
+    renderer.DrawYLabel(_T("AAA"),_T("m/s"));
+  }
 }
 
 class TestWindow : public SingleWindow,
+                   ActionListener,
                    ListItemRenderer, ListCursorHandler {
-  ButtonWindow close_button;
+  Button close_button;
   ListControl *type_list;
   ChartWindow chart;
 
-  enum {
-    ID_START = 100,
-    ID_CLOSE
+  enum Buttons {
+    CLOSE,
   };
 
 public:
@@ -149,20 +146,21 @@ public:
     PixelRect button_rc = rc;
     button_rc.right = list_rc.right;
     button_rc.top = button_rc.bottom - 30;
-    close_button.Create(*this, _T("Close"), ID_CLOSE, button_rc);
+    close_button.Create(*this, *button_look, _T("Close"), button_rc,
+                        WindowStyle(),
+                        *this, CLOSE);
 
     type_list->SetFocus();
   }
 
 protected:
-  virtual bool OnCommand(unsigned id, unsigned code) override {
+  /* virtual methods from class ActionListener */
+  virtual void OnAction(int id) override {
     switch (id) {
-    case ID_CLOSE:
+    case CLOSE:
       Close();
-      return true;
+      break;
     }
-
-    return SingleWindow::OnCommand(id, code);
   }
 
   /* virtual methods from ListItemRenderer */

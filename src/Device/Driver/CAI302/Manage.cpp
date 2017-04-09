@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,8 +23,6 @@ Copyright_License {
 
 #include "Internal.hpp"
 #include "Protocol.hpp"
-#include "Device/Port/Port.hpp"
-#include "Operation/Operation.hpp"
 #include "Util/Macros.hpp"
 #include "Util/CharUtil.hpp"
 #include "Engine/Waypoint/Waypoint.hpp"

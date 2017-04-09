@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,12 +24,13 @@ Copyright_License {
 #include "MergeThread.hpp"
 #include "Blackboard/DeviceBlackboard.hpp"
 #include "Protection.hpp"
+#include "Components.hpp"
 #include "NMEA/MoreData.hpp"
 #include "Audio/VarioGlue.hpp"
-#include "Device/All.hpp"
+#include "Device/MultipleDevices.hpp"
 
 MergeThread::MergeThread(DeviceBlackboard &_device_blackboard)
-  :WorkerThread("MergeThread", 150, 50, 20),
+  :WorkerThread("MergeThread", 50, 20, 10),
    device_blackboard(_device_blackboard)
 {
   last_fix.Reset();
@@ -62,7 +63,7 @@ MergeThread::Tick()
 
 #ifdef HAVE_PCM_PLAYER
   bool vario_available;
-  fixed vario;
+  double vario;
 #endif
 
   {
@@ -73,7 +74,8 @@ MergeThread::Tick()
     const MoreData &basic = device_blackboard.Basic();
 
     /* call Driver::OnSensorUpdate() on all devices */
-    AllDevicesNotifySensorUpdate(basic);
+    if (devices != nullptr)
+      devices->NotifySensorUpdate(basic);
 
     /* trigger update if gps has become available or dropped out */
     gps_updated = last_any.location_available != basic.location_available;
@@ -86,7 +88,7 @@ MergeThread::Tick()
 
 #ifdef HAVE_PCM_PLAYER
     vario_available = basic.brutto_vario_available;
-    vario = vario_available ? basic.brutto_vario : fixed(0);
+    vario = vario_available ? basic.brutto_vario : 0;
 #endif
 
     /* update last_any in every iteration */

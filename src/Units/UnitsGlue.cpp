@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,22 +24,18 @@ Copyright_License {
 #include "Units/UnitsGlue.hpp"
 #include "Units/UnitsStore.hpp"
 #include "LogFile.hpp"
+#include "Util/StringAPI.hxx"
 
 #include <tchar.h>
-#include <string.h>
 
 #ifndef HAVE_POSIX
 #include <windows.h>
 #endif
 
-#ifdef _WIN32_WCE
-#include "OS/DynamicLibrary.hpp"
-#endif
-
 #ifdef ANDROID
-#include "Java/Global.hpp"
-#include "Java/Class.hpp"
-#include "Java/Object.hpp"
+#include "Java/Global.hxx"
+#include "Java/Class.hxx"
+#include "Java/Object.hxx"
 #endif
 
 struct language_unit_map {
@@ -95,7 +91,7 @@ FindLanguage(const TCHAR* lang)
 {
   // Search for supported languages matching the language code
   for (unsigned i = 0; language_table[i].region_code != nullptr; ++i)
-    if (_tcscmp(language_table[i].region_code, lang) == 0)
+    if (StringIsEqual(language_table[i].region_code, lang))
       return language_table[i].store_index;
 
   return 0;
@@ -106,25 +102,6 @@ static unsigned
 AutoDetect()
 {
 #ifndef HAVE_POSIX
-
-#if defined(_WIN32_WCE)
-  /* the GetUserDefaultUILanguage() prototype is missing on
-     mingw32ce, we have to look it up dynamically */
-  DynamicLibrary coreloc_dll(_T("coredll"));
-  if (!coreloc_dll.IsDefined()) {
-    LogFormat("Units: coredll.dll not found");
-    return 0;
-  }
-
-  typedef LANGID WINAPI (*GetUserDefaultUILanguage_t)();
-  GetUserDefaultUILanguage_t GetUserDefaultUILanguage =
-    (GetUserDefaultUILanguage_t)
-    coreloc_dll.Lookup(_T("GetUserDefaultUILanguage"));
-  if (GetUserDefaultUILanguage == nullptr) {
-    LogFormat("Units: GetUserDefaultUILanguage() not available");
-    return 0;
-  }
-#endif
 
   // Retrieve the default user language identifier from the OS
   LANGID lang_id = GetUserDefaultUILanguage();
@@ -155,10 +132,7 @@ AutoDetect()
   // Call function Locale.getLanguage() that
   // returns a two-letter language string
 
-  cid = env->GetMethodID(cls, "toString", "()Ljava/lang/String;");
-  assert(cid != nullptr);
-
-  jstring language = (jstring)env->CallObjectMethod(obj, cid);
+  jstring language = Java::Object::toString(env, obj);
   if (language == nullptr)
     return 0;
 

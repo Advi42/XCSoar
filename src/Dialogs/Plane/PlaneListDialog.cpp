@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,18 +22,17 @@ Copyright_License {
 */
 
 #include "PlaneDialogs.hpp"
+#include "Dialogs/Error.hpp"
 #include "Dialogs/Message.hpp"
 #include "Dialogs/WidgetDialog.hpp"
 #include "Widget/ListWidget.hpp"
 #include "Form/Button.hpp"
-#include "Screen/Canvas.hpp"
-#include "Screen/Layout.hpp"
+#include "Renderer/TwoTextRowsRenderer.hpp"
 #include "Plane/Plane.hpp"
 #include "Plane/PlaneGlue.hpp"
 #include "Plane/PlaneFileGlue.hpp"
 #include "OS/FileUtil.hpp"
-#include "OS/PathName.hpp"
-#include "Compatibility/path.h"
+#include "OS/Path.hpp"
 #include "LocalPath.hpp"
 #include "Components.hpp"
 #include "Profile/Profile.hpp"
@@ -42,35 +41,10 @@ Copyright_License {
 #include "Look/DialogLook.hpp"
 #include "Interface.hpp"
 #include "Language/Language.hpp"
+#include "Util/StringAPI.hxx"
 
 #include <vector>
 #include <assert.h>
-#include <windef.h> /* for MAX_PATH */
-
-struct ListItem
-{
-  StaticString<32> name;
-  StaticString<MAX_PATH> path;
-
-  bool operator<(const ListItem &i2) const {
-    return _tcscmp(name, i2.name) < 0;
-  }
-};
-
-class PlaneFileVisitor: public File::Visitor
-{
-  std::vector<ListItem> &list;
-
-public:
-  PlaneFileVisitor(std::vector<ListItem> &_list):list(_list) {}
-
-  void Visit(const TCHAR* path, const TCHAR* filename) {
-    ListItem item;
-    item.name = filename;
-    item.path = path;
-    list.push_back(item);
-  }
-};
 
 /* this macro exists in the WIN32 API */
 #ifdef DELETE
@@ -79,6 +53,31 @@ public:
 
 class PlaneListWidget final
   : public ListWidget, private ActionListener {
+
+  struct ListItem {
+    StaticString<32> name;
+    AllocatedPath path;
+
+    ListItem(const TCHAR *_name, Path _path)
+      :name(_name), path(_path) {}
+
+    bool operator<(const ListItem &i2) const {
+      return StringCollate(name, i2.name) < 0;
+    }
+  };
+
+  class PlaneFileVisitor: public File::Visitor
+  {
+    std::vector<ListItem> &list;
+
+  public:
+    PlaneFileVisitor(std::vector<ListItem> &_list):list(_list) {}
+
+    void Visit(Path path, Path filename) override {
+      list.emplace_back(filename.c_str(), path);
+    }
+  };
+
   enum Buttons {
     NEW,
     EDIT,
@@ -87,9 +86,11 @@ class PlaneListWidget final
   };
 
   WndForm *form;
-  WndButton *edit_button, *delete_button, *load_button;
+  Button *edit_button, *delete_button, *load_button;
 
   std::vector<ListItem> list;
+
+  TwoTextRowsRenderer row_renderer;
 
 public:
   void CreateButtons(WidgetDialog &dialog);
@@ -106,34 +107,24 @@ private:
 
 public:
   /* virtual methods from class Widget */
-  virtual void Prepare(ContainerWindow &parent,
-                       const PixelRect &rc) override;
-  virtual void Unprepare() override;
+  void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
+  void Unprepare() override;
 
 protected:
   /* virtual methods from ListItemRenderer */
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned idx) override;
+  void OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned idx) override;
 
   /* virtual methods from ListCursorHandler */
-  virtual bool CanActivateItem(unsigned index) const override {
+  bool CanActivateItem(gcc_unused unsigned index) const override {
     return true;
   }
 
-  virtual void OnActivateItem(unsigned index) override;
+  void OnActivateItem(unsigned index) override;
 
 private:
   /* virtual methods from class ActionListener */
-  virtual void OnAction(int id) override;
+  void OnAction(int id) override;
 };
-
-gcc_pure
-static UPixelScalar
-GetRowHeight(const DialogLook &look)
-{
-  return look.list.font_bold->GetHeight() + Layout::Scale(6)
-    + look.small_font->GetHeight();
-}
 
 void
 PlaneListWidget::UpdateList()
@@ -173,7 +164,9 @@ void
 PlaneListWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
   const DialogLook &look = UIGlobals::GetDialogLook();
-  CreateList(parent, look, rc, GetRowHeight(look));
+  CreateList(parent, look, rc,
+             row_renderer.CalculateLayout(*look.list.font_bold,
+                                          look.small_font));
   UpdateList();
 }
 
@@ -188,30 +181,18 @@ PlaneListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned i)
 {
   assert(i < list.size());
 
-  const DialogLook &look = UIGlobals::GetDialogLook();
-  const Font &name_font = *look.list.font_bold;
-  const Font &details_font = *look.small_font;
-
-  canvas.Select(name_font);
-
   if (Profile::GetPathIsEqual("PlanePath", list[i].path)) {
     StaticString<256> buffer;
     buffer.Format(_T("%s - %s"), list[i].name.c_str(), _("Active"));
-    canvas.DrawClippedText(rc.left + Layout::GetTextPadding(),
-                           rc.top + Layout::GetTextPadding(), rc, buffer);
+    row_renderer.DrawFirstRow(canvas, rc, buffer);
   } else
-    canvas.DrawClippedText(rc.left + Layout::GetTextPadding(),
-                           rc.top + Layout::GetTextPadding(), rc, list[i].name);
+    row_renderer.DrawFirstRow(canvas, rc, list[i].name);
 
-  canvas.Select(details_font);
-
-  canvas.DrawClippedText(rc.left + Layout::GetTextPadding(),
-                         rc.top + name_font.GetHeight() + Layout::FastScale(4),
-                         rc, list[i].path);
+  row_renderer.DrawSecondRow(canvas, rc, list[i].path.c_str());
 }
 
 static bool
-LoadFile(const TCHAR *path)
+LoadFile(Path path)
 {
   ComputerSettings &settings = CommonInterface::SetComputerSettings();
 
@@ -272,8 +253,7 @@ PlaneListWidget::NewClicked()
     StaticString<42> filename(plane.registration);
     filename += _T(".xcp");
 
-    StaticString<MAX_PATH> path;
-    LocalPath(path.buffer(), filename);
+    const auto path = LocalPath(filename);
 
     if (File::Exists(path)) {
       StaticString<256> tmp;
@@ -284,7 +264,13 @@ PlaneListWidget::NewClicked()
         continue;
     }
 
-    PlaneGlue::WriteFile(plane, path);
+    try {
+      PlaneGlue::WriteFile(plane, path);
+    } catch (const std::runtime_error &e) {
+      ShowError(e, _("Failed to save file."));
+      return;
+    }
+
     UpdateList();
     break;
   }
@@ -296,7 +282,7 @@ PlaneListWidget::EditClicked()
   assert(GetList().GetCursorIndex() < list.size());
 
   const unsigned index = GetList().GetCursorIndex();
-  const TCHAR *old_path = list[index].path;
+  const Path old_path = list[index].path;
   const TCHAR *old_filename = list[index].name;
 
   Plane plane;
@@ -313,10 +299,8 @@ PlaneListWidget::EditClicked()
     filename += _T(".xcp");
 
     if (filename != old_filename) {
-      StaticString<MAX_PATH> path;
-      DirName(old_path, path.buffer());
-      path += _T(DIR_SEPARATOR_S);
-      path += filename;
+      const auto path = AllocatedPath::Build(old_path.GetParent(),
+                                             filename);
 
       if (File::Exists(path)) {
         StaticString<256> tmp;
@@ -328,14 +312,27 @@ PlaneListWidget::EditClicked()
       }
 
       File::Delete(old_path);
-      PlaneGlue::WriteFile(plane, path);
+
+      try {
+        PlaneGlue::WriteFile(plane, path);
+      } catch (const std::runtime_error &e) {
+        ShowError(e, _("Failed to save file."));
+        return;
+      }
+
       if (Profile::GetPathIsEqual("PlanePath", old_path)) {
-        list[index].path = path;
+        list[index].path = Path(path);
         list[index].name = filename;
         Load(index);
       }
     } else {
-      PlaneGlue::WriteFile(plane, old_path);
+      try {
+        PlaneGlue::WriteFile(plane, old_path);
+      } catch (const std::runtime_error &e) {
+        ShowError(e, _("Failed to save file."));
+        return;
+      }
+
       if (Profile::GetPathIsEqual("PlanePath", old_path))
         Load(index);
     }
@@ -407,6 +404,7 @@ dlgPlanesShowModal()
   dialog.CreateFull(UIGlobals::GetMainWindow(), _("Planes"), &widget);
   dialog.AddButton(_("Close"), mrOK);
   widget.CreateButtons(dialog);
+  dialog.EnableCursorSelection();
 
   dialog.ShowModal();
   dialog.StealWidget();

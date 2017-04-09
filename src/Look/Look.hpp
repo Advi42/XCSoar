@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,7 +27,6 @@ Copyright_License {
 #include "DialogLook.hpp"
 #include "GestureLook.hpp"
 #include "TerminalLook.hpp"
-#include "UnitsLook.hpp"
 #include "VarioLook.hpp"
 #include "ChartLook.hpp"
 #include "ThermalBandLook.hpp"
@@ -42,6 +41,7 @@ Copyright_License {
 #include "VarioBarLook.hpp"
 #include "IconLook.hpp"
 #include "ThermalAssistantLook.hpp"
+#include "ClimbPercentLook.hpp"
 
 struct UISettings;
 class Font;
@@ -50,7 +50,6 @@ struct Look {
   DialogLook dialog;
   GestureLook gesture;
   TerminalLook terminal;
-  UnitsLook units;
   VarioLook vario;
   ChartLook chart;
   ThermalBandLook thermal_band;
@@ -68,24 +67,14 @@ struct Look {
   IconLook icon;
   ThermalAssistantLook thermal_assistant_gauge;
   ThermalAssistantLook thermal_assistant_dialog;
+  ClimbPercentLook circling_percent;
 
-  void Initialise(const Font &dialog_font, const Font &dialog_bold_font,
-                  const Font &dialog_small_font,
-                  const Font &map_font);
+  void Initialise(const Font &map_font);
   void InitialiseConfigured(const UISettings &settings,
-                            const Font &dialog_font,
-                            const Font &dialog_bold_font,
-                            const Font &dialog_small_font,
                             const Font &map_font, const Font &map_bold_font,
-                            const Font &map_label_font,
-                            const Font &cdi_font,
-                            const Font &monospace_font,
-                            const Font &infobox_value_font,
-                            const Font &infobox_small_font,
-#ifndef GNAV
-                            const Font &infobox_unit_font,
-#endif
-                            const Font &infobox_title_font);
+                            unsigned infobox_width);
+
+  void ReinitialiseLayout(unsigned infobox_width);
 };
 
 #endif

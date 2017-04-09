@@ -1,10 +1,10 @@
 #include "AirspaceSorter.hpp"
 #include "Airspace/Airspaces.hpp"
 #include "AbstractAirspace.hpp"
-#include "AirspaceVisitor.hpp"
+#include "Predicate/AirspacePredicate.hpp"
 #include "Geo/GeoVector.hpp"
+#include "Util/StringAPI.hxx"
 
-#include <string.h>
 #include <algorithm>
 
 void
@@ -15,10 +15,10 @@ AirspaceSelectInfo::ResetVector()
 
 const GeoVector &
 AirspaceSelectInfo::GetVector(const GeoPoint &location,
-                              const TaskProjection &projection) const
+                              const FlatProjection &projection) const
 {
   if (!vec.IsValid()) {
-    const GeoPoint closest_loc = airspace->ClosestPoint(location, projection);
+    const auto closest_loc = airspace->ClosestPoint(location, projection);
     vec = GeoVector(location, closest_loc);
   }
 
@@ -27,7 +27,7 @@ AirspaceSelectInfo::GetVector(const GeoPoint &location,
 
 bool
 AirspaceFilterData::Match(const GeoPoint &location,
-                          const TaskProjection &projection,
+                          const FlatProjection &projection,
                           const AbstractAirspace &as) const
 {
   if (cls != AirspaceClass::AIRSPACECLASSCOUNT && as.GetType() != cls)
@@ -36,17 +36,17 @@ AirspaceFilterData::Match(const GeoPoint &location,
   if (name_prefix != nullptr && !as.MatchNamePrefix(name_prefix))
     return false;
 
-  if (!negative(direction.Native())) {
-    const GeoPoint closest = as.ClosestPoint(location, projection);
-    const Angle bearing = location.Bearing(closest);
-    fixed direction_error = (bearing - direction).AsDelta().AbsoluteDegrees();
-    if (direction_error > fixed(18))
+  if (!direction.IsNegative()) {
+    const auto closest = as.ClosestPoint(location, projection);
+    const auto bearing = location.Bearing(closest);
+    auto direction_error = (bearing - direction).AsDelta().AbsoluteDegrees();
+    if (direction_error > 18)
       return false;
   }
 
-  if (!negative(distance)) {
-    const GeoPoint closest = as.ClosestPoint(location, projection);
-    const fixed distance = location.Distance(closest);
+  if (distance >= 0) {
+    const auto closest = as.ClosestPoint(location, projection);
+    const auto distance = location.Distance(closest);
     if (distance > distance)
       return false;
   }
@@ -54,28 +54,25 @@ AirspaceFilterData::Match(const GeoPoint &location,
   return true;
 }
 
-class AirspaceFilterVisitor final : public AirspaceVisitor {
-  GeoPoint location;
-  const TaskProjection &projection;
+class AirspaceFilterPredicate final : public AirspacePredicate {
+  const GeoPoint location;
+  const FlatProjection &projection;
   const AirspaceFilterData &filter;
 
 public:
-  AirspaceSelectInfoVector result;
-
-  AirspaceFilterVisitor(const GeoPoint &_location,
-                        const TaskProjection &_projection,
-                        const AirspaceFilterData &_filter)
+  AirspaceFilterPredicate(const GeoPoint &_location,
+                          const FlatProjection &_projection,
+                          const AirspaceFilterData &_filter)
     :location(_location), projection(_projection), filter(_filter) {}
 
-  virtual void Visit(const AbstractAirspace &as) {
-    if (filter.Match(location, projection, as))
-      result.emplace_back(as);
+  bool operator()(const AbstractAirspace &as) const override {
+    return filter.Match(location, projection, as);
   }
 };
 
 static void
 SortByDistance(AirspaceSelectInfoVector &vec, const GeoPoint &location,
-               const TaskProjection &projection)
+               const FlatProjection &projection)
 {
   auto compare = [&] (const AirspaceSelectInfo &elem1,
                       const AirspaceSelectInfo &elem2) {
@@ -91,8 +88,8 @@ SortByName(AirspaceSelectInfoVector &vec)
 {
   auto compare = [&] (const AirspaceSelectInfo &elem1,
                       const AirspaceSelectInfo &elem2) {
-    return _tcscmp(elem1.GetAirspace().GetName(),
-                   elem2.GetAirspace().GetName()) < 0;
+    return StringCollate(elem1.GetAirspace().GetName(),
+                         elem2.GetAirspace().GetName()) < 0;
   };
 
   std::sort(vec.begin(), vec.end(), compare);
@@ -102,18 +99,21 @@ AirspaceSelectInfoVector
 FilterAirspaces(const Airspaces &airspaces, const GeoPoint &location,
                 const AirspaceFilterData &filter)
 {
-  AirspaceFilterVisitor visitor(location, airspaces.GetProjection(), filter);
+  const AirspaceFilterPredicate predicate(location, airspaces.GetProjection(),
+                                          filter);
+  AirspaceSelectInfoVector result;
 
-  if (!negative(filter.distance))
-    airspaces.VisitWithinRange(location, filter.distance, visitor);
+  auto range = filter.distance < 0
+    ? airspaces.QueryAll()
+    : airspaces.QueryWithinRange(location, filter.distance);
+  for (const auto &i : range)
+    if (predicate(i.GetAirspace()))
+      result.emplace_back(i.GetAirspace());
+
+  if (filter.direction.IsNegative() && filter.distance < 0)
+    SortByName(result);
   else
-    for (const auto &i : airspaces)
-      visitor.Visit(i.GetAirspace());
+    SortByDistance(result, location, airspaces.GetProjection());
 
-  if (negative(filter.direction.Native()) && negative(filter.distance))
-    SortByName(visitor.result);
-  else
-    SortByDistance(visitor.result, location, airspaces.GetProjection());
-
-  return visitor.result;
+  return result;
 }

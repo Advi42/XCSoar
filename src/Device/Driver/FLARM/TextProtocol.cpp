@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,13 +21,40 @@ Copyright_License {
 }
 */
 
+#include "TextProtocol.hpp"
 #include "Device.hpp"
 #include "Device/Port/Port.hpp"
-#include "Device/Internal.hpp"
+#include "Device/Util/NMEAWriter.hpp"
 #include "Time/TimeoutClock.hpp"
 
 #include <assert.h>
 #include <string.h>
+
+static constexpr bool
+IsForbiddenFlarmChar(unsigned char ch)
+{
+  return
+    /* don't allow ASCII control characters */
+    ch < 0x20 ||
+    /* don't allow NMEA control characters */
+    ch == '$' || ch == '*';
+}
+
+char *
+CopyCleanFlarmString(char *gcc_restrict dest, const char *gcc_restrict src)
+{
+  while (true) {
+    char ch = *src++;
+    if (ch == 0)
+      break;
+
+    if (!IsForbiddenFlarmChar(ch))
+      *dest++ = ch;
+  }
+
+  *dest = 0;
+  return dest;
+}
 
 bool
 FlarmDevice::TextMode(OperationEnvironment &env)
@@ -46,7 +73,7 @@ FlarmDevice::TextMode(OperationEnvironment &env)
 bool
 FlarmDevice::Send(const char *sentence, OperationEnvironment &env)
 {
-  assert(sentence != NULL);
+  assert(sentence != nullptr);
 
   /* workaround for a Garrecht TRX-1090 firmware bug: start with a new
      line, because the TRX-1090 expects the '$' to be the first
@@ -65,7 +92,7 @@ bool
 FlarmDevice::Receive(const char *prefix, char *buffer, size_t length,
                      OperationEnvironment &env, unsigned timeout_ms)
 {
-  assert(prefix != NULL);
+  assert(prefix != nullptr);
 
   TimeoutClock timeout(timeout_ms);
 
@@ -74,20 +101,12 @@ FlarmDevice::Receive(const char *prefix, char *buffer, size_t length,
 
   char *p = (char *)buffer, *end = p + length;
   while (true) {
-    int remaining = timeout.GetRemainingSigned();
-    if (remaining < 0)
-      /* timeout */
-      return false;
-
-    if (port.WaitRead(env, remaining) != Port::WaitResult::READY)
-      return false;
-
-    int nbytes = port.Read(p, end - p);
-    if (nbytes < 0)
+    size_t nbytes = port.WaitAndRead(p, end - p, env, timeout);
+    if (nbytes == 0)
       return false;
 
     char *q = (char *)memchr(p, '*', nbytes);
-    if (q != NULL) {
+    if (q != nullptr) {
       /* stop at checksum */
       *q = 0;
       return true;

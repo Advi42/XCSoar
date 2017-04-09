@@ -1,7 +1,14 @@
 ifeq ($(TARGET),ANDROID)
 # Android must use OpenGL
 OPENGL = y
-GLES = y
+
+  ifeq ($(EGL),y)
+    # if our Android has EGL (2.3 or newer), we enable GLES2, too
+    GLES2 = y
+  else
+    # old Androids use OpenGL ES 1.x only
+    GLES = y
+  endif
 
 # the Kobo doesn't have OpenGL support
 else ifeq ($(TARGET_IS_KOBO),y)
@@ -41,13 +48,14 @@ OPENGL_CPPFLAGS = -DENABLE_OPENGL
 
 ifeq ($(GLES2),y)
 OPENGL_CPPFLAGS += -DHAVE_GLES -DHAVE_GLES2
+OPENGL_CPPFLAGS += $(GLM_CPPFLAGS)
 ifeq ($(TARGET_IS_IOS),y)
 OPENGL_LDLIBS = -framework OpenGLES
 else
 OPENGL_LDLIBS = -lGLESv2 -ldl
 endif
 else ifeq ($(GLES),y)
-OPENGL_CPPFLAGS += -DHAVE_GLES
+OPENGL_CPPFLAGS += -DHAVE_GLES -DHAVE_GLES1
 OPENGL_LDLIBS = -lGLESv1_CM -ldl
 else ifeq ($(TARGET_IS_DARWIN),y)
 OPENGL_LDLIBS = -framework OpenGL

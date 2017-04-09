@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,20 +23,22 @@
 #include "GlideResult.hpp"
 #include "GlideState.hpp"
 
-GlideResult::GlideResult(const GlideState &task, const fixed V):
-  head_wind(task.head_wind),
-  v_opt(V),
+#include <assert.h>
+
+GlideResult::GlideResult(const GlideState &task, const double V)
+  :head_wind(task.head_wind),
+   v_opt(V),
 #ifndef NDEBUG
-  start_altitude(task.min_arrival_altitude + task.altitude_difference),
+   start_altitude(task.min_arrival_altitude + task.altitude_difference),
 #endif
-  min_arrival_altitude(task.min_arrival_altitude),
-  vector(task.vector),
-  pure_glide_min_arrival_altitude(task.min_arrival_altitude),
-  pure_glide_altitude_difference(task.altitude_difference),
-  altitude_difference(task.altitude_difference),
-  effective_wind_speed(task.wind.norm),
-  effective_wind_angle(task.effective_wind_angle),
-  validity(Validity::NO_SOLUTION)
+   min_arrival_altitude(task.min_arrival_altitude),
+   vector(task.vector),
+   pure_glide_min_arrival_altitude(task.min_arrival_altitude),
+   pure_glide_altitude_difference(task.altitude_difference),
+   altitude_difference(task.altitude_difference),
+   effective_wind_speed(task.wind.norm),
+   effective_wind_angle(task.effective_wind_angle),
+   validity(Validity::NO_SOLUTION)
 {
 }
 
@@ -53,11 +55,11 @@ GlideResult::CalcCruiseBearing()
     return;
 
   cruise_track_bearing = vector.bearing;
-  if (!positive(effective_wind_speed))
+  if (effective_wind_speed <= 0)
     return;
 
-  const fixed sintheta = effective_wind_angle.sin();
-  if (sintheta == fixed(0))
+  const auto sintheta = effective_wind_angle.sin();
+  if (sintheta == 0)
     return;
 
   cruise_track_bearing -=
@@ -65,7 +67,7 @@ GlideResult::CalcCruiseBearing()
 }
 
 void
-GlideResult::Add(const GlideResult &s2) 
+GlideResult::Add(const GlideResult &s2)
 {
   if ((unsigned)s2.validity > (unsigned)validity)
     /* downgrade the validity */
@@ -128,28 +130,28 @@ GlideResult::Add(const GlideResult &s2)
   time_virtual += s2.time_virtual;
 }
 
-fixed
+double
 GlideResult::GlideAngleGround() const
 {
-  if (positive(vector.distance))
+  if (vector.distance > 0)
     return pure_glide_height / vector.distance;
 
-  return fixed(1000);
+  return 1000;
 }
 
-fixed
+double
 GlideResult::DestinationAngleGround() const
 {
-  if (positive(vector.distance))
+  if (vector.distance > 0)
     return (altitude_difference + pure_glide_height) / vector.distance;
 
-  return fixed(1000);
+  return 1000;
 }
 
-bool 
-GlideResult::IsFinalGlide() const 
+bool
+GlideResult::IsFinalGlide() const
 {
-  return IsOk() && !negative(altitude_difference) && !positive(height_climb);
+  return IsOk() && altitude_difference >= 0 && height_climb <= 0;
 }
 
 void

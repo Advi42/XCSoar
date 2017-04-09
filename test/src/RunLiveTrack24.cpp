@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,10 +22,11 @@ Copyright_License {
 */
 
 #include "Tracking/LiveTrack24.hpp"
-#include "Net/Init.hpp"
+#include "Net/HTTP/Init.hpp"
 #include "Time/BrokenDateTime.hpp"
 #include "Units/System.hpp"
 #include "OS/Args.hpp"
+#include "Operation/ConsoleOperationEnvironment.hpp"
 #include "DebugReplay.hpp"
 
 #include <cstdio>
@@ -40,6 +41,8 @@ TestTracking(int argc, char *argv[])
   if (replay == NULL)
     return false;
 
+  ConsoleOperationEnvironment env;
+
   bool has_user_id;
   UserID user_id;
   tstring username, password;
@@ -51,7 +54,7 @@ TestTracking(int argc, char *argv[])
     username = args.ExpectNextT();
     password = args.IsEmpty() ? _T("") : args.ExpectNextT();
 
-    user_id = LiveTrack24::GetUserID(username.c_str(), password.c_str());
+    user_id = LiveTrack24::GetUserID(username.c_str(), password.c_str(), env);
     has_user_id = (user_id != 0);
   }
 
@@ -62,7 +65,8 @@ TestTracking(int argc, char *argv[])
 
   printf("Starting tracking ... ");
   bool result = StartTracking(session, username.c_str(), password.c_str(), 10,
-                              VehicleType::GLIDER, "Hornet");
+                              VehicleType::GLIDER, _T("Hornet"),
+                              env);
   printf(result ? "done\n" : "failed\n");
   if (!result)
     return false;
@@ -85,7 +89,8 @@ TestTracking(int argc, char *argv[])
     result = SendPosition(
         session, package_id, basic.location, (unsigned)basic.nav_altitude,
         (unsigned)Units::ToUserUnit(basic.ground_speed, Unit::KILOMETER_PER_HOUR),
-        basic.track, datetime.ToUnixTimeUTC());
+        basic.track, datetime.ToUnixTimeUTC(),
+        env);
 
     if (!result)
       break;
@@ -95,7 +100,7 @@ TestTracking(int argc, char *argv[])
   printf(result ? "done\n" : "failed\n");
 
   printf("Stopping tracking ... ");
-  result = EndTracking(session, package_id);
+  result = EndTracking(session, package_id, env);
   printf(result ? "done\n" : "failed\n");
 
   return true;

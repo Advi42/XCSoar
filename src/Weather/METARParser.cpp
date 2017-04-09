@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,6 +27,7 @@ Copyright_License {
 #include "Units/System.hpp"
 #include "Atmosphere/Temperature.hpp"
 #include "Util/CharUtil.hpp"
+#include "Util/StringAPI.hxx"
 #include "Util/NumberParser.hpp"
 
 #include <tchar.h>
@@ -66,7 +67,7 @@ public:
 
     const TCHAR *start = data;
 
-    TCHAR *seperator = _tcschr(data, _T(' '));
+    auto *seperator = StringFind(data, _T(' '));
     if (seperator != NULL && seperator < end) {
       *seperator = _T('\0');
       data = seperator + 1;
@@ -169,9 +170,9 @@ ParseWind(const TCHAR *token, ParsedMETAR &parsed)
   wind_code -= bearing * 100;
 
   if (StringIsEqualIgnoreCase(endptr, _T("MPS")))
-    parsed.wind.norm = fixed(wind_code);
+    parsed.wind.norm = wind_code;
   else if (StringIsEqualIgnoreCase(endptr, _T("KT")))
-    parsed.wind.norm = Units::ToSysUnit(fixed(wind_code), Unit::KNOTS);
+    parsed.wind.norm = Units::ToSysUnit(wind_code, Unit::KNOTS);
   else
     return false;
 
@@ -247,7 +248,7 @@ DetectTemperaturesToken(const TCHAR *token)
 }
 
 static const TCHAR *
-ParseTemperature(const TCHAR *token, fixed &temperature)
+ParseTemperature(const TCHAR *token, double &temperature)
 {
   bool negative = (token[0] == _T('M') || token[0] == _T('m'));
   if (negative)
@@ -261,7 +262,7 @@ ParseTemperature(const TCHAR *token, fixed &temperature)
   if (negative)
     _temperature = -_temperature;
 
-  temperature = CelsiusToKelvin(fixed(_temperature));
+  temperature = CelsiusToKelvin(_temperature);
   return endptr;
 }
 
@@ -325,8 +326,8 @@ ParseAdditionalTemperatures(const TCHAR *token, ParsedMETAR &parsed)
   if (dew_point >= 1000)
     dew_point = -dew_point + 1000;
 
-  parsed.temperature = CelsiusToKelvin(fixed(temperature) / 10);
-  parsed.dew_point = CelsiusToKelvin(fixed(dew_point) / 10);
+  parsed.temperature = CelsiusToKelvin(temperature / 10.);
+  parsed.dew_point = CelsiusToKelvin(dew_point / 10.);
   parsed.temperatures_available = true;
   return true;
 }
@@ -362,7 +363,7 @@ ParseQNH(const TCHAR *token, ParsedMETAR &parsed)
     if (endptr == NULL || endptr == token)
       return false;
 
-    parsed.qnh = AtmosphericPressure::HectoPascal(fixed(hpa));
+    parsed.qnh = AtmosphericPressure::HectoPascal(hpa);
     parsed.qnh_available = true;
     return true;
   }
@@ -376,7 +377,7 @@ ParseQNH(const TCHAR *token, ParsedMETAR &parsed)
     if (endptr == NULL || endptr == token)
       return false;
 
-    parsed.qnh = AtmosphericPressure::HectoPascal(Units::ToSysUnit(fixed(inch_hg) / 100,
+    parsed.qnh = AtmosphericPressure::HectoPascal(Units::ToSysUnit(inch_hg / 100.,
                                                                    Unit::INCH_MERCURY));
     parsed.qnh_available = true;
     return true;
@@ -522,12 +523,8 @@ ParseLocation(const TCHAR *buffer, ParsedMETAR &parsed)
   end++;
 
   GeoPoint location;
-  location.latitude = Angle::Degrees(fixed(lat_deg) +
-                                     fixed(lat_min) / 60 +
-                                     fixed(lat_sec) / 3600);
-  location.longitude = Angle::Degrees(fixed(lon_deg) +
-                                      fixed(lon_min) / 60 +
-                                      fixed(lon_sec) / 3600);
+  location.latitude = Angle::DMS(lat_deg, lat_min, lat_sec);
+  location.longitude = Angle::DMS(lon_deg, lon_min, lon_sec);
 
   if (!north)
     location.latitude.Flip();
@@ -549,9 +546,9 @@ METARParser::ParseDecoded(const METAR::ContentString &decoded,
 
   const TCHAR *start = decoded.begin();
   const TCHAR *end = start + _tcslen(start);
-  const TCHAR *opening_brace = _tcschr(start, _T('('));
-  const TCHAR *closing_brace = _tcschr(start, _T(')'));
-  const TCHAR *line_break = _tcschr(start, _T('\n'));
+  const auto *opening_brace = StringFind(start, _T('('));
+  const auto *closing_brace = StringFind(start, _T(')'));
+  const auto *line_break = StringFind(start, _T('\n'));
 
   if (line_break == NULL || line_break >= end ||
       opening_brace == NULL || opening_brace >= line_break ||
@@ -564,7 +561,7 @@ METARParser::ParseDecoded(const METAR::ContentString &decoded,
 
   unsigned name_length = opening_brace - start + 1;
   if (name_length > 0) {
-    parsed.name.set(start, name_length);
+    parsed.name.assign(start, name_length);
     parsed.name_available = true;
   }
 

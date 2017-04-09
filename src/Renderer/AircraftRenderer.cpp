@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,61 +22,24 @@ Copyright_License {
 */
 
 #include "AircraftRenderer.hpp"
+#include "RotatedPolygonRenderer.hpp"
 #include "Screen/Canvas.hpp"
 #include "Look/AircraftLook.hpp"
 #include "MapSettings.hpp"
-#include "Util/Macros.hpp"
 #include "Asset.hpp"
 #include "Math/Angle.hpp"
-#ifdef ENABLE_OPENGL
-#include "Screen/OpenGL/CanvasRotateShift.hpp"
-#else
-#include "Math/Screen.hpp"
-#endif
 
 #include <algorithm>
 
-class RotatedPolygonRenderer {
-#ifdef ENABLE_OPENGL
-  const RasterPoint *points;
-  CanvasRotateShift rotate_shift;
-#else
-  RasterPoint points[64];
-#endif
-
-public:
-  RotatedPolygonRenderer(const RasterPoint *src, unsigned n,
-                         const RasterPoint pos, const Angle angle)
-#ifdef ENABLE_OPENGL
-    :points(src), rotate_shift(pos, angle)
-#endif
-  {
-#ifndef ENABLE_OPENGL
-    assert(n <= ARRAY_SIZE(points));
-
-    std::copy(src, src + n, points);
-    PolygonRotateShift(points, n, pos.x, pos.y, angle);
-#endif
-  }
-
-  void Draw(Canvas &canvas, unsigned start, unsigned n) const {
-#ifndef ENABLE_OPENGL
-    assert(start + n <= ARRAY_SIZE(points));
-#endif
-
-    canvas.DrawPolygon(points + start, n);
-  }
-};
-
 static void
-DrawMirroredPolygon(const RasterPoint *src, unsigned points,
+DrawMirroredPolygon(const BulkPixelPoint *src, unsigned points,
                     Canvas &canvas, const Angle angle,
-                    const RasterPoint pos)
+                    const PixelPoint pos)
 {
-  RasterPoint dst[64];
+  BulkPixelPoint dst[64];
   assert(2 * points <= ARRAY_SIZE(dst));
 
-  std::copy(src, src + points, dst);
+  std::copy_n(src, points, dst);
   for (unsigned i = 0; i < points; ++i) {
     dst[2 * points - i - 1].x = -dst[i].x;
     dst[2 * points - i - 1].y = dst[i].y;
@@ -84,7 +47,7 @@ DrawMirroredPolygon(const RasterPoint *src, unsigned points,
 #ifdef ENABLE_OPENGL
   CanvasRotateShift rotate_shift(pos, angle, 50);
 #else
-  PolygonRotateShift(dst, 2 * points, pos.x, pos.y, angle, 50);
+  PolygonRotateShift(dst, 2 * points, pos, angle, 50);
 #endif
   canvas.DrawPolygon(dst, 2 * points);
 }
@@ -93,10 +56,10 @@ static void
 DrawDetailedAircraft(Canvas &canvas, bool inverse,
                      const AircraftLook &look,
                      const Angle angle,
-                     const RasterPoint aircraft_pos)
+                     const PixelPoint aircraft_pos)
 {
   {
-    static constexpr RasterPoint Aircraft[] = {
+    static constexpr BulkPixelPoint Aircraft[] = {
       {0, -10},
       {-2, -7},
       {-2, -2},
@@ -125,7 +88,7 @@ DrawDetailedAircraft(Canvas &canvas, bool inverse,
   }
 
   {
-    static constexpr RasterPoint Canopy[] = {
+    static constexpr BulkPixelPoint Canopy[] = {
       {0, -7},
       {-1, -7},
       {-1, -2},
@@ -144,9 +107,9 @@ DrawDetailedAircraft(Canvas &canvas, bool inverse,
 static void
 DrawSimpleAircraft(Canvas &canvas, const AircraftLook &look,
                    const Angle angle,
-                   const RasterPoint aircraft_pos, bool large)
+                   const PixelPoint aircraft_pos, bool large)
 {
-  static constexpr RasterPoint AircraftLarge[] = {
+  static constexpr BulkPixelPoint AircraftLarge[] = {
     {1, -7},
     {1, -1},
     {17, -1},
@@ -165,7 +128,7 @@ DrawSimpleAircraft(Canvas &canvas, const AircraftLook &look,
     {-1, -7},
   };
 
-  static constexpr RasterPoint AircraftSmall[] = {
+  static constexpr BulkPixelPoint AircraftSmall[] = {
     {1, -5},
     {1, 0},
     {14, 0},
@@ -187,7 +150,7 @@ DrawSimpleAircraft(Canvas &canvas, const AircraftLook &look,
   static constexpr unsigned AIRCRAFT_POINTS_LARGE = ARRAY_SIZE(AircraftLarge);
   static constexpr unsigned AIRCRAFT_POINTS_SMALL = ARRAY_SIZE(AircraftSmall);
 
-  const RasterPoint *Aircraft = large ? AircraftLarge : AircraftSmall;
+  const auto *Aircraft = large ? AircraftLarge : AircraftSmall;
   const unsigned AircraftPoints = large ?
                                   AIRCRAFT_POINTS_LARGE : AIRCRAFT_POINTS_SMALL;
 
@@ -204,9 +167,9 @@ DrawSimpleAircraft(Canvas &canvas, const AircraftLook &look,
 
 static void
 DrawHangGlider(Canvas &canvas, const AircraftLook &look,
-               const Angle angle, const RasterPoint aircraft_pos, bool inverse)
+               const Angle angle, const PixelPoint aircraft_pos, bool inverse)
 {
-  static constexpr RasterPoint aircraft[] = {
+  static constexpr BulkPixelPoint aircraft[] = {
     {1, -3},
     {7, 0},
     {13, 4},
@@ -236,9 +199,9 @@ DrawHangGlider(Canvas &canvas, const AircraftLook &look,
 
 static void
 DrawParaGlider(Canvas &canvas, const AircraftLook &look,
-               const Angle angle, const RasterPoint aircraft_pos, bool inverse)
+               const Angle angle, const PixelPoint aircraft_pos, bool inverse)
 {
-  static constexpr RasterPoint aircraft[] = {
+  static constexpr BulkPixelPoint aircraft[] = {
     // Wing
     {-5, 3},
     {-11, 2},
@@ -284,9 +247,9 @@ DrawParaGlider(Canvas &canvas, const AircraftLook &look,
 void
 AircraftRenderer::Draw(Canvas &canvas, const MapSettings &settings_map,
                        const AircraftLook &look,
-                       const Angle angle, const RasterPoint aircraft_pos)
+                       const Angle angle, const PixelPoint aircraft_pos)
 {
-  const bool inverse = IsKobo() || !settings_map.terrain.enable;
+  const bool inverse = IsDithered() || !settings_map.terrain.enable;
 
   switch (settings_map.aircraft_symbol) {
   case AircraftSymbol::DETAILED:

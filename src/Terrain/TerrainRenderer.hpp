@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ Copyright_License {
 #define XCSOAR_TERRAIN_RENDERER_HPP
 
 #include "RasterRenderer.hpp"
-#include "Util/NonCopyable.hpp"
 #include "Util/Serial.hpp"
 #include "Terrain/TerrainSettings.hpp"
 
@@ -38,8 +37,8 @@ class WindowProjection;
 class RasterTerrain;
 struct ColorRamp;
 
-class TerrainRenderer : private NonCopyable {
-  const RasterTerrain *terrain;
+class TerrainRenderer {
+  const RasterTerrain &terrain;
 
   Serial terrain_serial;
 
@@ -50,15 +49,18 @@ protected:
   CompareProjection compare_projection;
 #endif
 
-  Angle last_sun_azimuth;
+  Angle last_sun_azimuth = Angle::Zero();
 
-  const ColorRamp *last_color_ramp;
+  const ColorRamp *last_color_ramp = nullptr;
 
   RasterRenderer raster_renderer;
 
 public:
-  TerrainRenderer(const RasterTerrain *_terrain);
-  virtual ~TerrainRenderer() {}
+  TerrainRenderer(const RasterTerrain &_terrain);
+  ~TerrainRenderer() {}
+
+  TerrainRenderer(const TerrainRenderer &) = delete;
+  TerrainRenderer &operator=(const TerrainRenderer &) = delete;
 
   /**
    * Flush the cache.
@@ -71,9 +73,6 @@ public:
 #endif
   }
 
-protected:
-  void CopyTo(Canvas &canvas, unsigned width, unsigned height) const;
-
 public:
   const TerrainRendererSettings &GetSettings() const {
     return settings;
@@ -83,10 +82,16 @@ public:
     settings = _settings;
   }
 
-  virtual void Generate(const WindowProjection &map_projection,
-                        const Angle sunazimuth);
+  /**
+   * @return true if an image has been renderered and Draw() may be
+   * called
+   */
+  bool Generate(const WindowProjection &map_projection,
+                const Angle sunazimuth);
 
-  void Draw(Canvas &canvas, const WindowProjection &map_projection) const;
+  void Draw(Canvas &canvas, const WindowProjection &projection) const {
+    raster_renderer.Draw(canvas, projection);
+  }
 };
 
 #endif

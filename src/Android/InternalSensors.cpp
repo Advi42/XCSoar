@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,8 +21,8 @@ Copyright_License {
 }
 */
 
-#include "Android/InternalSensors.hpp"
-#include "Android/Context.hpp"
+#include "InternalSensors.hpp"
+#include "Context.hpp"
 #include "Atmosphere/Pressure.hpp"
 #include "org_xcsoar_InternalGPS.h"
 #include "org_xcsoar_NonGPSSensors.h"
@@ -47,7 +47,7 @@ InternalSensors::Initialise(JNIEnv *env)
 {
   assert(!gps_cls.IsDefined());
   assert(!sensors_cls.IsDefined());
-  assert(env != NULL);
+  assert(env != nullptr);
 
   gps_cls.Find(env, "org/xcsoar/InternalGPS");
 
@@ -62,7 +62,7 @@ InternalSensors::Initialise(JNIEnv *env)
 
   mid_sensors_getSubscribableSensors =
     env->GetMethodID(sensors_cls, "getSubscribableSensors", "()[I");
-  assert(mid_sensors_getSubscribableSensors != NULL);
+  assert(mid_sensors_getSubscribableSensors != nullptr);
 
   mid_sensors_subscribeToSensor_ =
       env->GetMethodID(sensors_cls, "subscribeToSensor", "(I)Z");
@@ -72,10 +72,10 @@ InternalSensors::Initialise(JNIEnv *env)
       env->GetMethodID(sensors_cls, "subscribedToSensor", "(I)Z");
   mid_sensors_cancelAllSensorSubscriptions_ =
       env->GetMethodID(sensors_cls, "cancelAllSensorSubscriptions", "()V");
-  assert(mid_sensors_subscribeToSensor_ != NULL);
-  assert(mid_sensors_cancelSensorSubscription_ != NULL);
-  assert(mid_sensors_subscribedToSensor_ != NULL);
-  assert(mid_sensors_cancelAllSensorSubscriptions_ != NULL);
+  assert(mid_sensors_subscribeToSensor_ != nullptr);
+  assert(mid_sensors_cancelSensorSubscription_ != nullptr);
+  assert(mid_sensors_subscribedToSensor_ != nullptr);
+  assert(mid_sensors_cancelAllSensorSubscriptions_ != nullptr);
 
   return true;
 }
@@ -128,18 +128,18 @@ void InternalSensors::cancelAllSensorSubscriptions() {
 
 InternalSensors* InternalSensors::create(JNIEnv* env, Context* context,
                                          unsigned int index) {
-  assert(sensors_cls != NULL);
-  assert(gps_cls != NULL);
+  assert(sensors_cls != nullptr);
+  assert(gps_cls != nullptr);
 
   // Construct InternalGPS object.
   jobject gps_obj =
     env->NewObject(gps_cls, gps_ctor_id, context->Get(), index);
-  assert(gps_obj != NULL);
+  assert(gps_obj != nullptr);
 
   // Construct NonGPSSensors object.
   jobject sensors_obj =
       env->NewObject(sensors_cls, sensors_ctor_id, context->Get(), index);
-  assert(sensors_obj != NULL);
+  assert(sensors_obj != nullptr);
 
   InternalSensors *internal_sensors =
       new InternalSensors(env, gps_obj, sensors_obj);
@@ -154,7 +154,7 @@ void InternalSensors::getSubscribableSensors(JNIEnv* env, jobject sensors_obj) {
   jintArray ss_arr = (jintArray) env->CallObjectMethod(
       obj_NonGPSSensors_.Get(), mid_sensors_getSubscribableSensors);
   jsize ss_arr_size = env->GetArrayLength(ss_arr);
-  jint* ss_arr_elems = env->GetIntArrayElements(ss_arr, NULL);
+  jint* ss_arr_elems = env->GetIntArrayElements(ss_arr, nullptr);
   subscribable_sensors_.assign(ss_arr_elems, ss_arr_elems + ss_arr_size);
   env->ReleaseIntArrayElements(ss_arr, ss_arr_elems, 0);
 }
@@ -190,14 +190,14 @@ Java_org_xcsoar_InternalGPS_setConnected(JNIEnv *env, jobject obj,
     break;
 
   case 1: /* waiting for fix */
-    basic.alive.Update(fixed(MonotonicClockMS()) / 1000);
-    basic.gps.android_internal_gps = true;
+    basic.alive.Update(MonotonicClockFloat());
+    basic.gps.nonexpiring_internal_gps = true;
     basic.location_available.Clear();
     break;
 
   case 2: /* connected */
-    basic.alive.Update(fixed(MonotonicClockMS()) / 1000);
-    basic.gps.android_internal_gps = true;
+    basic.alive.Update(MonotonicClockFloat());
+    basic.gps.nonexpiring_internal_gps = true;
     break;
   }
 
@@ -223,16 +223,16 @@ Java_org_xcsoar_InternalGPS_setLocation(JNIEnv *env, jobject obj,
   basic.alive.Update(basic.clock);
 
   BrokenDateTime date_time = BrokenDateTime::FromUnixTimeUTC(time / 1000);
-  fixed second_of_day = fixed(date_time.GetSecondOfDay()) +
+  double second_of_day = date_time.GetSecondOfDay() +
     /* add the millisecond fraction of the original timestamp for
        better accuracy */
-    fixed((unsigned)(time % 1000)) / 1000u;
+    unsigned(time % 1000) / 1000.;
 
   if (second_of_day < basic.time &&
       basic.date_time_utc.IsDatePlausible() &&
       (BrokenDate)date_time > (BrokenDate)basic.date_time_utc)
     /* don't wrap around when going past midnight in UTC */
-    second_of_day += fixed(24u * 3600u);
+    second_of_day += 24u * 3600u;
 
   basic.time = second_of_day;
   basic.time_available.Update(basic.clock);
@@ -241,14 +241,14 @@ Java_org_xcsoar_InternalGPS_setLocation(JNIEnv *env, jobject obj,
   basic.gps.satellites_used = n_satellites;
   basic.gps.satellites_used_available.Update(basic.clock);
   basic.gps.real = true;
-  basic.gps.android_internal_gps = true;
+  basic.gps.nonexpiring_internal_gps = true;
   basic.location = GeoPoint(Angle::Degrees(longitude),
                             Angle::Degrees(latitude));
   basic.location_available.Update(basic.clock);
 
   if (hasAltitude) {
-    fixed GeoidSeparation = EGM96::LookupSeparation(basic.location);
-    basic.gps_altitude = fixed(altitude) - GeoidSeparation;
+    auto GeoidSeparation = EGM96::LookupSeparation(basic.location);
+    basic.gps_altitude = altitude - GeoidSeparation;
     basic.gps_altitude_available.Update(basic.clock);
   } else
     basic.gps_altitude_available.Clear();
@@ -260,15 +260,15 @@ Java_org_xcsoar_InternalGPS_setLocation(JNIEnv *env, jobject obj,
     basic.track_available.Clear();
 
   if (hasSpeed) {
-    basic.ground_speed = fixed(ground_speed);
+    basic.ground_speed = ground_speed;
     basic.ground_speed_available.Update(basic.clock);
   }
 
   if (hasAccuracy)
-    basic.gps.hdop = fixed(accuracy);
+    basic.gps.hdop = accuracy;
 
   if (hasAcceleration)
-    basic.acceleration.ProvideGLoad(fixed(acceleration), true);
+    basic.acceleration.ProvideGLoad(acceleration, true);
 
   device_blackboard->ScheduleMerge();
 }
@@ -328,12 +328,12 @@ Java_org_xcsoar_NonGPSSensors_setMagneticField(
  * is the pressure change rate.
  */
 gcc_pure
-static inline
-fixed ComputeNoncompVario(const fixed pressure, const fixed d_pressure)
+static inline double
+ComputeNoncompVario(const double pressure, const double d_pressure)
 {
-  static constexpr fixed FACTOR(-2260.389548275485);
-  static constexpr fixed EXPONENT(-0.8097374740609689);
-  return fixed(FACTOR * pow(pressure, EXPONENT) * d_pressure);
+  static constexpr double FACTOR(-2260.389548275485);
+  static constexpr double EXPONENT(-0.8097374740609689);
+  return FACTOR * pow(pressure, EXPONENT) * d_pressure;
 }
 
 gcc_visibility_default
@@ -345,15 +345,14 @@ Java_org_xcsoar_NonGPSSensors_setBarometricPressure(
      variance of the distribution of second derivatives of pressure
      values that we expect to see in flight, and the second is the
      maximum time between pressure sensor updates in seconds before
-     the filter gives up on smoothing and uses the raw value.
-
+     the filter gives up on smoothing and uses the raw value. 
      The pressure acceleration variance used here is actually wider
      than the maximum likelihood variance observed in the data: it
      turns out that the distribution is more heavy-tailed than a
      normal distribution, probably because glider pilots usually
      experience fairly constant pressure change most of the time. */
-  static constexpr fixed KF_VAR_ACCEL(0.0075);
-  static constexpr fixed KF_MAX_DT(60);
+  static constexpr double KF_VAR_ACCEL(0.0075);
+  static constexpr double KF_MAX_DT(60);
 
   // XXX this shouldn't be a global variable
   static SelfTimingKalmanFilter1d kalman_filter(KF_MAX_DT, KF_VAR_ACCEL);
@@ -364,7 +363,7 @@ Java_org_xcsoar_NonGPSSensors_setBarometricPressure(
   /* Kalman filter updates are also protected by the blackboard
      mutex. These should not take long; we won't hog the mutex
      unduly. */
-  kalman_filter.Update(fixed(pressure), fixed(sensor_noise_variance));
+  kalman_filter.Update(pressure, sensor_noise_variance);
 
   NMEAInfo &basic = device_blackboard->SetRealState(index);
   basic.ProvideNoncompVario(ComputeNoncompVario(kalman_filter.GetXAbs(),

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,14 +26,14 @@ Copyright_License {
 
 #include "Geo/GeoPoint.hpp"
 #include "Geo/GeoVector.hpp"
-#include "Markers/Marker.hpp"
 #include "FLARM/FlarmId.hpp"
 #include "FLARM/Color.hpp"
 #include "NMEA/ThermalLocator.hpp"
 #include "Weather/Features.hpp"
+#include "Engine/Waypoint/Ptr.hpp"
 #include "Engine/Route/ReachResult.hpp"
 #include "Tracking/SkyLines/Features.hpp"
-#include "Util/StaticString.hpp"
+#include "Util/StaticString.hxx"
 
 #ifdef HAVE_NOAA
 #include "Weather/NOAAStore.hpp"
@@ -44,7 +44,6 @@ Copyright_License {
 enum class TaskPointType : uint8_t;
 
 class AbstractAirspace;
-struct Waypoint;
 class ObservationZonePoint;
 
 struct MapItem
@@ -58,13 +57,14 @@ struct MapItem
     WEATHER,
 #endif
     AIRSPACE,
-    MARKER,
     THERMAL,
     WAYPOINT,
     TRAFFIC,
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
+#ifdef HAVE_SKYLINES_TRACKING
     SKYLINES_TRAFFIC,
 #endif
+    OVERLAY,
+    RASP,
   } type;
 
 protected:
@@ -79,11 +79,29 @@ public:
 
 struct LocationMapItem: public MapItem
 {
-  GeoVector vector;
-  short elevation;
+  /**
+   * Magic value for "unknown elevation".
+   */
+  static constexpr double UNKNOWN_ELEVATION = -1e5;
 
-  LocationMapItem(const GeoVector &_vector, short _elevation)
+  /**
+   * All elevation values below this threshold are considered unknown.
+   */
+  static constexpr double UNKNOWN_ELEVATION_THRESHOLD = -1e4;
+
+  GeoVector vector;
+
+  /**
+   * Terrain elevation of the point.  If that is unknown, it is nan().
+   */
+  double elevation;
+
+  LocationMapItem(const GeoVector &_vector, double _elevation)
     :MapItem(LOCATION), vector(_vector), elevation(_elevation) {}
+
+  bool HasElevation() const {
+    return elevation > UNKNOWN_ELEVATION_THRESHOLD;
+  }
 };
 
 /**
@@ -92,16 +110,38 @@ struct LocationMapItem: public MapItem
  */
 struct ArrivalAltitudeMapItem: public MapItem
 {
-  /** Elevation of the point in MSL */
-  RoughAltitude elevation;
+  /**
+   * Magic value for "unknown elevation".
+   */
+  static constexpr double UNKNOWN_ELEVATION = -1e5;
+
+  /**
+   * All elevation values below this threshold are considered unknown.
+   */
+  static constexpr double UNKNOWN_ELEVATION_THRESHOLD = -1e4;
+
+  /**
+   * Terrain elevation of the point in MSL.  If that is unknown, it is
+   * nan().
+   */
+  double elevation;
 
   /** Arrival altitudes [m MSL] */
   ReachResult reach;
 
-  ArrivalAltitudeMapItem(RoughAltitude _elevation,
-                         ReachResult _reach)
+  /** Safety height (m) */
+  double safety_height;
+
+
+  ArrivalAltitudeMapItem(double _elevation,
+                         ReachResult _reach,
+                         double _safety_height)
     :MapItem(ARRIVAL_ALTITUDE),
-     elevation(_elevation), reach(_reach) {}
+     elevation(_elevation), reach(_reach), safety_height(_safety_height) {}
+
+  bool HasElevation() const {
+    return elevation > UNKNOWN_ELEVATION_THRESHOLD;
+  }
 };
 
 struct SelfMapItem: public MapItem
@@ -118,10 +158,10 @@ struct TaskOZMapItem: public MapItem
   int index;
   const ObservationZonePoint *oz;
   TaskPointType tp_type;
-  const Waypoint &waypoint;
+  WaypointPtr waypoint;
 
   TaskOZMapItem(int _index, const ObservationZonePoint &_oz,
-                TaskPointType _tp_type, const Waypoint &_waypoint);
+                TaskPointType _tp_type, WaypointPtr &&_waypoint);
   virtual ~TaskOZMapItem();
 };
 
@@ -135,19 +175,10 @@ struct AirspaceMapItem: public MapItem
 
 struct WaypointMapItem: public MapItem
 {
-  const Waypoint &waypoint;
+  WaypointPtr waypoint;
 
-  WaypointMapItem(const Waypoint &_waypoint)
+  WaypointMapItem(const WaypointPtr &_waypoint)
     :MapItem(WAYPOINT), waypoint(_waypoint) {}
-};
-
-struct MarkerMapItem: public MapItem
-{
-  unsigned id;
-  Marker marker;
-
-  MarkerMapItem(unsigned _id, const Marker &_marker)
-    :MapItem(MARKER), id(_id), marker(_marker) {}
 };
 
 #ifdef HAVE_NOAA
@@ -169,17 +200,21 @@ struct TrafficMapItem: public MapItem
     :MapItem(TRAFFIC), id(_id), color(_color) {}
 };
 
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
+#ifdef HAVE_SKYLINES_TRACKING
 
 struct SkyLinesTrafficMapItem : public MapItem
 {
   uint32_t id, time_of_day_ms;
 
+  int altitude;
+
   StaticString<40> name;
 
   SkyLinesTrafficMapItem(uint32_t _id, uint32_t _time_of_day_ms,
+                         int _altitude,
                          const TCHAR *_name)
     :MapItem(SKYLINES_TRAFFIC), id(_id), time_of_day_ms(_time_of_day_ms),
+     altitude(_altitude),
      name(_name) {}
 };
 

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,12 +23,14 @@ Copyright_License {
 
 #include "RulesStatusPanel.hpp"
 #include "Util/Macros.hpp"
+#include "Util/TruncateString.hpp"
 #include "Components.hpp"
 #include "Interface.hpp"
 #include "Formatter/UserUnits.hpp"
 #include "Formatter/LocalTimeFormatter.hpp"
 #include "Language/Language.hpp"
 #include "Task/ProtectedTaskManager.hpp"
+#include "Engine/Task/TaskManager.hpp"
 #include "Engine/Task/Ordered/OrderedTask.hpp"
 #include "Engine/Task/Ordered/Points/OrderedTaskPoint.hpp"
 
@@ -60,16 +62,13 @@ RulesStatusPanel::Refresh()
           ? _("Yes") : _T("No"));
 
   if (start_stats.task_started) {
-    FormatLocalTimeHHMM(Temp, (int)start_stats.time,
-                        settings.utc_offset);
-    SetText(StartTime, Temp);
+    SetText(StartTime,
+            FormatLocalTimeHHMM((int)start_stats.time, settings.utc_offset));
 
-    FormatUserTaskSpeed(start_stats.ground_speed,
-                               Temp, ARRAY_SIZE(Temp));
-    SetText(StartSpeed, Temp);
+    SetText(StartSpeed,
+            FormatUserTaskSpeed(start_stats.ground_speed));
 
-    FormatUserAltitude(start_stats.altitude, Temp, ARRAY_SIZE(Temp));
-    SetText(StartHeight, Temp);
+    SetText(StartHeight, FormatUserAltitude(start_stats.altitude));
   } else {
     ClearValue(StartTime);
     ClearValue(StartSpeed);
@@ -77,7 +76,7 @@ RulesStatusPanel::Refresh()
   }
 
   Temp[0] = _T('\0');
-  fixed finish_height(0);
+  double finish_height(0);
 
   if (protected_task_manager != nullptr) {
     ProtectedTaskManager::Lease task_manager(*protected_task_manager);
@@ -85,16 +84,15 @@ RulesStatusPanel::Refresh()
     const unsigned task_size = task.TaskSize();
 
     if (task_size > 0) {
-      CopyString(Temp, task.GetTaskPoint(0).GetWaypoint().name.c_str(),
-                 ARRAY_SIZE(Temp));
+      CopyTruncateString(Temp, ARRAY_SIZE(Temp),
+                         task.GetTaskPoint(0).GetWaypoint().name.c_str());
       finish_height = task.GetTaskPoint(task_size - 1).GetElevation();
     }
   }
 
   SetText(StartPoint, Temp);
 
-  FormatUserAltitude(finish_height, Temp, ARRAY_SIZE(Temp));
-  SetText(FinishAlt, Temp);
+  SetText(FinishAlt, FormatUserAltitude(finish_height));
 }
 
 void

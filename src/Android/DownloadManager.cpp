@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,13 +22,15 @@ Copyright_License {
 */
 
 #include "DownloadManager.hpp"
-#include "Net/DownloadManager.hpp"
+#include "Main.hpp"
+#include "Net/HTTP/DownloadManager.hpp"
 #include "Context.hpp"
-#include "Java/Class.hpp"
-#include "Java/String.hpp"
+#include "Java/Class.hxx"
+#include "Java/String.hxx"
 #include "LocalPath.hpp"
 #include "OS/FileUtil.hpp"
 #include "Util/Macros.hpp"
+#include "Util/StringAPI.hxx"
 #include "org_xcsoar_DownloadUtil.h"
 
 #include <algorithm>
@@ -44,10 +46,11 @@ static jmethodID enumerate_method, enqueue_method, cancel_method;
 bool
 AndroidDownloadManager::Initialise(JNIEnv *env)
 {
-  assert(util_class == NULL);
-  assert(env != NULL);
+  assert(util_class == nullptr);
+  assert(env != nullptr);
 
-  if (!util_class.FindOptional(env, "org/xcsoar/DownloadUtil"))
+  if (android_api_level < 9 ||
+      !util_class.FindOptional(env, "org/xcsoar/DownloadUtil"))
     return false;
 
   enumerate_method = env->GetStaticMethodID(util_class, "enumerate",
@@ -73,15 +76,15 @@ AndroidDownloadManager::Deinitialise(JNIEnv *env)
 bool
 AndroidDownloadManager::IsAvailable()
 {
-  return util_class.Get() != NULL;
+  return util_class.Get() != nullptr;
 }
 
 AndroidDownloadManager *
 AndroidDownloadManager::Create(JNIEnv *env, Context &context)
 {
   jobject obj = context.GetSystemService(env, "download");
-  if (obj == NULL)
-    return NULL;
+  if (obj == nullptr)
+    return nullptr;
 
   instance = new AndroidDownloadManager(env, obj);
   env->DeleteLocalRef(obj);
@@ -110,7 +113,7 @@ AndroidDownloadManager::RemoveListener(Net::DownloadListener &listener)
 }
 
 void
-AndroidDownloadManager::OnDownloadComplete(const char *path_relative,
+AndroidDownloadManager::OnDownloadComplete(Path path_relative,
                                            bool success)
 {
   ScopeLock protect(mutex);
@@ -118,21 +121,17 @@ AndroidDownloadManager::OnDownloadComplete(const char *path_relative,
     (*i)->OnDownloadComplete(path_relative, success);
 }
 
-static bool
-EraseSuffix(char *p, const char *suffix)
+gcc_pure
+static AllocatedPath
+EraseSuffix(Path p, const char *suffix)
 {
-  assert(p != NULL);
-  assert(suffix != NULL);
+  assert(p != nullptr);
+  assert(suffix != nullptr);
 
-  size_t length = strlen(p);
-  size_t suffix_length = strlen(suffix);
-
-  if (length <= suffix_length ||
-      memcmp(p + length - suffix_length, suffix, suffix_length) != 0)
-    return false;
-
-  p[length - suffix_length] = 0;
-  return true;
+  const auto current_suffix = p.GetExtension();
+  return current_suffix != nullptr && StringIsEqual(suffix, current_suffix)
+    ? AllocatedPath(p.c_str(), current_suffix)
+    : nullptr;
 }
 
 JNIEXPORT void JNICALL
@@ -143,13 +142,12 @@ Java_org_xcsoar_DownloadUtil_onDownloadAdded(JNIEnv *env, jclass cls,
   char tmp_path[MAX_PATH];
   Java::String::CopyTo(env, j_path, tmp_path, ARRAY_SIZE(tmp_path));
 
-  char final_path[MAX_PATH];
-  strcpy(final_path, tmp_path);
-  if (!EraseSuffix(final_path, ".tmp"))
+  const auto final_path = EraseSuffix(Path(tmp_path), ".tmp");
+  if (final_path == nullptr)
     return;
 
-  const char *relative = RelativePath(final_path);
-  if (relative == NULL)
+  const auto relative = RelativePath(final_path);
+  if (relative == nullptr)
     return;
 
   Net::DownloadListener &handler = *(Net::DownloadListener *)(size_t)j_handler;
@@ -161,22 +159,21 @@ Java_org_xcsoar_DownloadUtil_onDownloadComplete(JNIEnv *env, jclass cls,
                                                 jstring j_path,
                                                 jboolean success)
 {
-  if (instance == NULL)
+  if (instance == nullptr)
     return;
 
   char tmp_path[MAX_PATH];
   Java::String::CopyTo(env, j_path, tmp_path, ARRAY_SIZE(tmp_path));
 
-  char final_path[MAX_PATH];
-  strcpy(final_path, tmp_path);
-  if (!EraseSuffix(final_path, ".tmp"))
+  const auto final_path = EraseSuffix(Path(tmp_path), ".tmp");
+  if (final_path == nullptr)
     return;
 
-  const char *relative = RelativePath(final_path);
-  if (relative == NULL)
+  const auto relative = RelativePath(final_path);
+  if (relative == nullptr)
     return;
 
-  success = success && File::Replace(tmp_path, final_path);
+  success = success && File::Replace(Path(tmp_path), final_path);
 
   instance->OnDownloadComplete(relative, success);
 }
@@ -184,7 +181,7 @@ Java_org_xcsoar_DownloadUtil_onDownloadComplete(JNIEnv *env, jclass cls,
 void
 AndroidDownloadManager::Enumerate(JNIEnv *env, Net::DownloadListener &listener)
 {
-  assert(env != NULL);
+  assert(env != nullptr);
 
   env->CallStaticVoidMethod(util_class, enumerate_method,
                             object.Get(), (jlong)(size_t)&listener);
@@ -192,19 +189,17 @@ AndroidDownloadManager::Enumerate(JNIEnv *env, Net::DownloadListener &listener)
 
 void
 AndroidDownloadManager::Enqueue(JNIEnv *env, const char *uri,
-                                const char *path_relative)
+                                Path path_relative)
 {
-  assert(env != NULL);
-  assert(uri != NULL);
-  assert(path_relative != NULL);
+  assert(env != nullptr);
+  assert(uri != nullptr);
+  assert(path_relative != nullptr);
 
-  char tmp_absolute[MAX_PATH];
-  LocalPath(tmp_absolute, path_relative);
-  strcat(tmp_absolute, ".tmp");
+  const auto tmp_absolute = LocalPath(path_relative) + ".tmp";
   File::Delete(tmp_absolute);
 
   Java::String j_uri(env, uri);
-  Java::String j_path(env, tmp_absolute);
+  Java::String j_path(env, tmp_absolute.c_str());
 
   env->CallStaticLongMethod(util_class, enqueue_method,
                             object.Get(), j_uri.Get(),
@@ -216,16 +211,14 @@ AndroidDownloadManager::Enqueue(JNIEnv *env, const char *uri,
 }
 
 void
-AndroidDownloadManager::Cancel(JNIEnv *env, const char *path_relative)
+AndroidDownloadManager::Cancel(JNIEnv *env, Path path_relative)
 {
-  assert(env != NULL);
-  assert(path_relative != NULL);
+  assert(env != nullptr);
+  assert(path_relative != nullptr);
 
-  char tmp_absolute[MAX_PATH];
-  LocalPath(tmp_absolute, path_relative);
-  strcat(tmp_absolute, ".tmp");
+  const auto tmp_absolute = LocalPath(path_relative) + ".tmp";
 
-  Java::String j_path(env, tmp_absolute);
+  Java::String j_path(env, tmp_absolute.c_str());
   env->CallStaticVoidMethod(util_class, cancel_method,
                             object.Get(), j_path.Get());
 }

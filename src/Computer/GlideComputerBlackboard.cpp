@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -46,12 +46,14 @@ GlideComputerBlackboard::StartTask()
   calculated_info.cruise_start_time = gps_info.time;
 
   // JMW reset time cruising/time circling stats on task start
-  calculated_info.time_climb = fixed(0);
-  calculated_info.time_cruise = fixed(0);
-  calculated_info.total_height_gain = fixed(0);
+  calculated_info.time_circling = 0;
+  calculated_info.time_cruise = 0;
+  calculated_info.time_climb_noncircling = 0;
+  calculated_info.time_climb_circling = 0;
+  calculated_info.total_height_gain = 0;
 
   // reset max height gain stuff on task start
-  calculated_info.max_height_gain = fixed(0);
+  calculated_info.max_height_gain = 0;
 }
 
 void
@@ -64,10 +66,13 @@ GlideComputerBlackboard::SaveFinish()
 void
 GlideComputerBlackboard::RestoreFinish()
 {
+  const auto flight = calculated_info.flight;
+
   calculated_info = Finish_Derived_Info;
 
-  // \todo restore flying state
-  //  SetBasic().flying_state = flying_state;
+  /* retain some of the data to avoid confusing some of our subsystems
+     (e.g. spurious takeoff/landing detection) */
+  calculated_info.flight = flight;
 }
 
 /**

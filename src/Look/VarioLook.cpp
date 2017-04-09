@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,13 +22,16 @@ Copyright_License {
 */
 
 #include "VarioLook.hpp"
+#include "FontDescription.hpp"
 #include "Screen/Layout.hpp"
 #include "Units/Units.hpp"
 #include "Resources.hpp"
 
+#include <algorithm>
+
 void
 VarioLook::Initialise(bool _inverse, bool _colors,
-                      const Font &_text_font, const Font &_value_font)
+                      const Font &_text_font)
 {
   inverse = _inverse;
   colors = _colors;
@@ -47,12 +50,12 @@ VarioLook::Initialise(bool _inverse, bool _colors,
     lift_color = Color(0x19,0x94,0x03);
   }
 
-  sink_brush.Set(sink_color);
-  lift_brush.Set(lift_color);
+  sink_brush.Create(sink_color);
+  lift_brush.Create(lift_color);
 
-  thick_background_pen.Set(Layout::Scale(5), background_color);
-  thick_sink_pen.Set(Layout::Scale(5), sink_color);
-  thick_lift_pen.Set(Layout::Scale(5), lift_color);
+  thick_background_pen.Create(Layout::Scale(5), background_color);
+  thick_sink_pen.Create(Layout::Scale(5), sink_color);
+  thick_lift_pen.Create(Layout::Scale(5), lift_color);
 
   background_bitmap.Load(Units::GetUserVerticalSpeedUnit() == Unit::KNOTS
                          ? IDB_VARIOSCALEC : IDB_VARIOSCALEA);
@@ -61,5 +64,11 @@ VarioLook::Initialise(bool _inverse, bool _colors,
   climb_bitmap.Load(inverse ? IDB_CLIMBSMALLINV : IDB_CLIMBSMALL);
 
   text_font = &_text_font;
-  value_font = &_value_font;
+
+  const unsigned value_font_height = Layout::FontScale(10);
+  value_font.Load(FontDescription(value_font_height, false, false, true));
+
+  unsigned unit_font_height = std::max(value_font_height * 2u / 5u, 7u);
+  unit_font.Load(FontDescription(unit_font_height));
+  unit_fraction_pen.Create(1, COLOR_GRAY);
 }

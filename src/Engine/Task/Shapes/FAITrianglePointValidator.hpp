@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ Copyright_License {
 #ifndef XCSOAR_FAI_TRIANGLE_POINT_VALIDATOR_HPP
 #define XCSOAR_FAI_TRIANGLE_POINT_VALIDATOR_HPP
 
-#include "Math/fixed.hpp"
+#include "Compiler.h"
 
 class OrderedTask;
 struct GeoPoint;
@@ -37,12 +37,12 @@ struct FAITriangleSettings;
  */
 class FAITrianglePointValidator
 {
-  OrderedTask *task;
-  unsigned t_index;
+  OrderedTask *const task;
+  const unsigned t_index;
   unsigned t_size;
-  fixed leg1;
-  fixed leg2;
-  fixed leg3;
+  double leg1;
+  double leg2;
+  double leg3;
 
   bool fai_triangle_point_invalid;
 
@@ -50,8 +50,19 @@ public:
   FAITrianglePointValidator(OrderedTask *ordered_task,
                             const unsigned ordered_task_index);
 
+  /** Test whether wp could be a point in an FAI triangle based on the other
+   * points in the task and the current ordered task index
+   * Tests angle ranges first to reduce more costly calculation of distances
+   * @param wp Point being tested
+   * @param right = 1 if triangle turns are to right, -1 if turns are to left
+   * @return True if point would be valid in an FAI Triangle
+   */
   gcc_pure
-  static bool TestFAITriangle(const fixed d1, const fixed d2, const fixed d3,
+  bool IsFAITrianglePoint(const Waypoint &wp, bool right) const;
+
+private:
+  gcc_pure
+  static bool TestFAITriangle(double d1, double d2, double d3,
                               const FAITriangleSettings &settings);
 
   /**
@@ -68,17 +79,6 @@ public:
   static bool IsFAIAngle(const GeoPoint &p0, const GeoPoint &p1,
                          const GeoPoint &p2, bool right);
 
-  /** Test whether wp could be a point in an FAI triangle based on the other
-   * points in the task and the current ordered task index
-   * Tests angle ranges first to reduce more costly calculation of distances
-   * @param wp Point being tested
-   * @param right = 1 if triangle turns are to right, -1 if turns are to left
-   * @return True if point would be valid in an FAI Triangle
-   */
-  gcc_pure
-  bool IsFAITrianglePoint(const Waypoint &wp, bool right) const;
-
-private:
   void PrepareFAITest(OrderedTask *ordered_task,
                       const unsigned ordered_task_index);
 };

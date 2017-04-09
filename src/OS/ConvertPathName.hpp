@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,13 +24,17 @@ Copyright_License {
 #ifndef OS_CONVERT_PATH_NAME_HPP
 #define OS_CONVERT_PATH_NAME_HPP
 
+#include "Path.hpp"
 #include "Compiler.h"
 
 #ifdef _UNICODE
 #include "Util/ConvertString.hpp"
-#endif
+#include "Util/LightString.hxx"
 
 #include <tchar.h>
+#else
+#include "Util/StringPointer.hxx"
+#endif
 
 /**
  * Representation of a file name.  It is automatically converted to
@@ -40,36 +44,29 @@ Copyright_License {
  */
 class PathName {
 #ifdef _UNICODE
-  TCHAR *allocated;
+  typedef LightString<TCHAR> Value;
+#else
+  typedef StringPointer<> Value;
 #endif
-  const TCHAR *value;
+
+  Value value;
 
 public:
+  explicit PathName(Value::const_pointer _value)
+    :value(_value) {}
+
 #ifdef _UNICODE
-  explicit PathName(const TCHAR *_value)
-    :allocated(NULL), value(_value) {}
-
   explicit PathName(const char *_value)
-    :allocated(ConvertACPToWide(_value)), value(allocated) {}
-
-  ~PathName() {
-    delete[] allocated;
-  }
-#else /* !_UNICODE */
-  explicit PathName(const TCHAR *_value):value(_value) {}
-#endif /* !_UNICODE */
+    :value(Value::Donate(ConvertACPToWide(_value))) {}
+#endif
 
 public:
   bool IsDefined() const {
-#ifdef _UNICODE
-    return value != NULL;
-#else
-    return true;
-#endif
+    return !value.IsNull();
   }
 
-  operator const TCHAR *() const {
-    return value;
+  operator Path() const {
+    return Path(value.c_str());
   }
 };
 
@@ -80,36 +77,29 @@ public:
  */
 class NarrowPathName {
 #ifdef _UNICODE
-  char *allocated;
+  typedef LightString<char> Value;
+#else
+  typedef StringPointer<> Value;
 #endif
-  const char *value;
+
+  Value value;
 
 public:
 #ifdef _UNICODE
-  explicit NarrowPathName(const char *_value)
-    :allocated(NULL), value(_value) {}
-
-  explicit NarrowPathName(const TCHAR *_value)
-    :allocated(ConvertWideToACP(_value)), value(allocated) {}
-
-  ~NarrowPathName() {
-    delete[] allocated;
-  }
-#else /* !_UNICODE */
-  explicit NarrowPathName(const char *_value):value(_value) {}
-#endif /* !_UNICODE */
+  explicit NarrowPathName(Path _value)
+    :value(Value::Donate(ConvertWideToACP(_value.c_str()))) {}
+#else
+  explicit NarrowPathName(Path _value)
+    :value(_value.c_str()) {}
+#endif
 
 public:
   bool IsDefined() const {
-#ifdef _UNICODE
-    return value != NULL;
-#else
-    return true;
-#endif
+    return !value.IsNull();
   }
 
-  operator const char *() const {
-    return value;
+  operator Value::const_pointer() const {
+    return value.c_str();
   }
 };
 

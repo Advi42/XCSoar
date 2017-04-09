@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ Copyright_License {
 #ifndef XCSOAR_MENU_BAR_HPP
 #define XCSOAR_MENU_BAR_HPP
 
-#include "Screen/ButtonWindow.hpp"
+#include "Form/Button.hpp"
 
 #include <tchar.h>
 
@@ -38,7 +38,7 @@ public:
   static constexpr unsigned MAX_BUTTONS = 32;
 
 protected:
-  class Button : public ButtonWindow {
+  class Button : public ::Button {
     unsigned event;
 
   public:
@@ -47,21 +47,14 @@ protected:
     }
 
     virtual bool OnClicked();
-
-#ifdef USE_GDI
-  protected:
-    virtual LRESULT OnMessage(HWND hWnd, UINT message,
-                               WPARAM wParam, LPARAM lParam);
-#endif
   };
 
   Button buttons[MAX_BUTTONS];
 
 public:
-  MenuBar(ContainerWindow &parent);
+  MenuBar(ContainerWindow &parent, const ButtonLook &look);
 
 public:
-  void SetFont(const Font &font);
   void ShowButton(unsigned i, bool enabled, const TCHAR *text,
                   unsigned event);
   void HideButton(unsigned i);

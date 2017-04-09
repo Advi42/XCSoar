@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,7 +21,6 @@
 */
 
 #include "OLCSISAT.hpp"
-#include "Trace/Trace.hpp"
 #include "Geo/SearchPointVector.hpp"
 
 OLCSISAT::OLCSISAT(const Trace &_trace)
@@ -34,10 +33,10 @@ OLCSISAT::OLCSISAT(const Trace &_trace)
   R = remainder distance
 
   V: 1.00 point per km
-  Z: 0.75 points per km
-  total score = V + Z*0.75
-              = V + 0.75*(S-V)
-              = (V + 3*S)/4
+  Z: 0.50 points per km
+  total score = V + Z*0.50
+              = V + 0.50*(S-V)
+              = (V + S)/2
 */
 
 ContestResult
@@ -51,7 +50,7 @@ OLCSISAT::CalculateResult(const ContestTraceVector &solution) const
   spv.PruneInterior();
 
   // now add leg distances making up the convex hull
-  fixed G = fixed(0);
+  double G = 0;
 
   if (spv.size() > 1) {
     for (unsigned i = 0; i + 1 < spv.size(); ++i)
@@ -62,14 +61,13 @@ OLCSISAT::CalculateResult(const ContestTraceVector &solution) const
   }
 
   // R distance (start to end)
-  const fixed R = solution[0].DistanceTo(solution[num_stages - 1].GetLocation());
+  const auto R = solution[0].DistanceTo(solution[num_stages - 1].GetLocation());
 
   // V zigzag-free distance
-  const fixed V = G - R;
+  const auto V = G - R;
 
   // S = total distance
   ContestResult result = ContestDijkstra::CalculateResult(solution);
-  result.score = ApplyHandicap((V + 3 * result.distance) / 4000);
+  result.score = ApplyHandicap((V + result.distance) / 2000);
   return result;
 }
-

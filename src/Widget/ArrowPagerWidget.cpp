@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,17 +23,16 @@ Copyright_License {
 
 #include "ArrowPagerWidget.hpp"
 #include "Screen/Layout.hpp"
-#include "Screen/Key.h"
+#include "Event/KeyCode.hpp"
 #include "Language/Language.hpp"
 #include "Form/Form.hpp"
-
-#include <assert.h>
+#include "Renderer/SymbolButtonRenderer.hpp"
 
 ArrowPagerWidget::Layout::Layout(PixelRect rc, const Widget *extra_widget)
   :main(rc)
 {
-  const unsigned width = rc.right - rc.left;
-  const unsigned height = rc.bottom - rc.top;
+  const unsigned width = rc.GetWidth(), height = rc.GetHeight();
+  const unsigned button_height = ::Layout::GetMaximumControlHeight();
 
   main = rc;
 
@@ -47,13 +46,13 @@ ArrowPagerWidget::Layout::Layout(PixelRect rc, const Widget *extra_widget)
     close_button.left = rc.left;
     close_button.right = main.left;
     close_button.bottom = rc.bottom;
-    close_button.top = close_button.bottom - ::Layout::GetMaximumControlHeight();
+    close_button.top = close_button.bottom - button_height;
 
     /* previous/next buttons above the close button */
 
     previous_button = close_button;
     previous_button.bottom = previous_button.top;
-    previous_button.top = previous_button.bottom - ::Layout::GetMaximumControlHeight();
+    previous_button.top = previous_button.bottom - button_height;
     previous_button.right = (previous_button.left + previous_button.right) / 2;
 
     next_button = previous_button;
@@ -69,7 +68,7 @@ ArrowPagerWidget::Layout::Layout(PixelRect rc, const Widget *extra_widget)
   } else {
     /* portrait */
 
-    main.bottom -= ::Layout::GetMaximumControlHeight();
+    main.bottom -= button_height;
 
     /* buttons distributed on the bottom line */
 
@@ -93,7 +92,7 @@ ArrowPagerWidget::Layout::Layout(PixelRect rc, const Widget *extra_widget)
       extra.left = main.left;
       extra.right = main.right;
       extra.bottom = main.bottom;
-      extra.top = main.bottom -= ::Layout::GetMaximumControlHeight();
+      extra.top = main.bottom -= button_height;
     }
   }
 }
@@ -140,14 +139,17 @@ ArrowPagerWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
   if (extra != nullptr)
     extra->Prepare(parent, layout.extra);
 
-  ButtonWindowStyle style;
+  WindowStyle style;
   style.Hide();
   style.TabStop();
 
-  previous_button.Create(parent, _T("<"), layout.previous_button,
-                         style, *this, PREVIOUS);
-  next_button.Create(parent, _T(">"), layout.next_button, style, *this, NEXT);
-  close_button.Create(parent, _("Close"), layout.close_button,
+  previous_button.Create(parent, layout.previous_button, style,
+                         new SymbolButtonRenderer(look, _T("<")),
+                         *this, PREVIOUS);
+  next_button.Create(parent, layout.next_button, style,
+                     new SymbolButtonRenderer(look, _T(">")),
+                     *this, NEXT);
+  close_button.Create(parent, look, _("Close"), layout.close_button,
                       style, action_listener, mrOK);
 }
 
@@ -212,16 +214,10 @@ ArrowPagerWidget::KeyPress(unsigned key_code)
 
   switch (key_code) {
   case KEY_LEFT:
-#ifdef GNAV
-  case '6':
-#endif
     Previous(true);
     return true;
 
   case KEY_RIGHT:
-#ifdef GNAV
-  case '7':
-#endif
     Next(true);
     return true;
 

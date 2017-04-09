@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,14 +27,16 @@ Copyright_License {
 #include "Blackboard/BaseBlackboard.hpp"
 #include "Blackboard/ComputerSettingsBlackboard.hpp"
 #include "Device/Simulator.hpp"
-#include "Device/List.hpp"
+#include "Device/Features.hpp"
 #include "Thread/Mutex.hpp"
 #include "Time/WrapClock.hpp"
 
 #include <cassert>
 
+class MultipleDevices;
 class AtmosphericPressure;
 class OperationEnvironment;
+class RadioFrequency;
 
 /**
  * Blackboard used by com devices: can write NMEA_INFO, reads DERIVED_INFO.
@@ -43,13 +45,14 @@ class OperationEnvironment;
  * The DeviceBlackboard is used as the global ground truth-state
  * since it is accessed quickly with only one mutex
  */
-class DeviceBlackboard:
-  public BaseBlackboard,
-  public ComputerSettingsBlackboard
+class DeviceBlackboard
+  : public BaseBlackboard, public ComputerSettingsBlackboard
 {
   friend class MergeThread;
 
   Simulator simulator;
+
+  MultipleDevices *devices;
 
   /**
    * Data from each physical device.
@@ -81,6 +84,13 @@ public:
 
 public:
   DeviceBlackboard();
+
+  void SetDevices(MultipleDevices &_devices) {
+    assert(devices == nullptr);
+
+    devices = &_devices;
+  }
+
   void ReadBlackboard(const DerivedInfo &derived_info);
   void ReadComputerSettings(const ComputerSettings &settings);
 
@@ -117,20 +127,27 @@ public:
     return RealState(i).flarm.IsDetected();
   }
 
-  void SetStartupLocation(const GeoPoint &loc, const fixed alt);
+  void SetStartupLocation(const GeoPoint &loc, double alt);
   void ProcessSimulation();
   void StopReplay();
 
   void SetSimulatorLocation(const GeoPoint &location);
   void SetTrack(Angle val);
-  void SetSpeed(fixed val);
-  void SetAltitude(fixed alt);
+  void SetSpeed(double val);
+  void SetAltitude(double alt);
 
-  void SetBallast(fixed fraction, fixed overload,
+  void SetBallast(double fraction, double overload,
                   OperationEnvironment &env);
-  void SetBugs(fixed bugs, OperationEnvironment &env);
+  void SetBugs(double bugs, OperationEnvironment &env);
   void SetQNH(AtmosphericPressure qnh, OperationEnvironment &env);
-  void SetMC(fixed mc, OperationEnvironment &env);
+  void SetMC(double mc, OperationEnvironment &env);
+
+  void SetActiveFrequency(RadioFrequency frequency,
+                          const TCHAR *name,
+                          OperationEnvironment &env);
+  void SetStandbyFrequency(RadioFrequency frequency,
+                           const TCHAR *name,
+                           OperationEnvironment &env);
 
   /**
    * Check the expiry time of the device connection with the wall

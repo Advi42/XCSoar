@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,12 +23,14 @@
 #include "AnalyseFlight.hpp"
 #include "DebugReplay.hpp"
 #include "Engine/Trace/Trace.hpp"
+#include "Engine/Waypoint/Waypoints.hpp"
 #include "Contest/ContestManager.hpp"
 #include "Math/Angle.hpp"
 #include "Time/BrokenDateTime.hpp"
 #include "Computer/CirclingComputer.hpp"
 #include "Computer/Wind/Computer.hpp"
 #include "Computer/Settings.hpp"
+#include "Computer/AutoQNH.hpp"
 #include "FlightPhaseDetector.hpp"
 
 #include <limits>
@@ -40,7 +42,8 @@ Run(DebugReplay &replay, FlightPhaseDetector &flight_phase_detector,
     const BrokenDateTime &scoring_start_time,
     const BrokenDateTime &scoring_end_time,
     const BrokenDateTime &landing_time,
-    Trace &full_trace, Trace &triangle_trace, Trace &sprint_trace)
+    Trace &full_trace, Trace &triangle_trace, Trace &sprint_trace,
+    ComputerSettings &computer_settings)
 {
   GeoPoint last_location = GeoPoint::Invalid();
   constexpr Angle max_longitude_change = Angle::Degrees(30);
@@ -49,8 +52,9 @@ Run(DebugReplay &replay, FlightPhaseDetector &flight_phase_detector,
   CirclingSettings circling_settings;
   circling_settings.SetDefaults();
   CirclingComputer circling_computer;
+  circling_computer.Reset();
 
-  GlidePolar glide_polar(fixed(0));
+  GlidePolar glide_polar(0);
 
   WindSettings wind_settings;
   wind_settings.SetDefaults();
@@ -60,6 +64,10 @@ Run(DebugReplay &replay, FlightPhaseDetector &flight_phase_detector,
 
   Validity last_wind;
   last_wind.Clear();
+
+  const Waypoints waypoints;
+  AutoQNH auto_qnh(5);
+  auto_qnh.Reset();
 
   const int64_t takeoff_unix = takeoff_time.ToUnixTimeUTC();
   const int64_t landing_unix = landing_time.ToUnixTimeUTC();
@@ -108,6 +116,13 @@ Run(DebugReplay &replay, FlightPhaseDetector &flight_phase_detector,
 
     last_wind = replay.Calculated().estimated_wind_available;
 
+    auto_qnh.Process(basic, replay.SetCalculated(), computer_settings, waypoints);
+
+    if (!computer_settings.pressure_available && replay.Calculated().pressure_available) {
+        computer_settings.pressure = replay.Calculated().pressure;
+        computer_settings.pressure_available = replay.Calculated().pressure_available;
+    }
+
     if (!basic.time_available || !basic.location_available ||
         !basic.NavAltitudeAvailable())
       continue;
@@ -154,6 +169,7 @@ void AnalyseFlight(DebugReplay &replay,
              PhaseList &phase_list,
              PhaseTotals &phase_totals,
              WindList &wind_list,
+             ComputerSettings &computer_settings,
              const unsigned full_points,
              const unsigned triangle_points,
              const unsigned sprint_points,
@@ -167,7 +183,8 @@ void AnalyseFlight(DebugReplay &replay,
 
   Run(replay, flight_phase_detector, wind_list,
       takeoff_time, scoring_start_time, scoring_end_time, landing_time,
-      full_trace, triangle_trace, sprint_trace);
+      full_trace, triangle_trace, sprint_trace,
+      computer_settings);
 
   olc_plus = SolveContest(Contest::OLC_PLUS,
     full_trace, triangle_trace, sprint_trace,

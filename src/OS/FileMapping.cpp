@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,8 +21,8 @@ Copyright_License {
 }
 */
 
-#include "OS/FileMapping.hpp"
-#include "Compiler.h"
+#include "FileMapping.hpp"
+#include "Path.hpp"
 
 #ifdef HAVE_POSIX
 #include <fcntl.h>
@@ -33,10 +33,10 @@ Copyright_License {
 #include <windows.h>
 #endif
 
-FileMapping::FileMapping(const TCHAR *path)
-  :m_data(NULL)
+FileMapping::FileMapping(Path path)
+  :m_data(nullptr)
 #ifndef HAVE_POSIX
-  , hMapping(NULL)
+  , hMapping(nullptr)
 #endif
 {
 #ifdef HAVE_POSIX
@@ -48,7 +48,7 @@ FileMapping::FileMapping(const TCHAR *path)
   flags |= O_CLOEXEC;
 #endif
 
-  int fd = open(path, flags);
+  int fd = open(path.c_str(), flags);
   if (fd < 0)
     return;
 
@@ -65,54 +65,30 @@ FileMapping::FileMapping(const TCHAR *path)
 
   m_size = (size_t)st.st_size;
 
-  m_data = mmap(NULL, m_size, PROT_READ, MAP_SHARED, fd, 0);
+  m_data = mmap(nullptr, m_size, PROT_READ, MAP_SHARED, fd, 0);
   close(fd);
-  if (m_data == NULL)
+  if (m_data == nullptr)
     return;
 
   madvise(m_data, m_size, MADV_WILLNEED);
 #else /* !HAVE_POSIX */
-#if defined(_WIN32_WCE) && _WIN32_WCE < 0x0500
-  /* old Windows CE versions need a HANDLE returned from
-     CreateFileForMapping(); this system is not needed with WM5, and
-     it is deprecated in WM6 */
-  hFile = ::CreateFileForMapping(path, GENERIC_READ, 0,
-                                 NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
-                                 NULL);
-#else
-  hFile = ::CreateFile(path, GENERIC_READ, FILE_SHARE_READ,
-                       NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-#endif
+  hFile = ::CreateFile(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                       nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (gcc_unlikely(hFile == INVALID_HANDLE_VALUE))
     return;
 
-  struct {
-    BY_HANDLE_FILE_INFORMATION fi;
-
-#ifdef _WIN32_WCE
-    /* on Windows CE, GetFileInformationByHandle() seems to overflow
-       the BY_HANDLE_FILE_INFORMATION variable by 4 bytes
-       (undocumented on MSDN); adding the following DWORD gives it
-       enough buffer to play with */
-    DWORD dummy;
-#endif
-  } i;
-
-  if (!::GetFileInformationByHandle(hFile, &i.fi) ||
-      i.fi.nFileSizeHigh > 0 ||
-      i.fi.nFileSizeLow > 1024 * 1024 * 1024)
+  BY_HANDLE_FILE_INFORMATION fi;
+  if (!::GetFileInformationByHandle(hFile, &fi) ||
+      fi.nFileSizeHigh > 0 ||
+      fi.nFileSizeLow > 1024 * 1024 * 1024)
     return;
 
-  m_size = i.fi.nFileSizeLow;
+  m_size = fi.nFileSizeLow;
 
-  hMapping = ::CreateFileMapping(hFile, NULL, PAGE_READONLY,
-                                 i.fi.nFileSizeHigh, i.fi.nFileSizeLow,
-                                 NULL);
-#if defined(_WIN32_WCE) && _WIN32_WCE < 0x0500
-  /* CreateFileForMapping() automatically closes the file handle */
-  hFile = INVALID_HANDLE_VALUE;
-#endif
-  if (gcc_unlikely(hMapping == NULL))
+  hMapping = ::CreateFileMapping(hFile, nullptr, PAGE_READONLY,
+                                 fi.nFileSizeHigh, fi.nFileSizeLow,
+                                 nullptr);
+  if (gcc_unlikely(hMapping == nullptr))
     return;
 
   m_data = ::MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, m_size);
@@ -122,13 +98,13 @@ FileMapping::FileMapping(const TCHAR *path)
 FileMapping::~FileMapping()
 {
 #ifdef HAVE_POSIX
-  if (m_data != NULL)
+  if (m_data != nullptr)
     munmap(m_data, m_size);
 #else /* !HAVE_POSIX */
-  if (m_data != NULL)
+  if (m_data != nullptr)
     ::UnmapViewOfFile(m_data);
 
-  if (hMapping != NULL)
+  if (hMapping != nullptr)
     ::CloseHandle(hMapping);
 
   if (hFile != INVALID_HANDLE_VALUE)

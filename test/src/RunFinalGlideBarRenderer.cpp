@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,14 +21,14 @@ Copyright_License {
 }
 */
 
-#define ENABLE_SCREEN
+#define ENABLE_MAIN_WINDOW
+#define ENABLE_CLOSE_BUTTON
 
 #include "Main.hpp"
-#include "Screen/SingleWindow.hpp"
-#include "Screen/ButtonWindow.hpp"
-#include "Screen/Timer.hpp"
+#include "Event/LambdaTimer.hpp"
 #include "Screen/Canvas.hpp"
-#include "Fonts.hpp"
+#include "Form/Button.hpp"
+#include "Form/ActionListener.hpp"
 #include "Look/TaskLook.hpp"
 #include "Look/FinalGlideBarLook.hpp"
 #include "Renderer/FinalGlideBarRenderer.hpp"
@@ -55,11 +55,11 @@ class FinalGlideBarWindow : public PaintWindow
 public:
   FinalGlideBarWindow(const FinalGlideBarLook &look, const TaskLook &task_look)
     :renderer(look, task_look),
-     state(GeoVector(fixed(100), Angle::Zero()),
-           fixed(1000), fixed(1000),
-           SpeedVector(Angle::Zero(), fixed(0)))
+     state(GeoVector(100, Angle::Zero()),
+           1000, 1000,
+           SpeedVector(Angle::Zero(), 0))
   {
-    glide_polar = GlidePolar(fixed(0));
+    glide_polar = GlidePolar(0);
 
     calculated.task_stats.total.solution_remaining =
       MacCready::Solve(glide_settings, glide_polar, state);
@@ -70,22 +70,22 @@ public:
     calculated.task_stats.task_valid = true;
   }
 
-  fixed GetAltitudeDifference() {
+  double GetAltitudeDifference() {
     return calculated.task_stats.total.solution_remaining.altitude_difference;
   }
 
-  fixed GetAltitudeDifference0() {
+  double GetAltitudeDifference0() {
     return calculated.task_stats.total.solution_mc0.altitude_difference;
   }
 
-  void SetAltitudeDifference(fixed altitude_difference) {
+  void SetAltitudeDifference(double altitude_difference) {
     state.altitude_difference = altitude_difference;
 
     calculated.task_stats.total.solution_remaining =
       MacCready::Solve(glide_settings, glide_polar, state);
   }
 
-  void SetAltitudeDifference0(fixed altitude_difference0) {
+  void SetAltitudeDifference0(double altitude_difference0) {
     state.altitude_difference = altitude_difference0;
 
     calculated.task_stats.total.solution_mc0 =
@@ -99,93 +99,6 @@ protected:
   }
 };
 
-class TestWindow : public SingleWindow
-{
-  ButtonWindow close_button;
-  FinalGlideBarWindow final_glide;
-  fixed step;
-  fixed mc_mc0_step;
-
-  WindowTimer timer;
-
-  enum {
-    ID_START = 100,
-    ID_CLOSE
-  };
-
-public:
-  TestWindow(const FinalGlideBarLook &look, const TaskLook &task_look)
-    :final_glide(look, task_look), step(fixed(10)), mc_mc0_step(fixed(100)), timer(*this)
-  {
-    timer.Schedule(100);
-  }
-
-  ~TestWindow() {
-    timer.Cancel();
-  }
-
-
-  void Create(PixelSize size) {
-    SingleWindow::Create(_T("RunFinalGlideBarRenderer"),
-                         size);
-
-    const PixelRect rc = GetClientRect();
-
-    WindowStyle with_border;
-    with_border.Border();
-
-    final_glide.Create(*this, rc, with_border);
-
-    PixelRect button_rc = rc;
-    button_rc.top = button_rc.bottom - 30;
-    close_button.Create(*this, _T("Close"), ID_CLOSE, button_rc);
-  }
-
-protected:
-  virtual bool OnCommand(unsigned id, unsigned code) override {
-    switch (id) {
-    case ID_CLOSE:
-      Close();
-      return true;
-    }
-
-    return SingleWindow::OnCommand(id, code);
-  }
-
-  virtual bool OnTimer(WindowTimer &_timer) override {
-    if (_timer == timer) {
-      fixed altitude_difference = final_glide.GetAltitudeDifference();
-      fixed altitude_difference0 = final_glide.GetAltitudeDifference0();
-
-      if (altitude_difference >= fixed(600) ) {
-        step = fixed(-10);
-      } else if (altitude_difference <= fixed(-600)) {
-        step = fixed(10);
-
-        if (altitude_difference0 > fixed(600)) {
-          mc_mc0_step = fixed(-100);
-        } else if (altitude_difference0 <= altitude_difference) {
-          mc_mc0_step = fixed(100);
-        }
- 
-        altitude_difference0 += mc_mc0_step;
-      } 
-
-      altitude_difference += step;
-      altitude_difference0 += step;
-
-      final_glide.SetAltitudeDifference(altitude_difference);
-      final_glide.SetAltitudeDifference0(altitude_difference0);
-
-      final_glide.Invalidate();
-
-      return true;
-    }
-
-    return SingleWindow::OnTimer(_timer);
-  }
-};
-
 static void
 Main()
 {
@@ -195,9 +108,44 @@ Main()
   TaskLook task_look;
   task_look.Initialise();
 
-  TestWindow window(final_glide_look, task_look);
-  window.Create({60, 320});
+  FinalGlideBarWindow final_glide(final_glide_look, task_look);
+  WindowStyle with_border;
+  with_border.Border();
+  final_glide.Create(main_window, main_window.GetClientRect(), with_border);
+  main_window.SetFullWindow(final_glide);
 
-  window.Show();
-  window.RunEventLoop();
+  double step(10);
+  double mc_mc0_step(100);
+
+  auto timer = MakeLambdaTimer([&](){
+      double altitude_difference = final_glide.GetAltitudeDifference();
+      double altitude_difference0 = final_glide.GetAltitudeDifference0();
+
+      if (altitude_difference >= 600 ) {
+        step = -10;
+      } else if (altitude_difference <= -600) {
+        step = 10;
+
+        if (altitude_difference0 > 600) {
+          mc_mc0_step = -100;
+        } else if (altitude_difference0 <= altitude_difference) {
+          mc_mc0_step = 100;
+        }
+
+        altitude_difference0 += mc_mc0_step;
+      }
+
+      altitude_difference += step;
+      altitude_difference0 += step;
+
+      final_glide.SetAltitudeDifference(altitude_difference);
+      final_glide.SetAltitudeDifference0(altitude_difference0);
+
+      final_glide.Invalidate();
+    });
+  timer.Schedule(100);
+
+  main_window.RunEventLoop();
+
+  timer.Cancel();
 }

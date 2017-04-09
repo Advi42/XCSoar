@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,21 +24,24 @@
 #define XCSOAR_PROTECTED_TASK_MANAGER_HPP
 
 #include "Thread/Guard.hpp"
-#include "Task/TaskManager.hpp"
 #include "Engine/Task/Unordered/AbortIntersectionTest.hpp"
+#include "Engine/Waypoint/Ptr.hpp"
 #include "Compiler.h"
 
-#include <tchar.h>
-
+struct AGeoPoint;
+struct TaskBehaviour;
+struct OrderedTaskSettings;
+class Path;
 class GlidePolar;
 class RoutePlannerGlue;
-struct RangeAndRadial;
+class OrderedTask;
+class TaskManager;
 
 class ReachIntersectionTest: public AbortIntersectionTest {
   const RoutePlannerGlue *route;
 
 public:
-  ReachIntersectionTest(): route(NULL) {};
+  ReachIntersectionTest():route(nullptr) {};
 
   void SetRoute(const RoutePlannerGlue *_route) {
     route = _route;
@@ -57,8 +60,6 @@ protected:
   const TaskBehaviour &task_behaviour;
   ReachIntersectionTest intersection_test;
 
-  static const TCHAR default_task_path[];
-
 public:
   ProtectedTaskManager(TaskManager &_task_manager, const TaskBehaviour &tb);
 
@@ -71,12 +72,16 @@ public:
   const OrderedTaskSettings GetOrderedTaskSettings() const;
 
   gcc_pure
-  const Waypoint* GetActiveWaypoint() const;
+  WaypointPtr GetActiveWaypoint() const;
 
   void IncrementActiveTaskPoint(int offset);
   void IncrementActiveTaskPointArm(int offset);
 
-  bool DoGoto(const Waypoint &wp);
+  bool DoGoto(WaypointPtr &&wp);
+
+  bool DoGoto(const WaypointPtr &wp) {
+    return DoGoto(WaypointPtr(wp));
+  }
 
   gcc_malloc
   OrderedTask* TaskClone() const;
@@ -89,25 +94,15 @@ public:
    */
   bool TaskCommit(const OrderedTask& that);
 
-  bool TaskSave(const TCHAR *path);
-
-  bool TaskSaveDefault();
+  /**
+   * Throws std::runtime_error on error.
+   */
+  void TaskSave(Path path);
 
   /**
-   * Creates an ordered task based on the Default.tsk file
-   * Consumer's responsibility to delete task
-   *
-   * @param waypoints waypoint structure
-   * @param failfactory default task type used if Default.tsk is invalid
-   * @return OrderedTask from Default.tsk file or if Default.tsk is invalid
-   * or non-existent, returns empty task with defaults set by
-   * config task defaults
+   * Throws std::runtime_error on error.
    */
-  gcc_malloc
-  OrderedTask* TaskCreateDefault(const Waypoints *waypoints,
-                                 TaskFactoryType factory);
-
-  bool TaskSave(const TCHAR* path, const OrderedTask& task);
+  void TaskSaveDefault();
 
   /** Reset the tasks (as if never flown) */
   void Reset();
@@ -123,6 +118,8 @@ public:
   void SetRoutePlanner(const RoutePlannerGlue *_route);
 
   short GetTerrainBase() const;
+
+  void ResetTask();
 };
 
 #endif

@@ -1,5 +1,9 @@
 LINK = $(CXX)
 
+ifeq ($(ICF),y)
+LINK += -fuse-ld=gold -Wl,--icf=all
+endif
+
 ld-flags = $(ALL_LDFLAGS) $(TARGET_ARCH)
 ld-libs = $(ALL_LDLIBS)
 
@@ -32,14 +36,6 @@ ld-libs = $(ALL_LDLIBS)
 define link-program
 
 $(2)_BIN = $$(TARGET_BIN_DIR)/$(1)$$(TARGET_EXEEXT)
-
-# Disabline stripping on WINE, because winegcc generates a wrapper
-# script that cannot be stripped, and since WINE is just an
-# experimental target and no binaries will ever be distributed, it
-# doesn't matter anyway.
-ifeq ($$(TARGET),WINE)
-$(2)_STRIP := n
-endif
 
 # Disable stripping on UNIX, because that should usually be done
 # during installation (the Debian package is explicitly stripped), and
@@ -89,13 +85,13 @@ $$($(2)_NOSTRIP).o: $$($(2)_NOSTRIP).s
 # Link the unstripped binary
 $$($(2)_NOSTRIP): $$($(2)_NOSTRIP).o $$(TARGET_LDADD)
 	@$$(NQ)echo "  CLANG   $$@"
-	$$(Q)$$(LINK) $$(ld-flags) -o $$@ $$^ $$(ld-libs) $$($(2)_LDLIBS)
+	$$(Q)$$(LINK) $$(ld-flags) -o $$@ $$^ $$($(2)_LDLIBS) $$(ld-libs)
 else
 
 # Link the unstripped binary
 $$($(2)_NOSTRIP): $$($(2)_OBJS) $$($(2)_LDADD) $$(TARGET_LDADD) | $$(TARGET_BIN_DIR)/dirstamp
 	@$$(NQ)echo "  LINK    $$@"
-	$$(Q)$$(LINK) $$(ld-flags) -o $$@ $$^ $$(ld-libs) $$($(2)_LDLIBS)
+	$$(Q)$$(LINK) $$(ld-flags) -o $$@ $$^ $$($(2)_LDLIBS) $$(ld-libs)
 
 endif
 
@@ -134,14 +130,21 @@ endef
 #  _DEPENDS: a list of library names this executable depends on; it
 #  will use its CPPFLAGS, LDADD and LDFLAGS
 #
+#  _NO_LIB_PREFIX: if "y", then the output file will not be prefixed with "lib"
+#
 #  _STRIP: if "y", then the library will be stripped
 #
 define link-shared-library
 
-$(2)_BIN = $$(TARGET_BIN_DIR)/lib$(1).so
+$(2)_LIB_PREFIX = lib
+ifeq ($$($(2)_NO_LIB_PREFIX),y)
+$(2)_LIB_PREFIX =
+endif
+
+$(2)_BIN = $$(ABI_BIN_DIR)/$$($(2)_LIB_PREFIX)$(1).so
 
 ifeq ($$($(2)_STRIP),y)
-$(2)_NOSTRIP = $$(TARGET_BIN_DIR)/lib$(1)-ns.so
+$(2)_NOSTRIP = $$(ABI_BIN_DIR)/$$($(2)_LIB_PREFIX)$(1)-ns.so
 else
 $(2)_NOSTRIP = $$($(2)_BIN)
 endif
@@ -155,13 +158,17 @@ $$($(2)_OBJS): CPPFLAGS += $$($(2)_CPPFLAGS)
 $$($(2)_OBJS): CPPFLAGS += $(patsubst %,$$(%_CPPFLAGS),$($(2)_DEPENDS))
 
 # Link the unstripped binary
+ifneq ($(HOST_IS_DARWIN),y)
 $$($(2)_NOSTRIP): LDFLAGS += -Wl,-shared,-Bsymbolic
+endif
+
 ifeq ($$(TARGET),ANDROID)
 $$($(2)_NOSTRIP): LDFLAGS += -nostdlib
 endif
-$$($(2)_NOSTRIP): $$($(2)_OBJS) $$($(2)_LDADD) $$(TARGET_LDADD) | $$(TARGET_BIN_DIR)/dirstamp
+
+$$($(2)_NOSTRIP): $$($(2)_OBJS) $$($(2)_LDADD) $$(TARGET_LDADD) | $$(ABI_BIN_DIR)/dirstamp
 	@$$(NQ)echo "  LINK    $$@"
-	$$(Q)$$(LINK) $$(ld-flags) -o $$@ $$^ $$(ld-libs) $$($(2)_LDLIBS)
+	$$(Q)$$(LINK) $$(ld-flags) -o $$@ $$^ $$($(2)_LDLIBS) $$(ld-libs)
 
 # Strip the binary (optional)
 ifeq ($$($(2)_STRIP),y)
@@ -181,9 +188,9 @@ endef
 define link-library
 
 ifeq ($$(LLVM),y)
-$(2)_BIN = $$(TARGET_OUTPUT_DIR)/$(1).bc
+$(2)_BIN = $$(ABI_OUTPUT_DIR)/$(1).bc
 else
-$(2)_BIN = $$(TARGET_OUTPUT_DIR)/$(1).a
+$(2)_BIN = $$(ABI_OUTPUT_DIR)/$(1).a
 endif
 
 # Compile

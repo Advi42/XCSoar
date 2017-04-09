@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Compute5r - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -46,11 +46,16 @@ template<GLenum target, GLenum usage>
 class GLBuffer {
   GLuint id;
 
+#ifndef NDEBUG
+  GLvoid *p;
+#endif
+
 public:
   GLBuffer() {
     glGenBuffers(1, &id);
 
 #ifndef NDEBUG
+    p = nullptr;
     ++num_buffers;
 #endif
   }
@@ -59,6 +64,7 @@ public:
 
   ~GLBuffer() {
 #ifndef NDEBUG
+    assert(p == nullptr);
     assert(num_buffers > 0);
     --num_buffers;
 #endif
@@ -67,6 +73,8 @@ public:
   }
 
   void Bind() {
+    assert(p == nullptr);
+
     glBindBuffer(target, id);
   }
 
@@ -110,15 +118,27 @@ public:
   GLvoid *BeginWrite(size_t size) {
     Bind();
 
+    void *result;
     if (OpenGL::mapbuffer) {
       Data(GLsizeiptr(size), nullptr);
-      return MapWrite();
+      result = MapWrite();
     } else {
-      return malloc(size);
+      result = malloc(size);
     }
+
+#ifndef NDEBUG
+    p = result;
+#endif
+
+    return result;
   }
 
   void CommitWrite(size_t size, GLvoid *data) {
+#ifndef NDEBUG
+    assert(data == p);
+    p = nullptr;
+#endif
+
     if (OpenGL::mapbuffer) {
       Unmap();
     } else {

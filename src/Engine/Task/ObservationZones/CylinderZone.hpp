@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@
 class CylinderZone : public ObservationZonePoint
 {
   /** radius (m) of OZ */
-  fixed radius;
+  double radius;
 
 public:
   static constexpr double MAT_RADIUS = 1609.344;
@@ -43,16 +43,16 @@ public:
 protected:
   CylinderZone(Shape _shape, bool _can_start_through_top,
                const GeoPoint &loc,
-               const fixed _radius = fixed(10000.0))
+               const double _radius = 10000.0)
     :ObservationZonePoint(_shape, _can_start_through_top, loc),
      radius(_radius) {
-    assert(positive(radius));
+    assert(radius > 0);
   }
 
   CylinderZone(const CylinderZone &other, const GeoPoint &reference)
     :ObservationZonePoint((const ObservationZonePoint &)other, reference),
      radius(other.radius) {
-    assert(positive(radius));
+    assert(radius > 0);
   }
 
 public:
@@ -64,13 +64,13 @@ public:
    *
    * @return Initialised object
    */
-  CylinderZone(const GeoPoint &loc, const fixed _radius = fixed(10000.0))
+  CylinderZone(const GeoPoint &loc, const double _radius = 10000.0)
     :ObservationZonePoint(Shape::CYLINDER, true, loc), radius(_radius) {
-    assert(positive(radius));
+    assert(radius > 0);
   }
 
   static CylinderZone *CreateMatCylinderZone(const GeoPoint &loc) {
-    return new CylinderZone(Shape::MAT_CYLINDER, true, loc, fixed(MAT_RADIUS));
+    return new CylinderZone(Shape::MAT_CYLINDER, true, loc, MAT_RADIUS);
   }
 
   /**
@@ -78,8 +78,8 @@ public:
    *
    * @param new_radius Radius (m) of cylinder
    */
-  virtual void SetRadius(fixed new_radius) {
-    assert(positive(new_radius));
+  virtual void SetRadius(double new_radius) {
+    assert(new_radius > 0);
     radius = new_radius;
   }
 
@@ -88,28 +88,28 @@ public:
    *
    * @return Radius (m) of cylinder
    */
-  fixed GetRadius() const {
+  double GetRadius() const {
     return radius;
   }
 
   /* virtual methods from class ObservationZone */
-  virtual bool IsInSector(const GeoPoint &location) const override {
+  bool IsInSector(const GeoPoint &location) const override {
     return DistanceTo(location) <= radius;
   }
 
-  virtual bool TransitionConstraint(const GeoPoint &location,
-                                    const GeoPoint &last_location) const override {
+  bool TransitionConstraint(gcc_unused const GeoPoint &location,
+                            gcc_unused const GeoPoint &last_location) const override {
     return true;
   }
 
-  virtual OZBoundary GetBoundary() const override;
-  virtual fixed ScoreAdjustment() const override;
+  OZBoundary GetBoundary() const override;
+  double ScoreAdjustment() const override;
 
   /* virtual methods from class ObservationZonePoint */
-  virtual bool Equals(const ObservationZonePoint &other) const override;
-  virtual GeoPoint GetRandomPointInSector(const fixed mag) const override;
+  bool Equals(const ObservationZonePoint &other) const override;
+  GeoPoint GetRandomPointInSector(const double mag) const override;
 
-  virtual ObservationZonePoint *Clone(const GeoPoint &_reference) const override {
+  ObservationZonePoint *Clone(const GeoPoint &_reference) const override {
     return new CylinderZone(*this, _reference);
   }
 };

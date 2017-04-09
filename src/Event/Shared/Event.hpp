@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -31,13 +31,13 @@ Copyright_License {
 struct Event {
   enum Type {
     NOP,
-    QUIT,
 
-#ifdef USE_CONSOLE
+#ifdef USE_POLL_EVENT
     CLOSE,
+#else
+    TIMER,
 #endif
 
-    TIMER,
     USER,
 
     CALLBACK,
@@ -76,6 +76,18 @@ struct Event {
      */
     RESUME,
 #endif
+
+#ifdef USE_X11
+    /**
+     * The X11 window was resized.
+     */
+    RESIZE,
+
+    /**
+     * Redraw the screen.
+     */
+    EXPOSE,
+#endif
   };
 
   typedef void (*Callback)(void *ctx);
@@ -88,7 +100,13 @@ struct Event {
 
   Callback callback;
 
-  RasterPoint point;
+  PixelPoint point;
+
+#ifdef USE_X11
+  unsigned ch;
+#else
+  bool is_char;
+#endif
 
   Event() = default;
   Event(Type _type):type(_type) {}
@@ -98,8 +116,8 @@ struct Event {
   Event(Type _type, void *_ptr):type(_type), ptr(_ptr) {}
   Event(Callback _callback, void *_ptr)
     :type(CALLBACK), ptr(_ptr), callback(_callback) {}
-  Event(Type _type, PixelScalar _x, PixelScalar _y)
-    :type(_type), point(_x, _y) {}
+  Event(Type _type, PixelPoint _point)
+    :type(_type), point(_point) {}
 
   bool IsKeyDown() const {
     return type == KEY_DOWN;
@@ -116,12 +134,24 @@ struct Event {
   }
 
   size_t GetCharacterCount() const {
-    return 0;
+#ifdef USE_X11
+    return type == KEY_DOWN && ch != 0;
+#else
+    return type == KEY_DOWN && is_char;
+#endif
   }
 
   unsigned GetCharacter(size_t characterIdx) const {
-    assert(false);
-    return 0;
+#ifdef USE_X11
+    assert(characterIdx == 0);
+    assert(ch != 0);
+
+    return ch;
+#else
+    assert(characterIdx == 0);
+    assert(1 == GetCharacterCount());
+    return param;
+#endif
   }
 
   bool IsMouseDown() const {

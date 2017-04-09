@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -94,7 +94,7 @@ PlaneEditWidget::UpdatePolarButton()
     caption = buffer;
   }
 
-  WndButton &polar_button = (WndButton &)GetRow(POLAR);
+  Button &polar_button = (Button &)GetRow(POLAR);
   polar_button.SetCaption(caption);
 }
 
@@ -118,18 +118,18 @@ PlaneEditWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
              plane.handicap);
   AddFloat(_("Wing Area"), nullptr,
            _T("%.1f m²"), _T("%.1f"),
-           fixed(0), fixed(40), fixed(0.1),
+           0, 40, 0.1,
            false, plane.wing_area);
   AddFloat(_("Max. Ballast"), nullptr,
            _T("%.0f l"), _T("%.0f"),
-           fixed(0), fixed(500), fixed(5),
+           0, 500, 5,
            false, plane.max_ballast);
   AddInteger(_("Dump Time"), nullptr,
              _T("%u s"), _T("%u"),
              10, 300, 5,
              plane.dump_time);
   AddFloat(_("Max. Cruise Speed"), nullptr,
-           _T("%.0f %s"), _T("%.0f"), fixed(0), fixed(300), fixed(5),
+           _T("%.0f %s"), _T("%.0f"), 0, 300, 5,
            false, UnitGroup::HORIZONTAL_SPEED, plane.max_speed);
 
   UpdateCaption();
@@ -141,11 +141,9 @@ PlaneEditWidget::Save(bool &_changed)
 {
   bool changed = false;
 
-  changed |= SaveValue(REGISTRATION, plane.registration.buffer(),
-                       plane.registration.MAX_SIZE);
-  changed |= SaveValue(COMPETITION_ID, plane.competition_id.buffer(),
-                       plane.competition_id.MAX_SIZE);
-  changed |= SaveValue(TYPE, plane.type.buffer(), plane.type.MAX_SIZE);
+  changed |= SaveValue(REGISTRATION, plane.registration);
+  changed |= SaveValue(COMPETITION_ID, plane.competition_id);
+  changed |= SaveValue(TYPE, plane.type);
   changed |= SaveValue(HANDICAP, plane.handicap);
   changed |= SaveValue(WING_AREA, plane.wing_area);
   changed |= SaveValue(MAX_BALLAST, plane.max_ballast);

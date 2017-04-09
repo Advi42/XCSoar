@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,82 +29,78 @@ Copyright_License {
 #include "WaypointReaderOzi.hpp"
 #include "WaypointReaderCompeGPS.hpp"
 #include "WaypointFileType.hpp"
-#include "OS/FileUtil.hpp"
-#include "IO/ZipSource.hpp"
-#include "IO/TextFile.hpp"
-#include "Util/StringUtil.hpp"
+#include "IO/ZipLineReader.hpp"
+#include "IO/FileLineReader.hpp"
 
-bool
-WaypointReader::Parse(Waypoints &way_points, OperationEnvironment &operation)
+#include <memory>
+
+static WaypointReaderBase *
+CreateWaypointReader(WaypointFileType type, WaypointFactory factory)
 {
-  if (reader == NULL)
-    return false;
-
-  TLineReader *line_reader = OpenTextFile(path, ConvertLineReader::AUTO);
-  if (line_reader == nullptr)
-    return false;
-
-  reader->Parse(way_points, *line_reader, operation);
-  delete line_reader;
-  return true;
-}
-
-void
-WaypointReader::SetTerrain(const RasterTerrain* _terrain)
-{
-  if (reader != NULL)
-    reader->SetTerrain(_terrain);
-}
-
-void
-WaypointReader::Open(const TCHAR* filename, int the_filenum)
-{
-  delete reader;
-  reader = NULL;
-
-  // If filename is empty -> clear and return NULL pointer
-  if (StringIsEmpty(filename))
-    return;
-
-  _tcscpy(path, filename);
-
-  // Test if file exists
-  bool compressed = false;
-  if (!File::Exists(filename)) {
-    compressed = true;
-    // Test if file exists in zip archive
-    ZipSource zip(filename);
-    if (zip.error())
-      // If the file doesn't exist return NULL pointer
-      return;
-  }
-
-  switch (DetermineWaypointFileType(filename)) {
-  case WaypointFileType::WINPILOT:
-    reader = new WaypointReaderWinPilot(the_filenum, compressed);
+  switch (type) {
+  case WaypointFileType::UNKNOWN:
     break;
+
+  case WaypointFileType::WINPILOT:
+    return new WaypointReaderWinPilot(factory);
 
   case WaypointFileType::SEEYOU:
-    reader = new WaypointReaderSeeYou(the_filenum, compressed);
-    break;
+    return new WaypointReaderSeeYou(factory);
 
   case WaypointFileType::ZANDER:
-    reader = new WaypointReaderZander(the_filenum, compressed);
-    break;
+    return new WaypointReaderZander(factory);
 
   case WaypointFileType::FS:
-    reader = new WaypointReaderFS(the_filenum, compressed);
-    break;
+    return new WaypointReaderFS(factory);
 
   case WaypointFileType::OZI_EXPLORER:
-    reader = new WaypointReaderOzi(the_filenum, compressed);
-    break;
+    return new WaypointReaderOzi(factory);
 
   case WaypointFileType::COMPE_GPS:
-    reader = new WaypointReaderCompeGPS(the_filenum, compressed);
-    break;
-
-  default:
-    break;
+    return new WaypointReaderCompeGPS(factory);
   }
+
+  return nullptr;
+}
+
+bool
+ReadWaypointFile(Path path, WaypointFileType file_type,
+                 Waypoints &way_points,
+                 WaypointFactory factory, OperationEnvironment &operation)
+try {
+  std::unique_ptr<WaypointReaderBase> reader(CreateWaypointReader(file_type,
+                                                                  factory));
+  if (!reader)
+    return false;
+
+  FileLineReader line_reader(path, Charset::AUTO);
+  reader->Parse(way_points, line_reader, operation);
+  return true;
+} catch (const std::runtime_error &) {
+  return false;
+}
+
+bool
+ReadWaypointFile(Path path, Waypoints &way_points,
+                 WaypointFactory factory, OperationEnvironment &operation)
+{
+  return ReadWaypointFile(path, DetermineWaypointFileType(path),
+                          way_points, factory, operation);
+}
+
+bool
+ReadWaypointFile(struct zzip_dir *dir, const char *path,
+                 WaypointFileType file_type, Waypoints &way_points,
+                 WaypointFactory factory, OperationEnvironment &operation)
+try {
+  std::unique_ptr<WaypointReaderBase> reader(CreateWaypointReader(file_type,
+                                                                  factory));
+  if (!reader)
+    return false;
+
+  ZipLineReader line_reader(dir, path, Charset::AUTO);
+  reader->Parse(way_points, line_reader, operation);
+  return true;
+} catch (const std::runtime_error &e) {
+  return false;
 }

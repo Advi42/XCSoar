@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,18 +27,18 @@ Copyright_License {
 #include "NMEA/InputLine.hpp"
 #include "NMEA/Checksum.hpp"
 #include "Units/System.hpp"
-
-#include <stdlib.h>
+#include "Util/StringAPI.hxx"
 
 class ZanderDevice : public AbstractDevice {
 public:
-  virtual bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
+  /* virtual methods from class Device */
+  bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
 };
 
 static bool
 PZAN1(NMEAInputLine &line, NMEAInfo &info)
 {
-  fixed baro_altitude;
+  double baro_altitude;
   if (line.ReadChecked(baro_altitude))
     /* the ZS1 documentation does not specify wheter the altitude is
        STD or QNH, but Franz Poeschl confirmed via email that it is
@@ -51,13 +51,13 @@ PZAN1(NMEAInputLine &line, NMEAInfo &info)
 static bool
 PZAN2(NMEAInputLine &line, NMEAInfo &info)
 {
-  fixed vtas, wnet;
+  double vtas, wnet;
 
   if (line.ReadChecked(vtas))
     info.ProvideTrueAirspeed(Units::ToSysUnit(vtas, Unit::KILOMETER_PER_HOUR));
 
   if (line.ReadChecked(wnet))
-    info.ProvideTotalEnergyVario((wnet - fixed(10000)) / 100);
+    info.ProvideTotalEnergyVario((wnet - 10000) / 100.);
 
   return true;
 }
@@ -88,7 +88,7 @@ PZAN3(NMEAInputLine &line, NMEAInfo &info)
 
   if (okay == 'A') {
     SpeedVector wind(Angle::Degrees(direction),
-                     Units::ToSysUnit(fixed(speed), Unit::KILOMETER_PER_HOUR));
+                     Units::ToSysUnit(speed, Unit::KILOMETER_PER_HOUR));
     info.ProvideExternalWind(wind);
   }
 
@@ -100,7 +100,7 @@ PZAN4(NMEAInputLine &line, NMEAInfo &info)
 {
   // $PZAN4,1.5,+,20,39,45*cc
 
-  fixed mc;
+  double mc;
   if (line.ReadChecked(mc))
     info.settings.ProvideMacCready(mc, info.clock);
 
@@ -115,9 +115,9 @@ PZAN5(NMEAInputLine &line, NMEAInfo &info)
   char state[3];
   line.Read(state, 3);
 
-  if (strcmp(state, "SF") == 0)
+  if (StringIsEqual(state, "SF"))
     info.switch_state.flight_mode = SwitchState::FlightMode::CRUISE;
-  else if (strcmp(state, "VA") == 0)
+  else if (StringIsEqual(state, "VA"))
     info.switch_state.flight_mode = SwitchState::FlightMode::CIRCLING;
   else
     info.switch_state.flight_mode = SwitchState::FlightMode::UNKNOWN;

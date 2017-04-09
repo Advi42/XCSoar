@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -34,12 +34,26 @@ UnitSetting Units::current = {
   Unit::KILOMETER_PER_HOUR,
   Unit::KILOMETER_PER_HOUR,
   Unit::HECTOPASCAL,
+  Unit::KG_PER_M2,
+  Unit::KG,
 };
 
 void
 Units::SetConfig(const UnitSetting &new_config)
 {
   current = new_config;
+}
+
+Unit
+Units::GetUserWingLoadingUnit()
+{
+  return current.wing_loading_unit;
+}
+
+Unit
+Units::GetUserMassUnit()
+{
+  return current.mass_unit;
 }
 
 Unit
@@ -144,14 +158,14 @@ Units::GetPressureName()
   return GetUnitName(GetUserPressureUnit());
 }
 
-fixed
+double
 Units::ToUserPressure(AtmosphericPressure value)
 {
   return ToUserPressure(value.GetHectoPascal());
 }
 
 AtmosphericPressure
-Units::FromUserPressure(fixed value)
+Units::FromUserPressure(double value)
 {
   return AtmosphericPressure::HectoPascal(ToSysPressure(value));
 }

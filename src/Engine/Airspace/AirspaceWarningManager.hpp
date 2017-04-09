@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@
 class TaskStats;
 class GlidePolar;
 class Airspaces;
-class TaskProjection;
+class FlatProjection;
 class AirspaceAircraftPerformance;
 
 /**
@@ -51,8 +51,8 @@ class AirspaceWarningManager {
 
   const Airspaces &airspaces;
 
-  fixed prediction_time_glide;
-  fixed prediction_time_filter;
+  double prediction_time_glide;
+  double prediction_time_filter;
 
   AircraftStateFilter cruise_filter;
   AircraftStateFilter circling_filter;
@@ -76,12 +76,13 @@ public:
    *
    * @return Initialised object
    */
-  AirspaceWarningManager(const Airspaces &_airspaces);
+  AirspaceWarningManager(const AirspaceWarningConfig &_config,
+                         const Airspaces &_airspaces);
 
   AirspaceWarningManager(const AirspaceWarningManager &) = delete;
 
   gcc_pure
-  const TaskProjection &GetProjection() const;
+  const FlatProjection &GetProjection() const;
 
   const AirspaceWarningConfig &GetConfig() const {
     return config;
@@ -125,14 +126,14 @@ public:
    *
    * @param the_time New time (s)
    */
-  void SetPredictionTimeGlide(fixed time);
+  void SetPredictionTimeGlide(double time);
 
   /**
    * Adjust time of state predictor.  Also updates filter time constant
    *
    * @param the_time New time (s)
    */
-  void SetPredictionTimeFilter(fixed time);
+  void SetPredictionTimeFilter(double time);
 
   /**
    * Find corresponding airspace warning item in store for an airspace
@@ -208,6 +209,12 @@ public:
   }
 
   /**
+   * Acknowledge an airspace warning or airspace inside (depending on
+   * the state).
+   */
+  void Acknowledge(const AbstractAirspace &airspace);
+
+  /**
    * Acknowledge an airspace warning
    *
    * @param airspace The airspace subject
@@ -264,7 +271,7 @@ private:
                        const GeoPoint &location_predicted,
                        const AirspaceAircraftPerformance &perf,
                        const AirspaceWarning::State warning_state,
-                       const fixed max_time);
+                       double max_time);
 };
 
 #endif

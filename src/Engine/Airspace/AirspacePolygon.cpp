@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,7 +21,7 @@
  */
 
 #include "AirspacePolygon.hpp"
-#include "Geo/Flat/TaskProjection.hpp"
+#include "Geo/Flat/FlatProjection.hpp"
 #include "Geo/Flat/FlatRay.hpp"
 #include "AirspaceIntersectSort.hpp"
 #include "AirspaceIntersectionVector.hpp"
@@ -53,15 +53,33 @@ AirspacePolygon::AirspacePolygon(const std::vector<GeoPoint> &pts,
   }
 }
 
-const GeoPoint 
-AirspacePolygon::GetCenter() const
+const GeoPoint
+AirspacePolygon::GetReferenceLocation() const
 {
   assert(m_border.size() >= 3);
 
   return m_border[0].GetLocation();
 }
 
-bool 
+const GeoPoint
+AirspacePolygon::GetCenter() const
+{
+  assert(m_border.size() >= 3);
+
+  double lat(0), lon(0);
+
+  for (const auto &pt : m_border) {
+    lat += pt.GetLocation().latitude.Native();
+    lon += pt.GetLocation().longitude.Native();
+  }
+
+  lon = lon / m_border.size();
+  lat = lat / m_border.size();
+
+  return GeoPoint(Angle::Native(lon), Angle::Native(lat));
+}
+
+bool
 AirspacePolygon::Inside(const GeoPoint &loc) const
 {
   return m_border.IsInside(loc);
@@ -69,7 +87,7 @@ AirspacePolygon::Inside(const GeoPoint &loc) const
 
 AirspaceIntersectionVector
 AirspacePolygon::Intersects(const GeoPoint &start, const GeoPoint &end,
-                            const TaskProjection &projection) const
+                            const FlatProjection &projection) const
 {
   const FlatRay ray(projection.ProjectInteger(start),
                     projection.ProjectInteger(end));
@@ -79,19 +97,19 @@ AirspacePolygon::Intersects(const GeoPoint &start, const GeoPoint &end,
   for (auto it = m_border.begin(); it + 1 != m_border.end(); ++it) {
 
     const FlatRay r_seg(it->GetFlatLocation(), (it + 1)->GetFlatLocation());
-    fixed t = ray.DistinctIntersection(r_seg);
-    if (!negative(t))
+    auto t = ray.DistinctIntersection(r_seg);
+    if (t >= 0)
       sorter.add(t, projection.Unproject(ray.Parametric(t)));
   }
 
   return sorter.all();
 }
 
-GeoPoint 
+GeoPoint
 AirspacePolygon::ClosestPoint(const GeoPoint &loc,
-                              const TaskProjection &projection) const
+                              const FlatProjection &projection) const
 {
-  const FlatGeoPoint p = projection.ProjectInteger(loc);
-  const FlatGeoPoint pb = m_border.NearestPoint(p);
+  const auto p = projection.ProjectInteger(loc);
+  const auto pb = m_border.NearestPoint(p);
   return projection.Unproject(pb);
 }

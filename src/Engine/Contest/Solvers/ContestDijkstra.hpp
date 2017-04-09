@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,10 +24,8 @@ Copyright_License {
 #ifndef OLC_DIJKSTRA_HPP
 #define OLC_DIJKSTRA_HPP
 
-#include "Util/Serial.hpp"
 #include "AbstractContest.hpp"
 #include "PathSolvers/NavDijkstra.hpp"
-#include "Trace/Vector.hpp"
 #include "TraceManager.hpp"
 
 #include <assert.h>
@@ -157,7 +155,7 @@ protected:
    * @param force disable lazy updates, force the trace to be up to
    * date before returning
    */
-  virtual void UpdateTrace(bool force);
+  void UpdateTrace(bool force) override;
 
   /**
    * Perform actions required at start of new search
@@ -168,17 +166,17 @@ protected:
 
 public:
   /* public virtual methods from AbstractContest */
-  virtual SolverResult Solve(bool exhaustive) override;
-  virtual void Reset() override;
+  SolverResult Solve(bool exhaustive) override;
+  void Reset() override;
 
 protected:
   /* protected virtual methods from AbstractContest */
-  virtual ContestResult CalculateResult() const override;
-  virtual void CopySolution(ContestTraceVector &vec) const override;
+  ContestResult CalculateResult() const override;
+  void CopySolution(ContestTraceVector &vec) const override;
 
 protected:
   /* virtual methods from NavDijkstra */
-  virtual void AddEdges(ScanTaskPoint curNode) override;
+  void AddEdges(ScanTaskPoint curNode) override;
 };
 
 #endif

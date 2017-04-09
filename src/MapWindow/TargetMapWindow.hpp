@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -40,6 +40,8 @@ Copyright_License {
 struct WaypointLook;
 struct TaskLook;
 struct AircraftLook;
+struct TopographyLook;
+struct OverlayLook;
 class ContainerWindow;
 class TopographyStore;
 class TopographyRenderer;
@@ -51,6 +53,8 @@ class GlideComputer;
 class TargetMapWindow : public BufferWindow {
   const TaskLook &task_look;
   const AircraftLook &aircraft_look;
+  const TopographyLook &topography_look;
+  const OverlayLook &overlay_look;
 
 #ifndef ENABLE_OPENGL
   // graphics vars
@@ -63,7 +67,7 @@ class TargetMapWindow : public BufferWindow {
   LabelBlock label_block;
 
   BackgroundRenderer background;
-  TopographyRenderer *topography_renderer;
+  TopographyRenderer *topography_renderer = nullptr;
 
   AirspaceRenderer airspace_renderer;
 
@@ -71,8 +75,8 @@ class TargetMapWindow : public BufferWindow {
 
   TrailRenderer trail_renderer;
 
-  ProtectedTaskManager *task;
-  const GlideComputer *glide_computer;
+  ProtectedTaskManager *task = nullptr;
+  const GlideComputer *glide_computer = nullptr;
 
   unsigned target_index;
 
@@ -101,14 +105,16 @@ class TargetMapWindow : public BufferWindow {
     DRAG_OZ,
   } drag_mode;
 
-  RasterPoint drag_start, drag_last;
+  PixelPoint drag_start, drag_last;
 
 public:
   TargetMapWindow(const WaypointLook &waypoint_look,
                   const AirspaceLook &airspace_look,
                   const TrailLook &trail_look,
                   const TaskLook &task_look,
-                  const AircraftLook &aircraft_look);
+                  const AircraftLook &aircraft_look,
+                  const TopographyLook &topography_look,
+                  const OverlayLook &overlay_look);
   virtual ~TargetMapWindow();
 
   void Create(ContainerWindow &parent, PixelRect rc, WindowStyle style);
@@ -173,7 +179,7 @@ private:
    * @param drag_last location of target
    * @param canvas
    */
-  void TargetPaintDrag(Canvas &canvas, const RasterPoint last_drag);
+  void TargetPaintDrag(Canvas &canvas, PixelPoint last_drag);
 
   /**
    * If PanTarget, tests if target is clicked
@@ -184,7 +190,7 @@ private:
    * @return true if click is near target
    */
   gcc_pure
-  bool isClickOnTarget(const RasterPoint drag_last) const;
+  bool isClickOnTarget(PixelPoint drag_last) const;
 
   /**
    * If PanTarget, tests if drag destination
@@ -196,7 +202,7 @@ private:
    *
    * @return true if location is in OZ
    */
-  bool isInSector(const int x, const int y);
+  bool isInSector(PixelPoint p);
 
   /**
    * If PanTarget, updates task with new target
@@ -207,7 +213,7 @@ private:
    *
    * @return true if successful
    */
-  bool TargetDragged(const int x, const int y);
+  bool TargetDragged(PixelPoint p);
 
 protected:
   virtual void OnTaskModified();
@@ -223,10 +229,9 @@ protected:
 
   virtual void OnCancelMode() override;
 
-  virtual bool OnMouseDown(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseUp(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseMove(PixelScalar x, PixelScalar y,
-                           unsigned keys) override;
+  bool OnMouseDown(PixelPoint p) override;
+  bool OnMouseUp(PixelPoint p) override;
+  bool OnMouseMove(PixelPoint p, unsigned keys) override;
 };
 
 #endif

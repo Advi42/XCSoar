@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,22 +26,20 @@ Copyright_License {
 void
 AttitudeState::Complement(const AttitudeState &add)
 {
-  if (!bank_angle_available && add.bank_angle_available) {
+  if (bank_angle_available.Complement(add.bank_angle_available))
     bank_angle = add.bank_angle;
-    bank_angle_available = add.bank_angle_available;
-  }
 
-  if (!pitch_angle_available && add.pitch_angle_available) {
+  if (pitch_angle_available.Complement(add.pitch_angle_available))
     pitch_angle = add.pitch_angle;
-    pitch_angle_available = add.pitch_angle_available;
-  }
 
   if (heading_available.Complement(add.heading_available))
     heading = add.heading;
 }
 
 void
-AttitudeState::Expire(fixed now)
+AttitudeState::Expire(double now)
 {
-  heading_available.Expire(now, fixed(5));
+  bank_angle_available.Expire(now, 5);
+  pitch_angle_available.Expire(now, 5);
+  heading_available.Expire(now, 5);
 }

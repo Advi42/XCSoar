@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ Copyright_License {
 
 class Font;
 
-extern Font normal_font, small_font, bold_font, monospace_font;
+extern Font normal_font, bold_font;
 
 void
 InitialiseFonts();

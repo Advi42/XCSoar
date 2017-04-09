@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,10 +24,11 @@ Copyright_License {
 #ifndef XCSOAR_DEVICE_DESCRIPTOR_HPP
 #define XCSOAR_DEVICE_DESCRIPTOR_HPP
 
+#include "Features.hpp"
 #include "Config.hpp"
-#include "IO/DataHandler.hpp"
-#include "Port/LineSplitter.hpp"
+#include "Device/Util/LineSplitter.hpp"
 #include "Port/State.hpp"
+#include "Port/Listener.hpp"
 #include "Device/Parser.hpp"
 #include "RadioFrequency.hpp"
 #include "NMEA/ExternalSettings.hpp"
@@ -36,16 +37,21 @@ Copyright_License {
 #include "Event/Notify.hpp"
 #include "Thread/Mutex.hpp"
 #include "Thread/Debug.hpp"
+#include "Util/tstring.hpp"
+#include "Util/StaticFifoBuffer.hxx"
 
 #include <assert.h>
 #include <tchar.h>
 #include <stdio.h>
+
+namespace boost { namespace asio { class io_service; }}
 
 struct NMEAInfo;
 struct MoreData;
 struct DerivedInfo;
 struct Declaration;
 struct Waypoint;
+class Path;
 class Port;
 class DumpPort;
 class Device;
@@ -62,16 +68,23 @@ struct RecordedFlightInfo;
 class OperationEnvironment;
 class OpenDeviceJob;
 
-class DeviceDescriptor final : private Notify, private PortLineSplitter {
+class DeviceDescriptor final : Notify, PortListener, PortLineSplitter {
+  /**
+   * The io_service instance used by Port instances.
+   */
+  boost::asio::io_service &io_service;
+
   /**
    * This mutex protects modifications of the attribute "device".  If
    * you use the attribute "device" from a thread other than the main
    * thread, you must hold this mutex.
    */
-  Mutex mutex;
+  mutable Mutex mutex;
 
   /** the index of this device in the global list */
   const unsigned index;
+
+  PortListener *const port_listener;
 
   /**
    * This device's configuration.  It may differ from the instance in
@@ -87,14 +100,14 @@ class DeviceDescriptor final : private Notify, private PortLineSplitter {
   AsyncJobRunner async;
 
   /**
-   * The #Job that currently opens the device.  NULL if the device is
+   * The #Job that currently opens the device.  nullptr if the device is
    * not currently being opened.
    */
   OpenDeviceJob *open_job;
 
   /**
    * The #Port used by this device.  This is not applicable to some
-   * devices, and is NULL in that case.
+   * devices, and is nullptr in that case.
    */
   DumpPort *port;
 
@@ -126,22 +139,31 @@ class DeviceDescriptor final : private Notify, private PortLineSplitter {
    */
   Device *device;
 
-#ifdef ANDROID
+  /**
+   * The second device driver for a passed through device.
+   */
+  const DeviceRegister *second_driver;
+
+  /**
+   * An instance of the passed through driver, if available.
+   */
+  Device *second_device;
+
+
+#ifdef HAVE_INTERNAL_GPS
   /**
    * A pointer to the Java object managing all Android sensors (GPS,
    * baro sensor and others).
    */
   InternalSensors *internal_sensors;
+#endif
 
+#ifdef ANDROID
   BMP085Device *droidsoar_v2;
   I2CbaroDevice *i2cbaro[3]; // static, pitot, tek; in any order
   BaroDevice *baro[3]; // static, pitot, tek, dynamic; in any order
   NunchuckDevice *nunchuck;
   VoltageDevice *voltage;
-#endif
-
-#ifdef __APPLE__
-  InternalSensors *internal_sensors;
 #endif
 
   /**
@@ -176,6 +198,12 @@ class DeviceDescriptor final : private Notify, private PortLineSplitter {
   ExternalSettings settings_received;
 
   /**
+   * If this device has failed, then this attribute may contain an
+   * error message.
+   */
+  tstring error_message;
+
+  /**
    * Number of port failures since the device was last reset.
    *
    * @param see ResetFailureCounter()
@@ -204,7 +232,8 @@ class DeviceDescriptor final : private Notify, private PortLineSplitter {
   bool borrowed;
 
 public:
-  DeviceDescriptor(unsigned index);
+  DeviceDescriptor(boost::asio::io_service &_io_service,
+                   unsigned index, PortListener *port_listener);
   ~DeviceDescriptor() {
     assert(!IsOccupied());
   }
@@ -227,11 +256,16 @@ public:
   gcc_pure
   PortState GetState() const;
 
+  tstring GetErrorMessage() const {
+    const ScopeLock protect(mutex);
+    return error_message;
+  }
+
   /**
    * Was there a failure on the #Port object?
    */
   bool HasPortFailed() const {
-    return config.IsAvailable() && config.UsesPort() && port == NULL;
+    return config.IsAvailable() && config.UsesPort() && port == nullptr;
   }
 
   /**
@@ -260,7 +294,7 @@ public:
   /**
    * @see BaroDevice::Calibrate()
    */
-  void Calibrate(fixed value);
+  void Calibrate(double value);
 
   /**
    * Wrapper for Driver::HasTimeout().  This method can't be inline
@@ -284,7 +318,7 @@ public:
   }
 
   /**
-   * Returns the Device object; may be NULL if the device is not open
+   * Returns the Device object; may be nullptr if the device is not open
    * or if the Device class is not applicable for this object.
    *
    * Should only be used by driver-specific code (such as the CAI 302
@@ -407,7 +441,8 @@ public:
   bool CanBorrow() const {
     assert(InMainThread());
 
-    return device != NULL && GetState() == PortState::READY && !IsOccupied();
+    return device != nullptr && GetState() == PortState::READY &&
+      !IsOccupied();
   }
 
   /**
@@ -458,9 +493,9 @@ public:
   bool WriteNMEA(const TCHAR *line, OperationEnvironment &env);
 #endif
 
-  bool PutMacCready(fixed mac_cready, OperationEnvironment &env);
-  bool PutBugs(fixed bugs, OperationEnvironment &env);
-  bool PutBallast(fixed fraction, fixed overload,
+  bool PutMacCready(double mac_cready, OperationEnvironment &env);
+  bool PutBugs(double bugs, OperationEnvironment &env);
+  bool PutBallast(double fraction, double overload,
                   OperationEnvironment &env);
   bool PutVolume(unsigned volume, OperationEnvironment &env);
   bool PutActiveFrequency(RadioFrequency frequency,
@@ -486,7 +521,7 @@ public:
   /**
    * Caller is responsible for calling Borrow() and Return().
    */
-  bool DownloadFlight(const RecordedFlightInfo &flight, const TCHAR *path,
+  bool DownloadFlight(const RecordedFlightInfo &flight, Path path,
                       OperationEnvironment &env);
 
   void OnSysTicker();
@@ -506,13 +541,17 @@ private:
   bool ParseLine(const char *line);
 
   /* virtual methods from class Notify */
-  virtual void OnNotification() override;
+  void OnNotification() override;
+
+  /* virtual methods from class PortListener */
+  void PortStateChanged() override;
+  void PortError(const char *msg) override;
 
   /* virtual methods from DataHandler  */
-  virtual void DataReceived(const void *data, size_t length) override;
+  void DataReceived(const void *data, size_t length) override;
 
   /* virtual methods from PortLineHandler */
-  virtual void LineReceived(const char *line) override;
+  void LineReceived(const char *line) override;
 };
 
 #endif

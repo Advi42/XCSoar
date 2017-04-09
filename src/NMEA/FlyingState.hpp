@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,7 +24,6 @@ Copyright_License {
 #ifndef XCSOAR_FLYING_STATE_HPP
 #define XCSOAR_FLYING_STATE_HPP
 
-#include "Math/fixed.hpp"
 #include "Geo/GeoPoint.hpp"
 
 #include <type_traits>
@@ -42,13 +41,17 @@ struct FlyingState
   bool powered;
 
   /** Time of flight */
-  fixed flight_time;
-  /** Time of takeoff */
-  fixed takeoff_time;
+  double flight_time;
 
   /**
-   * The location of the aircraft when it took off.  This attribute is
-   * only valid if #flying is true.
+   * Time of takeoff.  Negative if aircraft was never observed flying.
+   */
+  double takeoff_time;
+
+  /**
+   * The location of the aircraft when it took off.  If this attribute
+   * is "invalid" according to GeoPoint::IsValid(), then the aircraft
+   * was never observed flying.
    */
   GeoPoint takeoff_location;
 
@@ -59,14 +62,14 @@ struct FlyingState
    * not too useful.  This is negative if the aircraft is assumed to
    * be still towing.
    */
-  fixed release_time;
+  double release_time;
 
   /**
    * The time stamp of the last detected 'power-on' - e.g. the last start
    * of the aircraft's engine.
    */
-  fixed power_on_time;
-  fixed power_off_time;
+  double power_on_time;
+  double power_off_time;
 
   /**
    * The location of the aircraft when it released from towing.
@@ -92,12 +95,12 @@ struct FlyingState
    * The distance from #release_location to #far_location.  This value
    * is negative if it was not calculated yet.
    */
-  fixed far_distance;
+  double far_distance;
 
   /**
    * Time stamp of the landing.  Invalid if negative.
    */
-  fixed landing_time;
+  double landing_time;
 
   GeoPoint landing_location;
 
@@ -105,7 +108,15 @@ struct FlyingState
   void Reset();
 
   bool IsTowing() const {
-    return flying && negative(release_time);
+    return flying && release_time < 0;
+  }
+
+  /**
+   * Are we currently gliding?  That is, flying without engine and
+   * without being towed.
+   */
+  bool IsGliding() const {
+    return flying && !powered && !IsTowing();
   }
 };
 

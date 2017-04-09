@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,16 +22,11 @@ Copyright_License {
 */
 
 #include "ProtectedTaskManager.hpp"
-#include "Serialiser.hpp"
-#include "XML/DataNodeXML.hpp"
-#include "Task/TaskFile.hpp"
-#include "LocalPath.hpp"
 #include "Task/RoutePlannerGlue.hpp"
+#include "Engine/Task/TaskManager.hpp"
 #include "Engine/Task/Ordered/OrderedTask.hpp"
 #include "Engine/Task/Points/TaskWaypoint.hpp"
 #include "Engine/Route/ReachResult.hpp"
-
-#include <windef.h> // for MAX_PATH
 
 ProtectedTaskManager::ProtectedTaskManager(TaskManager &_task_manager,
                                            const TaskBehaviour &tb)
@@ -42,7 +37,7 @@ ProtectedTaskManager::ProtectedTaskManager(TaskManager &_task_manager,
 
 ProtectedTaskManager::~ProtectedTaskManager() {
   UnprotectedLease lease(*this);
-  lease->SetIntersectionTest(NULL); // de-register
+  lease->SetIntersectionTest(nullptr); // de-register
 }
 
 void 
@@ -59,15 +54,15 @@ ProtectedTaskManager::GetOrderedTaskSettings() const
   return lease->GetOrderedTask().GetOrderedTaskSettings();
 }
 
-const Waypoint* 
+WaypointPtr
 ProtectedTaskManager::GetActiveWaypoint() const
 {
   Lease lease(*this);
   const TaskWaypoint *tp = lease->GetActiveTaskPoint();
   if (tp)
-    return &tp->GetWaypoint();
+    return tp->GetWaypointPtr();
 
-  return NULL;
+  return nullptr;
 }
 
 bool
@@ -115,10 +110,10 @@ ProtectedTaskManager::IncrementActiveTaskPointArm(int offset)
 }
 
 bool 
-ProtectedTaskManager::DoGoto(const Waypoint &wp)
+ProtectedTaskManager::DoGoto(WaypointPtr &&wp)
 {
   ExclusiveLease lease(*this);
-  return lease->DoGoto(wp);
+  return lease->DoGoto(std::move(wp));
 }
 
 OrderedTask*
@@ -133,51 +128,6 @@ ProtectedTaskManager::TaskCommit(const OrderedTask& that)
 {
   ExclusiveLease lease(*this);
   return lease->Commit(that);
-}
-
-bool 
-ProtectedTaskManager::TaskSave(const TCHAR* path, const OrderedTask& task)
-{
-  DataNodeXML root(DataNodeXML::CreateRoot(_T("Task")));
-  Serialiser tser(root);
-  tser.Serialise(task);
-
-  return root.Save(path);
-}
-
-bool 
-ProtectedTaskManager::TaskSave(const TCHAR* path)
-{
-  OrderedTask* task = TaskClone();
-  bool retval = TaskSave(path, *task);
-  delete task;
-  return retval;
-}
-
-const TCHAR ProtectedTaskManager::default_task_path[] = _T("Default.tsk");
-
-
-OrderedTask*
-ProtectedTaskManager::TaskCreateDefault(const Waypoints *waypoints,
-                                          TaskFactoryType factoryfail)
-{
-  TCHAR path[MAX_PATH];
-  LocalPath(path, default_task_path);
-  OrderedTask *task = TaskFile::GetTask(path, task_behaviour, waypoints, 0);
-  if (!task) {
-    task = new OrderedTask(task_behaviour);
-    assert(task);
-    task->SetFactory(factoryfail);
-  }
-  return task;
-}
-
-bool 
-ProtectedTaskManager::TaskSaveDefault()
-{
-  TCHAR path[MAX_PATH];
-  LocalPath(path, default_task_path);
-  return TaskSave(path);
 }
 
 void 
@@ -210,4 +160,11 @@ ReachIntersectionTest::Intersects(const AGeoPoint& destination)
   return result.terrain_valid == ReachResult::Validity::UNREACHABLE ||
     (result.terrain_valid == ReachResult::Validity::VALID &&
      result.terrain < destination.altitude);
+}
+
+void
+ProtectedTaskManager::ResetTask()
+{
+  ExclusiveLease lease(*this);
+  lease->ResetTask();
 }

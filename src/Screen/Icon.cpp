@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -37,34 +37,62 @@ Copyright_License {
 #endif
 #endif
 
+#include <algorithm>
+
+gcc_const
+static unsigned
+IconStretchFixed10(unsigned source_dpi)
+{
+  /* the icons were designed for PDAs at short eye distance; the 3/2
+     factor reverses the 2/3 factor applied by Layout::Initialize()
+     for small screens */
+  return Layout::VptScale(72 * 1024 * 3 / 2) / source_dpi;
+}
+
+#ifndef ENABLE_OPENGL
+
+gcc_const
+static unsigned
+IconStretchInteger(unsigned source_dpi)
+{
+  return std::max((IconStretchFixed10(source_dpi) + 512) >> 10,
+                  1u);
+}
+
+#endif
+
 void
 MaskedIcon::LoadResource(ResourceId id, ResourceId big_id, bool center)
 {
+#ifdef ENABLE_OPENGL
+  unsigned stretch = 1024;
+#endif
+
   if (Layout::ScaleEnabled()) {
-    if (big_id.IsDefined())
-      bitmap.Load(big_id);
-    else
-      bitmap.LoadStretch(id, Layout::FastScale(1));
+    unsigned source_dpi = 96;
+    if (big_id.IsDefined()) {
+      id = big_id;
+      source_dpi = 192;
+    }
+
+#ifdef ENABLE_OPENGL
+    stretch = IconStretchFixed10(source_dpi);
+    bitmap.Load(id);
+    bitmap.EnableInterpolation();
+#else
+    bitmap.LoadStretch(id, IconStretchInteger(source_dpi));
+#endif
   } else
     bitmap.Load(id);
 
-#ifdef ENABLE_OPENGL
-  /* postpone CalculateLayout() call, because the OpenGL surface may
-     be absent now */
-  size.cx = 0;
-  size.cy = center;
-#else
   assert(IsDefined());
 
-  CalculateLayout(center);
-#endif
-}
-
-void
-MaskedIcon::CalculateLayout(bool center)
-{
   size = bitmap.GetSize();
-#ifndef ENABLE_OPENGL
+#ifdef ENABLE_OPENGL
+  /* let the GPU stretch on-the-fly */
+  size.cx = size.cx * stretch >> 10;
+  size.cy = size.cy * stretch >> 10;
+#else
   /* left half is mask, right half is icon */
   size.cx /= 2;
 #endif
@@ -79,27 +107,25 @@ MaskedIcon::CalculateLayout(bool center)
 }
 
 void
-MaskedIcon::Draw(Canvas &canvas, PixelScalar x, PixelScalar y) const
+MaskedIcon::Draw(Canvas &canvas, PixelPoint p) const
 {
   assert(IsDefined());
 
-#ifdef ENABLE_OPENGL
-  if (size.cx == 0)
-    /* hack: do the postponed layout calcuation now */
-    const_cast<MaskedIcon *>(this)->CalculateLayout((bool)size.cy);
+  p -= origin;
 
+#ifdef ENABLE_OPENGL
 #ifdef USE_GLSL
   OpenGL::texture_shader->Use();
 #else
-  const GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 #endif
 
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
 
   GLTexture &texture = *bitmap.GetNative();
   texture.Bind();
-  texture.Draw(x - origin.x, y - origin.y);
+  texture.Draw(PixelRect(p, size), texture.GetRect());
 #else
 
 #ifdef USE_GDI
@@ -109,9 +135,57 @@ MaskedIcon::Draw(Canvas &canvas, PixelScalar x, PixelScalar y) const
   canvas.SetBackgroundColor(COLOR_WHITE);
 #endif
 
-  canvas.CopyOr(x - origin.x, y - origin.y, size.cx, size.cy,
+  canvas.CopyOr(p.x, p.y, size.cx, size.cy,
                  bitmap, 0, 0);
-  canvas.CopyAnd(x - origin.x, y - origin.y, size.cx, size.cy,
+  canvas.CopyAnd(p.x, p.y, size.cx, size.cy,
                   bitmap, size.cx, 0);
 #endif
+}
+
+void
+MaskedIcon::Draw(Canvas &canvas, const PixelRect &rc, bool inverse) const
+{
+  const PixelPoint position = rc.CenteredTopLeft(size);
+
+#ifdef ENABLE_OPENGL
+#ifdef USE_GLSL
+  if (inverse)
+    OpenGL::invert_shader->Use();
+  else
+    OpenGL::texture_shader->Use();
+#else
+  const GLEnable<GL_TEXTURE_2D> scope;
+
+  if (inverse) {
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
+
+    /* invert the texture color */
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_REPLACE);
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_SRC0_RGB, GL_TEXTURE);
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_ONE_MINUS_SRC_COLOR);
+
+    /* copy the texture alpha */
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE);
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_SRC0_ALPHA, GL_TEXTURE);
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA);
+  } else
+    /* simple copy */
+    OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+#endif
+
+  const ScopeAlphaBlend alpha_blend;
+
+  GLTexture &texture = *bitmap.GetNative();
+  texture.Bind();
+  texture.Draw(PixelRect(position, size), texture.GetRect());
+#else
+  if (inverse) // black background
+    canvas.CopyNotOr(position.x, position.y, size.cx, size.cy,
+                     bitmap, size.cx, 0);
+
+  else
+    canvas.CopyAnd(position.x, position.y, size.cx, size.cy,
+                   bitmap, size.cx, 0);
+#endif
+
 }

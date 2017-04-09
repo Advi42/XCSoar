@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -43,6 +43,7 @@ static const TCHAR *const airspace_class_names[] = {
   _T("Transponder Mandatory Zone"),
   _T("Class G"),
   _T("Military Aerodrome Traffic Zone"),
+  _T("Radio Mandatory Zone"),
 };
 
 static_assert(ARRAY_SIZE(airspace_class_names) ==
@@ -68,6 +69,7 @@ static const TCHAR *const airspace_class_short_names[] = {
   _T("TMZ"),
   _T("G"),
   _T("MATZ"),
+  _T("RMZ"),
 };
 
 static_assert(ARRAY_SIZE(airspace_class_short_names) ==

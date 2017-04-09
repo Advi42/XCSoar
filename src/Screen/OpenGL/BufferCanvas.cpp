@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -42,21 +42,13 @@ Copyright_License {
 
 #include <assert.h>
 
-BufferCanvas::BufferCanvas(const Canvas &canvas,
-                           UPixelScalar _width, UPixelScalar _height)
-  :Canvas({_width, _height}),
-   texture(new GLTexture(_width, _height))
-{
-  assert(canvas.IsDefined());
-}
-
 void
 BufferCanvas::Create(PixelSize new_size)
 {
   assert(!active);
 
   Destroy();
-  texture = new GLTexture(new_size.cx, new_size.cy);
+  texture = new GLTexture(new_size, true);
 
   if (OpenGL::frame_buffer_object && OpenGL::render_buffer_stencil) {
     frame_buffer = new GLFrameBuffer();
@@ -102,6 +94,13 @@ BufferCanvas::Resize(PixelSize new_size)
   texture->ResizeDiscard(new_size);
 
   if (stencil_buffer != nullptr) {
+    /* the stencil buffer must be detached before we resize it */
+    frame_buffer->Bind();
+    if (OpenGL::render_buffer_stencil == OpenGL::render_buffer_depth_stencil)
+      stencil_buffer->DetachFramebuffer(FBO::DEPTH_ATTACHMENT);
+    stencil_buffer->DetachFramebuffer(FBO::STENCIL_ATTACHMENT);
+    frame_buffer->Unbind();
+
     stencil_buffer->Bind();
     PixelSize size = texture->GetAllocatedSize();
     stencil_buffer->Storage(OpenGL::render_buffer_stencil, size.cx, size.cy);
@@ -170,7 +169,9 @@ BufferCanvas::Begin(Canvas &other)
     offset = other.offset;
   }
 
+#ifndef NDEBUG
   active = true;
+#endif
 }
 
 void
@@ -189,7 +190,7 @@ BufferCanvas::Commit(Canvas &other)
 
     /* restore the old viewport */
 
-    assert(OpenGL::translate == RasterPoint(0, 0));
+    assert(OpenGL::translate == PixelPoint(0, 0));
 
 #ifdef HAVE_GLES
     /* there's no glPopAttrib() on GL/ES; emulate it */
@@ -230,7 +231,9 @@ BufferCanvas::Commit(Canvas &other)
     CopyToTexture(*texture, GetRect());
   }
 
+#ifndef NDEBUG
   active = false;
+#endif
 }
 
 void
@@ -242,12 +245,12 @@ BufferCanvas::CopyTo(Canvas &other)
 #ifdef USE_GLSL
   OpenGL::texture_shader->Use();
 #else
-  GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 #endif
 
   texture->Bind();
-  texture->DrawFlipped(other.GetRect(), GetRect());
+  texture->Draw(other.GetRect(), GetRect());
 }
 
 void

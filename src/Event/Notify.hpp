@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,9 +24,7 @@ Copyright_License {
 #ifndef XCSOAR_EVENT_NOTIFY_HPP
 #define XCSOAR_EVENT_NOTIFY_HPP
 
-#include "Util/NonCopyable.hpp"
-
-#ifdef USE_GDI
+#ifdef USE_WINUSER
 #include "Screen/Window.hpp"
 #endif
 
@@ -37,11 +35,9 @@ Copyright_License {
  * thread.  To use it, subclass it and implement the abstract method
  * OnNotification().
  */
-class Notify : private
-#ifndef USE_GDI
-               NonCopyable
-#else
-               Window
+class Notify
+#ifdef USE_WINUSER
+  : Window
 #endif
 {
   std::atomic<bool> pending;
@@ -49,7 +45,9 @@ class Notify : private
 public:
   Notify();
 
-#ifndef USE_GDI
+  Notify(const Notify &) = delete;
+
+#ifndef USE_WINUSER
   ~Notify() {
     ClearNotification();
   }
@@ -69,7 +67,7 @@ public:
 private:
   void RunNotification();
 
-#ifndef USE_GDI
+#ifndef USE_WINUSER
   /**
    * Called by the event loop when the "notify" message is received.
    */
@@ -83,7 +81,8 @@ protected:
    */
   virtual void OnNotification() = 0;
 
-#ifdef USE_GDI
+#ifdef USE_WINUSER
+private:
   virtual bool OnUser(unsigned id) override;
 #endif
 };

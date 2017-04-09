@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,11 +28,12 @@
 #include "Look/AirspaceLook.hpp"
 #include "Airspace/AirspaceIntersectionVisitor.hpp"
 #include "Airspace/AbstractAirspace.hpp"
+#include "Airspace/AirspaceVisibility.hpp"
 #include "Renderer/AirspacePreviewRenderer.hpp"
 #include "Engine/Airspace/Airspaces.hpp"
 #include "Navigation/Aircraft.hpp"
-#include "Util/StringUtil.hpp"
 #include "Geo/GeoVector.hpp"
+#include "Util/StringCompare.hxx"
 
 /**
  * Local visitor class used for rendering airspaces in the CrossSectionRenderer
@@ -97,20 +98,21 @@ inline void
 AirspaceIntersectionVisitorSlice::RenderBox(const PixelRect rc,
                                             AirspaceClass type) const
 {
-  if (AirspacePreviewRenderer::PrepareFill(
-                                           canvas, type, airspace_look, settings)) {
+  if (AirspacePreviewRenderer::PrepareFill(canvas, type, airspace_look,
+                                           settings)) {
+    const auto &class_settings = settings.classes[type];
 
     // Draw thick brushed outlines
-    PixelScalar border_width = Layout::Scale(10);
-    if ((rc.right - rc.left) > border_width * 2 &&
-        (rc.bottom - rc.top) > border_width * 2 &&
-        settings.classes[type].fill_mode ==
-        AirspaceClassRendererSettings::FillMode::PADDING) {
+    const unsigned border_width = class_settings.fill_mode ==
+      AirspaceClassRendererSettings::FillMode::PADDING
+      ? Layout::ScalePenWidth(10)
+      : 0;
+
+    if (border_width > 0 &&
+        rc.GetWidth() > border_width * 2 &&
+        rc.GetHeight() > border_width * 2) {
       PixelRect border = rc;
-      border.left += border_width;
-      border.right -= border_width;
-      border.top += border_width;
-      border.bottom -= border_width;
+      border.Grow(-(int)border_width);
 
       // Left border
       canvas.Rectangle(rc.left, rc.top, border.left, rc.bottom);
@@ -132,8 +134,8 @@ AirspaceIntersectionVisitorSlice::RenderBox(const PixelRect rc,
   }
 
   // Use transparent brush and type-dependent pen for the outlines
-  if (AirspacePreviewRenderer::PrepareOutline(
-                                              canvas, type, airspace_look, settings))
+  if (AirspacePreviewRenderer::PrepareOutline(canvas, type, airspace_look,
+                                              settings))
     canvas.Rectangle(rc.left, rc.top, rc.right, rc.bottom);
 }
 
@@ -146,11 +148,14 @@ AirspaceIntersectionVisitorSlice::Render(const AbstractAirspace &as) const
   if (intersections.empty())
     return;
 
+  if (!IsAirspaceTypeVisible(as, settings))
+    return;
+
   PixelRect rcd;
   // Calculate top and bottom coordinate
   rcd.top = chart.ScreenY(as.GetTopAltitude(state));
   if (as.IsBaseTerrain())
-    rcd.bottom = chart.ScreenY(fixed(0));
+    rcd.bottom = chart.ScreenY(0);
   else
     rcd.bottom = chart.ScreenY(as.GetBaseAltitude(state));
 
@@ -213,5 +218,5 @@ AirspaceXSRenderer::Draw(Canvas &canvas, const ChartRenderer &chart,
       canvas, chart, settings, look, start, state);
 
   // Call visitor with intersecting airspaces
-  database.VisitIntersecting(start, vec.EndPoint(start), ivisitor);
+  database.VisitIntersecting(start, vec.EndPoint(start), true, ivisitor);
 }

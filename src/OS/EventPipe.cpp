@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Max Kellermann <max@duempel.org>
+ * Copyright (C) 2012 Max Kellermann <max.kellermann@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 
 #include "EventPipe.hpp"
 
+#include <assert.h>
 #include <stdint.h>
 
 bool
@@ -39,7 +40,7 @@ EventPipe::Create()
 #ifdef HAVE_EVENTFD
   return r.CreateEventFD();
 #else
-  if (!FileDescriptor::CreatePipe(r, w))
+  if (!UniqueFileDescriptor::CreatePipe(r, w))
     return false;
 
   r.SetNonBlocking();

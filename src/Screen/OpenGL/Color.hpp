@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ Copyright_License {
 #include "System.hpp"
 
 #ifdef USE_GLSL
-#include "Shaders.hpp"
+#include "Attribute.hpp"
 #endif
 
 #include <stdint.h>
@@ -74,7 +74,7 @@ class Color {
 
   struct Internal {};
 
-  constexpr Color(Internal dummy,
+  constexpr Color(Internal,
                   Component _r, Component _g, Component _b, Component _a)
     :r(_r), g(_g), b(_b), a(_a) {}
 
@@ -204,7 +204,7 @@ public:
   /**
    * Configures this color in the OpenGL context.
    */
-  void Set() const {
+  void Bind() const {
 #ifdef USE_GLSL
     VertexAttrib(OpenGL::Attribute::COLOR);
 #elif defined(HAVE_GLES)

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,24 +29,19 @@ Copyright_License {
 #include "Screen/Canvas.hpp"
 #include "Screen/Custom/TopCanvas.hpp"
 #include "Screen/FreeType/Init.hpp"
+#include "Screen/Init.hpp"
 #include "Screen/Layout.hpp"
 #include "Renderer/FlightListRenderer.hpp"
 #include "FlightInfo.hpp"
 #include "Logger/FlightParser.hpp"
 #include "IO/FileLineReader.hpp"
 #include "Resources.hpp"
+#include "Model.hpp"
 
 #include <algorithm>
-#include <stdio.h>
+#include <stdexcept>
 
-/**
- * Fake symbols to avoid linking the Screen/Layout library.
- */
-namespace Layout {
-  unsigned small_scale = 1500;
-  unsigned scale_1024 = 2048;
-  unsigned text_padding = 3;
-};
+#include <stdio.h>
 
 static void
 DrawBanner(Canvas &canvas, PixelRect &rc)
@@ -99,10 +94,8 @@ DrawBanner(Canvas &canvas, PixelRect &rc)
 
 static void
 DrawFlights(Canvas &canvas, const PixelRect &rc)
-{
-  FileLineReaderA file("/mnt/onboard/XCSoarData/flights.log");
-  if (file.error())
-    return;
+try {
+  FileLineReaderA file(Path("/mnt/onboard/XCSoarData/flights.log"));
 
   FlightListRenderer renderer(normal_font, bold_font);
 
@@ -112,6 +105,7 @@ DrawFlights(Canvas &canvas, const PixelRect &rc)
     renderer.AddFlight(flight);
 
   renderer.Draw(canvas, rc);
+} catch (const std::runtime_error &e) {
 }
 
 static void
@@ -130,7 +124,8 @@ int main(int argc, char **argv)
      this program */
   FreeType::mono = false;
 
-  FreeType::Initialise();
+  ScreenGlobalInit screen_init;
+  Layout::Initialize({600, 800});
 
   Font::Initialise();
   Display::Rotate(DisplayOrientation::PORTRAIT);
@@ -139,7 +134,7 @@ int main(int argc, char **argv)
 
   {
     TopCanvas screen;
-    screen.Create(PixelSize{100, 100}, true, false);
+    screen.Create(PixelSize(100, 100), true, false);
 
     Canvas canvas = screen.Lock();
     if (canvas.IsDefined()) {
@@ -165,6 +160,11 @@ int main(int argc, char **argv)
 
   /* now we can power off the Kobo; the picture remains on the
      screen */
-  execl("/sbin/poweroff", "poweroff", nullptr);
+  if (DetectKoboModel() == KoboModel::GLO_HD)
+    //The GloHD needs -f to not clear screen
+    execl("/sbin/poweroff", "poweroff", "-f", nullptr);
+  else
+    execl("/sbin/poweroff", "poweroff", nullptr);
+
   return 0;
 }

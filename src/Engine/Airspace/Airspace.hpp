@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@ class AtmosphericPressure;
 class AbstractAirspace;
 class AirspaceActivity;
 class AirspaceIntersectionVector;
-class TaskProjection;
+class FlatProjection;
 
 /**
  * Single object container for actual airspaces, to be stored in Airspaces object
@@ -56,38 +56,12 @@ public:
    * Constructor for actual airspaces.
    *
    * @param airspace actual concrete airspace to create an envelope for
-   * @param tp task projection to be used for flat-earth representation
+   * @param projection projection to be used for flat-earth representation
    *
    * @return airspace letter inside envelope suitable for insertion in a search structure
    */
   Airspace(AbstractAirspace &airspace,
-           const TaskProjection &tp);
-
-  /**
-   * Constructor for virtual airspaces for use in range-based
-   * intersection queries
-   *
-   * @param loc Location about which to create a virtual airspace envelope
-   * @param task_projection projection to be used for flat-earth representation
-   * @param range range in meters of virtual bounding box
-   *
-   * @return dummy airspace envelope
-   */
-  Airspace(const GeoPoint&loc, const TaskProjection &task_projection,
-           const fixed range=fixed(0));
-
-  /**
-   * Constructor for virtual airspaces for use in bounding-box
-   * specified intersection queries
-   *
-   * @param ll Lower left corner of bounding box
-   * @param ur Upper right corner of bounding box
-   * @param task_projection projection to be used for flat-earth representation
-   *
-   * @return dummy airspace envelope
-   */
-  Airspace(const GeoPoint &ll, const GeoPoint &ur,
-           const TaskProjection &task_projection);
+           const FlatProjection &projection);
 
   /**
    * Checks whether an aircraft is inside the airspace.
@@ -97,7 +71,7 @@ public:
    * @return true if aircraft is inside airspace
    */
   gcc_pure
-    bool IsInside(const AircraftState &loc) const;
+  bool IsInside(const AircraftState &loc) const;
 
   /**
    * Checks whether a point is inside the airspace lateral boundary.
@@ -107,18 +81,7 @@ public:
    * @return true if location is inside airspace
    */
   gcc_pure
-    bool IsInside(const GeoPoint &loc) const;
-
-  /**
-   * Checks whether a flat-earth ray intersects with the airspace
-   * bounding box.
-   *
-   * @param ray Flat-earth ray to check for intersection
-   *
-   * @return true if ray intersects or wholly enclosed by airspace
-   */
-  gcc_pure
-    bool Intersects(const FlatRay &ray) const;
+  bool IsInside(const GeoPoint &loc) const;
 
   /**
    * Checks whether a line intersects with the airspace, by directing
@@ -130,9 +93,9 @@ public:
    * @return true if the line intersects the airspace
    */
   gcc_pure
-    AirspaceIntersectionVector Intersects(const GeoPoint &g1,
-                                          const GeoPoint &end,
-                                          const TaskProjection &projection) const;
+  AirspaceIntersectionVector Intersects(const GeoPoint &g1,
+                                        const GeoPoint &end,
+                                        const FlatProjection &projection) const;
 
   /**
    * Destroys concrete airspace enclosed by this instance if present.
@@ -157,11 +120,12 @@ public:
    *
    * @param alt Height above MSL of terrain (m) at center
    */
-  void SetGroundLevel(const fixed alt) const;
+  void SetGroundLevel(double alt) const;
 
   /**
    * Is it necessary to call SetGroundLevel() for this AbstractAirspace?
    */
+  gcc_pure
   bool NeedGroundLevel() const;
 
   /**

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -38,12 +38,13 @@ Copyright_License {
 
 struct Look;
 struct GestureLook;
-class Logger;
+class TopographyThread;
+class TerrainThread;
 
 class OffsetHistory
 {
   unsigned int pos;
-  std::array<RasterPoint, 30> offsets;
+  std::array<PixelPoint, 30> offsets;
 
 public:
   OffsetHistory():pos(0) {
@@ -51,26 +52,19 @@ public:
   }
 
   void Reset();
-  void Add(RasterPoint p);
-  RasterPoint GetAverage() const;
+  void Add(PixelPoint p);
+  PixelPoint GetAverage() const;
 };
 
 
 class GlueMapWindow : public MapWindow {
-  const Logger *logger;
+  enum class Command {
+    INVALIDATE,
+  };
 
-  unsigned idle_robin;
+  TopographyThread *topography_thread = nullptr;
 
-#ifdef ENABLE_OPENGL
-  /**
-   * A timer that triggers a redraw periodically until all data files
-   * (terrain, topography, ...) have been loaded / updated.  This is
-   * necessary if there is no valid GPS input, and no other reason to
-   * redraw is present.  This timer will cease automatically once all
-   * data is loaded, i.e. Idle() returned false.
-   */
-  WindowTimer data_timer;
-#endif
+  TerrainThread *terrain_thread = nullptr;
 
   PeriodClock mouse_down_clock;
 
@@ -88,27 +82,27 @@ class GlueMapWindow : public MapWindow {
     DRAG_PAN,
     DRAG_GESTURE,
     DRAG_SIMULATOR,
-  } drag_mode;
+  } drag_mode = DRAG_NONE;
 
   GeoPoint drag_start_geopoint;
-  RasterPoint drag_start;
+  PixelPoint drag_start;
   TrackingGestureManager gestures;
-  bool ignore_single_click;
+  bool ignore_single_click = false;
 
 #ifdef ENABLE_OPENGL
-  KineticManager kinetic_x, kinetic_y;
+  KineticManager kinetic_x = 700, kinetic_y = 700;
   WindowTimer kinetic_timer;
 #endif
 
   /** flag to indicate if the MapItemList should be shown on mouse up */
-  bool arm_mapitem_list;
+  bool arm_mapitem_list = false;
 
   /**
    * The projection which was active when dragging started.
    */
   Projection drag_projection;
 
-  DisplayMode last_display_mode;
+  DisplayMode last_display_mode = DisplayMode::NONE;
 
   OffsetHistory offset_history;
 
@@ -147,9 +141,8 @@ public:
   GlueMapWindow(const Look &look);
   virtual ~GlueMapWindow();
 
-  void SetLogger(Logger *_logger) {
-    logger = _logger;
-  }
+  void SetTopography(TopographyStore *_topography);
+  void SetTerrain(RasterTerrain *_terrain);
 
   void SetMapSettings(const MapSettings &new_value);
   void SetComputerSettings(const ComputerSettings &new_value);
@@ -178,10 +171,6 @@ public:
 
   void QuickRedraw();
 
-  bool Idle();
-
-  void Create(ContainerWindow &parent, const PixelRect &rc);
-
   void SetPan(bool enable);
   void TogglePan();
   void PanTo(const GeoPoint &location);
@@ -194,17 +183,18 @@ protected:
   virtual void Render(Canvas &canvas, const PixelRect &rc) override;
   virtual void DrawThermalEstimate(Canvas &canvas) const override;
   virtual void RenderTrail(Canvas &canvas,
-                           const RasterPoint aircraft_pos) override;
+                           const PixelPoint aircraft_pos) override;
   virtual void RenderTrackBearing(Canvas &canvas,
-                                  const RasterPoint aircraft_pos) override;
+                                  const PixelPoint aircraft_pos) override;
 
   /* virtual methods from class Window */
+  virtual void OnCreate() override;
   virtual void OnDestroy() override;
-  virtual bool OnMouseDouble(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseMove(PixelScalar x, PixelScalar y, unsigned keys) override;
-  virtual bool OnMouseDown(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseUp(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseWheel(PixelScalar x, PixelScalar y, int delta) override;
+  bool OnMouseDouble(PixelPoint p) override;
+  bool OnMouseMove(PixelPoint p, unsigned keys) override;
+  bool OnMouseDown(PixelPoint p) override;
+  bool OnMouseUp(PixelPoint p) override;
+  bool OnMouseWheel(PixelPoint p, int delta) override;
 
 #ifdef HAVE_MULTI_TOUCH
   virtual bool OnMultiTouchDown() override;
@@ -215,6 +205,7 @@ protected:
   virtual void OnPaint(Canvas &canvas) override;
   virtual void OnPaintBuffer(Canvas& canvas) override;
   virtual bool OnTimer(WindowTimer &timer) override;
+  bool OnUser(unsigned id) override;
 
   /**
    * This event handler gets called when a gesture has
@@ -243,8 +234,22 @@ private:
 
   void SaveDisplayModeScales();
 
+  /**
+   * The attribute visible_projection has been edited.
+   */
+  void OnProjectionModified() {}
+
+  /**
+   * Invoke WindowProjection::UpdateScreenBounds() and trigger updates
+   * of data file caches for the new bounds (e.g. topography).
+   */
+  void UpdateScreenBounds();
+
   void UpdateScreenAngle();
   void UpdateProjection();
+
+public:
+  void SetLocation(const GeoPoint location);
 
   /**
    * Update the visible_projection location, but only if the new
@@ -254,7 +259,6 @@ private:
    */
   void SetLocationLazy(const GeoPoint location);
 
-public:
   void UpdateMapScale();
 
   /**
@@ -264,7 +268,7 @@ public:
   void RestoreMapScale();
 
   void UpdateDisplayMode();
-  void SetMapScale(fixed scale);
+  void SetMapScale(double scale);
 
 protected:
   DisplayMode GetDisplayMode() const {

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,12 +27,13 @@ Copyright_License {
 #include "Widget/RowFormWidget.hpp"
 #include "Form/DataField/Enum.hpp"
 #include "Form/DataField/GeoPoint.hpp"
+#include "Form/DataField/Listener.hpp"
 #include "UIGlobals.hpp"
 #include "Waypoint/Waypoint.hpp"
-#include "Interface.hpp"
+#include "FormatSettings.hpp"
 #include "Language/Language.hpp"
 
-class WaypointEditWidget final : public RowFormWidget {
+class WaypointEditWidget final : public RowFormWidget, DataFieldListener {
   enum Rows {
     NAME,
     COMMENT,
@@ -43,9 +44,11 @@ class WaypointEditWidget final : public RowFormWidget {
 
   Waypoint value;
 
+  bool modified;
+
 public:
   WaypointEditWidget(const DialogLook &look, Waypoint _value)
-    :RowFormWidget(look), value(_value) {}
+    :RowFormWidget(look), value(_value), modified(false) {}
 
   const Waypoint &GetValue() const {
     return value;
@@ -53,8 +56,13 @@ public:
 
 private:
   /* virtual methods from Widget */
-  virtual void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
-  virtual bool Save(bool &changed) override;
+  void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
+  bool Save(bool &changed) override;
+
+  /* virtual methods from DataFieldListener */
+  void OnModified(gcc_unused DataField &df) override {
+    modified = true;
+  }
 };
 
 static constexpr StaticEnumChoice waypoint_types[] = {
@@ -65,25 +73,28 @@ static constexpr StaticEnumChoice waypoint_types[] = {
 };
 
 void
-WaypointEditWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
+WaypointEditWidget::Prepare(gcc_unused ContainerWindow &parent,
+                            gcc_unused const PixelRect &rc)
 {
-  AddText(_("Name"), nullptr, value.name.c_str());
-  AddText(_("Comment"), nullptr, value.comment.c_str());
-  Add(_("Location"), nullptr, new GeoPointDataField(value.location,
-                                                    // TODO: use configured CoordinateFormat
-                                                    CoordinateFormat::DDMMSS));
+  AddText(_("Name"), nullptr, value.name.c_str(), this);
+  AddText(_("Comment"), nullptr, value.comment.c_str(), this);
+  Add(_("Location"), nullptr,
+      new GeoPointDataField(value.location,
+                            UIGlobals::GetFormatSettings().coordinate_format,
+                            this));
   AddFloat(_("Altitude"), nullptr,
            _T("%.0f %s"), _T("%.0f"),
-           fixed(0), fixed(30000), fixed(5), false,
+           0, 30000, 5, false,
            UnitGroup::ALTITUDE, value.elevation);
   AddEnum(_("Type"), nullptr, waypoint_types,
-          value.IsAirport() ? 1u : (value.IsLandable() ? 2u : 0u ));
+          value.IsAirport() ? 1u : (value.IsLandable() ? 2u : 0u),
+          this);
 }
 
 bool
 WaypointEditWidget::Save(bool &_changed)
 {
-  bool changed = false;
+  bool changed = modified;
   value.name = GetValueString(NAME);
   value.comment = GetValueString(COMMENT);
   value.location = ((GeoPointDataField &)GetDataField(LOCATION)).GetValue();
@@ -112,7 +123,7 @@ WaypointEditWidget::Save(bool &_changed)
 bool
 dlgWaypointEditShowModal(Waypoint &way_point)
 {
-  if (CommonInterface::GetUISettings().coordinate_format ==
+  if (UIGlobals::GetFormatSettings().coordinate_format ==
       CoordinateFormat::UTM) {
     ShowMessageBox(
         _("Sorry, the waypoint editor is not yet available for the UTM coordinate format."),
@@ -129,7 +140,7 @@ dlgWaypointEditShowModal(Waypoint &way_point)
   const int result = dialog.ShowModal();
   dialog.StealWidget();
 
-  if (result != mrOK)
+  if (result != mrOK || !dialog.GetChanged())
     return false;
 
   way_point = widget.GetValue();

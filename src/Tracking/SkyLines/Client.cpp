@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,59 +22,51 @@ Copyright_License {
 */
 
 #include "Client.hpp"
+#include "Handler.hpp"
+#include "Assemble.hpp"
 #include "Protocol.hpp"
+#include "Import.hpp"
 #include "OS/ByteOrder.hpp"
-#include "NMEA/Info.hpp"
+#include "Net/StaticSocketAddress.hxx"
+#include "Math/Angle.hpp"
+#include "Geo/GeoPoint.hpp"
 #include "Util/CRC.hpp"
-
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
-#include "IO/Async/IOThread.hpp"
+#include "Util/ConstBuffer.hxx"
+#include "IO/Async/AsioUtil.hpp"
 #include "Util/UTF8.hpp"
 #include "Util/ConvertString.hpp"
 
 #include <string>
 
 void
-SkyLinesTracking::Client::SetIOThread(IOThread *_io_thread)
+SkyLinesTracking::Client::Open(boost::asio::ip::udp::resolver::query query)
 {
-  if (socket.IsDefined() && io_thread != nullptr && handler != nullptr)
-    io_thread->LockRemove(socket.Get());
-
-  io_thread = _io_thread;
-
-  if (socket.IsDefined() && io_thread != nullptr && handler != nullptr)
-    io_thread->LockAdd(socket.Get(), IOThread::READ, *this);
-}
-
-void
-SkyLinesTracking::Client::SetHandler(Handler *_handler)
-{
-  if (socket.IsDefined() && io_thread != nullptr && handler != nullptr)
-    io_thread->LockRemove(socket.Get());
-
-  handler = _handler;
-
-  if (socket.IsDefined() && io_thread != nullptr && handler != nullptr)
-    io_thread->LockAdd(socket.Get(), IOThread::READ, *this);
-}
-
-#endif
-
-bool
-SkyLinesTracking::Client::Open(const SocketAddress &_address)
-{
-  assert(_address.IsDefined());
-
   Close();
 
-  address = _address;
-  if (!socket.CreateUDP())
+  const ScopeLock protect(mutex);
+  resolving = true;
+  resolver.async_resolve(query,
+                         std::bind(&Client::OnResolved, this,
+                                   std::placeholders::_1,
+                                   std::placeholders::_2));
+}
+
+bool
+SkyLinesTracking::Client::Open(boost::asio::ip::udp::endpoint _endpoint)
+{
+  Close();
+
+  endpoint = _endpoint;
+
+  boost::system::error_code ec;
+  socket.open(endpoint.protocol(), ec);
+  if (ec)
     return false;
 
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
-  if (io_thread != nullptr && handler != nullptr)
-    io_thread->LockAdd(socket.Get(), IOThread::READ, *this);
-#endif
+  if (handler != nullptr) {
+    AsyncReceive();
+    handler->OnSkyLinesReady();
+  }
 
   return true;
 }
@@ -82,180 +74,102 @@ SkyLinesTracking::Client::Open(const SocketAddress &_address)
 void
 SkyLinesTracking::Client::Close()
 {
-  if (!socket.IsDefined())
-    return;
+  const ScopeLock protect(mutex);
 
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
-  if (io_thread != nullptr && handler != nullptr)
-    io_thread->LockRemove(socket.Get());
-#endif
+  if (socket.is_open()) {
+    CancelWait(socket.get_io_service(), socket);
+    socket.close();
+  }
 
-  socket.Close();
+  if (resolving) {
+    CancelWait(socket.get_io_service(), resolver);
+    resolving = false;
+  }
 }
 
-bool
+void
 SkyLinesTracking::Client::SendFix(const NMEAInfo &basic)
 {
-  assert(basic.time_available);
+  assert(key != 0);
 
-  if (key == 0 || !socket.IsDefined())
-    return false;
-
-  FixPacket packet;
-  packet.header.magic = ToBE32(MAGIC);
-  packet.header.crc = 0;
-  packet.header.type = ToBE16(Type::FIX);
-  packet.header.key = ToBE64(key);
-  packet.flags = 0;
-
-  packet.time = ToBE32(uint32_t(basic.time * 1000));
-  packet.reserved = 0;
-
-  if (basic.location_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_LOCATION);
-    ::GeoPoint location = basic.location;
-    location.Normalize();
-    packet.location.latitude = ToBE32(int(location.latitude.Degrees() * 1000000));
-    packet.location.longitude = ToBE32(int(location.longitude.Degrees() * 1000000));
-  } else
-    packet.location.latitude = packet.location.longitude = 0;
-
-  if (basic.track_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_TRACK);
-    packet.track = ToBE16(uint16_t(basic.track.AsBearing().Degrees()));
-  } else
-    packet.track = 0;
-
-  if (basic.ground_speed_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_GROUND_SPEED);
-    packet.ground_speed = ToBE16(uint16_t(basic.ground_speed * 16));
-  } else
-    packet.ground_speed = 0;
-
-  if (basic.airspeed_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_AIRSPEED);
-    packet.airspeed = ToBE16(uint16_t(basic.indicated_airspeed * 16));
-  } else
-    packet.airspeed = 0;
-
-  if (basic.baro_altitude_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_ALTITUDE);
-    packet.altitude = ToBE16(int(basic.baro_altitude));
-  } else if (basic.gps_altitude_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_ALTITUDE);
-    packet.altitude = ToBE16(int(basic.gps_altitude));
-  } else
-    packet.altitude = 0;
-
-  if (basic.total_energy_vario_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_VARIO);
-    packet.vario = ToBE16(int(basic.total_energy_vario * 256));
-  } else if (basic.netto_vario_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_VARIO);
-    packet.vario = ToBE16(int(basic.netto_vario * 256));
-  } else if (basic.noncomp_vario_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_VARIO);
-    packet.vario = ToBE16(int(basic.noncomp_vario * 256));
-  } else
-    packet.vario = 0;
-
-  if (basic.engine_noise_level_available) {
-    packet.flags |= ToBE32(FixPacket::FLAG_ENL);
-    packet.engine_noise_level = ToBE16(basic.engine_noise_level);
-  } else
-    packet.engine_noise_level = 0;
-
-  packet.header.crc = ToBE16(UpdateCRC16CCITT(&packet, sizeof(packet), 0));
-
-  return socket.Write(&packet, sizeof(packet), address) == sizeof(packet);
+  SendPacket(ToFix(key, basic));
 }
 
-bool
+void
 SkyLinesTracking::Client::SendPing(uint16_t id)
 {
-  if (key == 0 || !socket.IsDefined())
-    return false;
+  assert(key != 0);
 
-  PingPacket packet;
-  packet.header.magic = ToBE32(MAGIC);
-  packet.header.crc = 0;
-  packet.header.type = ToBE16(Type::PING);
-  packet.header.key = ToBE64(key);
-  packet.id = ToBE16(id);
-  packet.reserved = 0;
-  packet.reserved2 = 0;
-
-  packet.header.crc = ToBE16(UpdateCRC16CCITT(&packet, sizeof(packet), 0));
-
-  return socket.Write(&packet, sizeof(packet), address) == sizeof(packet);
+  SendPacket(MakePing(key, id));
 }
 
-bool
-SkyLinesTracking::Client::SendTrafficRequest(bool followees, bool club)
+void
+SkyLinesTracking::Client::SendThermal(uint32_t time,
+                                      ::GeoPoint bottom_location,
+                                      int bottom_altitude,
+                                      ::GeoPoint top_location,
+                                      int top_altitude,
+                                      double lift)
 {
-  if (key == 0 || !socket.IsDefined())
-    return false;
+  assert(key != 0);
 
-  TrafficRequestPacket packet;
-  packet.header.magic = ToBE32(MAGIC);
-  packet.header.crc = 0;
-  packet.header.type = ToBE16(Type::TRAFFIC_REQUEST);
-  packet.header.key = ToBE64(key);
-  packet.flags = ToBE32((followees ? packet.FLAG_FOLLOWEES : 0)
-                        | (club ? packet.FLAG_CLUB : 0));
-  packet.reserved = 0;
-
-  packet.header.crc = ToBE16(UpdateCRC16CCITT(&packet, sizeof(packet), 0));
-
-  return socket.Write(&packet, sizeof(packet), address) == sizeof(packet);
+  SendPacket(MakeThermalSubmit(key, time,
+                               bottom_location, bottom_altitude,
+                               top_location, top_altitude,
+                               lift));
 }
 
-bool
+void
+SkyLinesTracking::Client::SendThermalRequest()
+{
+  assert(key != 0);
+
+  SendPacket(MakeThermalRequest(key));
+}
+
+void
+SkyLinesTracking::Client::SendTrafficRequest(bool followees, bool club,
+                                             bool near_)
+{
+  assert(key != 0);
+
+  SendPacket(MakeTrafficRequest(key, followees, club, near_));
+}
+
+void
 SkyLinesTracking::Client::SendUserNameRequest(uint32_t user_id)
 {
-  if (key == 0 || !socket.IsDefined())
-    return false;
+  assert(key != 0);
 
-  UserNameRequestPacket packet;
-  packet.header.magic = ToBE32(MAGIC);
-  packet.header.crc = 0;
-  packet.header.type = ToBE16(Type::USER_NAME_REQUEST);
-  packet.header.key = ToBE64(key);
-  packet.user_id = ToBE32(user_id);
-  packet.reserved = 0;
-
-  packet.header.crc = ToBE16(UpdateCRC16CCITT(&packet, sizeof(packet), 0));
-
-  return socket.Write(&packet, sizeof(packet), address) == sizeof(packet);
+  SendPacket(MakeUserNameRequest(key, user_id));
 }
-
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
 
 inline void
 SkyLinesTracking::Client::OnTrafficReceived(const TrafficResponsePacket &packet,
                                             size_t length)
 {
-  const unsigned n = packet.traffic_count;
-  const TrafficResponsePacket::Traffic *traffic =
-    (const TrafficResponsePacket::Traffic *)(&packet + 1);
-
-  if (length != sizeof(packet) + n * sizeof(*traffic))
+  if (length < sizeof(packet))
     return;
 
-  const TrafficResponsePacket::Traffic *end = traffic + n;
-  for (; traffic != end; ++traffic)
-    handler->OnTraffic(FromBE32(traffic->pilot_id),
-                       FromBE32(traffic->time),
-                       ::GeoPoint(Angle::Degrees(fixed(FromBE32(traffic->location.longitude)) / 1000000),
-                                  Angle::Degrees(fixed(FromBE32(traffic->location.latitude)) / 1000000)),
-                       FromBE16(traffic->altitude));
+  const unsigned n = packet.traffic_count;
+  const ConstBuffer<TrafficResponsePacket::Traffic>
+    list((const TrafficResponsePacket::Traffic *)(&packet + 1), n);
+
+  if (length != sizeof(packet) + n * sizeof(list.front()))
+    return;
+
+  for (const auto &traffic : list)
+    handler->OnTraffic(FromBE32(traffic.pilot_id),
+                       FromBE32(traffic.time),
+                       ImportGeoPoint(traffic.location),
+                       (int16_t)FromBE16(traffic.altitude));
 }
 
 inline void
 SkyLinesTracking::Client::OnUserNameReceived(const UserNameResponsePacket &packet,
                                              size_t length)
 {
-  if (length != sizeof(packet) + packet.name_length)
+  if (length < sizeof(packet) || length != sizeof(packet) + packet.name_length)
     return;
 
   /* the name follows the UserNameResponsePacket object */
@@ -266,6 +180,44 @@ SkyLinesTracking::Client::OnUserNameReceived(const UserNameResponsePacket &packe
 
   UTF8ToWideConverter tname(name.c_str());
   handler->OnUserName(FromBE32(packet.user_id), tname);
+}
+
+inline void
+SkyLinesTracking::Client::OnWaveReceived(const WaveResponsePacket &packet,
+                                         size_t length)
+{
+  if (length < sizeof(packet))
+    return;
+
+  const unsigned n = packet.wave_count;
+  ConstBuffer<Wave> waves((const Wave *)(&packet + 1), n);
+  if (length != sizeof(packet) + waves.size * sizeof(waves.front()))
+    return;
+
+  for (const auto &wave : waves)
+    handler->OnWave(FromBE32(wave.time),
+                    ImportGeoPoint(wave.a), ImportGeoPoint(wave.b));
+}
+
+inline void
+SkyLinesTracking::Client::OnThermalReceived(const ThermalResponsePacket &packet,
+                                            size_t length)
+{
+  if (length < sizeof(packet))
+    return;
+
+  const unsigned n = packet.thermal_count;
+  ConstBuffer<Thermal> thermals((const Thermal *)(&packet + 1), n);
+  if (length != sizeof(packet) + thermals.size * sizeof(thermals.front()))
+    return;
+
+  for (const auto &thermal : thermals)
+    handler->OnThermal(FromBE32(thermal.time),
+                       AGeoPoint(ImportGeoPoint(thermal.bottom_location),
+                                 FromBE16(thermal.bottom_altitude)),
+                       AGeoPoint(ImportGeoPoint(thermal.top_location),
+                                 FromBE16(thermal.top_altitude)),
+                       FromBE16(thermal.lift) / 256.);
 }
 
 inline void
@@ -286,16 +238,23 @@ SkyLinesTracking::Client::OnDatagramReceived(void *data, size_t length)
   const TrafficResponsePacket &traffic = *(const TrafficResponsePacket *)data;
   const UserNameResponsePacket &user_name =
     *(const UserNameResponsePacket *)data;
+  const auto &wave = *(const WaveResponsePacket *)data;
+  const auto &thermal = *(const ThermalResponsePacket *)data;
 
   switch ((Type)FromBE16(header.type)) {
   case PING:
   case FIX:
   case TRAFFIC_REQUEST:
   case USER_NAME_REQUEST:
+  case WAVE_SUBMIT:
+  case WAVE_REQUEST:
+  case THERMAL_SUBMIT:
+  case THERMAL_REQUEST:
     break;
 
   case ACK:
-    handler->OnAck(FromBE16(ack.id));
+    if (length >= sizeof(ack))
+      handler->OnAck(FromBE16(ack.id));
     break;
 
   case TRAFFIC_RESPONSE:
@@ -305,24 +264,69 @@ SkyLinesTracking::Client::OnDatagramReceived(void *data, size_t length)
   case USER_NAME_RESPONSE:
     OnUserNameReceived(user_name, length);
     break;
+
+  case WAVE_RESPONSE:
+    OnWaveReceived(wave, length);
+    break;
+
+  case THERMAL_RESPONSE:
+    OnThermalReceived(thermal, length);
+    break;
   }
 }
 
-bool
-SkyLinesTracking::Client::OnFileEvent(int fd, unsigned mask)
+void
+SkyLinesTracking::Client::OnReceive(const boost::system::error_code &ec,
+                                    size_t size)
 {
-  if (!socket.IsDefined())
-    return false;
+  if (ec) {
+    if (ec == boost::asio::error::operation_aborted)
+      return;
 
-  uint8_t buffer[4096];
-  ssize_t nbytes;
-  SocketAddress source_address;
+    {
+      const ScopeLock protect(mutex);
+      socket.close();
+    }
 
-  while ((nbytes = socket.Read(buffer, sizeof(buffer), source_address)) > 0)
-    if (source_address == address)
-      OnDatagramReceived(buffer, nbytes);
+    if (handler != nullptr)
+      handler->OnSkyLinesError(boost::system::system_error(ec));
+    return;
+  }
 
-  return true;
+  if (sender_endpoint == endpoint)
+    OnDatagramReceived(buffer, size);
+
+  AsyncReceive();
 }
 
-#endif
+void
+SkyLinesTracking::Client::AsyncReceive()
+{
+  const ScopeLock protect(mutex);
+  socket.async_receive_from(boost::asio::buffer(buffer, sizeof(buffer)),
+                            sender_endpoint,
+                            std::bind(&Client::OnReceive, this,
+                                      std::placeholders::_1,
+                                      std::placeholders::_2));
+}
+
+void
+SkyLinesTracking::Client::OnResolved(const boost::system::error_code &ec,
+                                     boost::asio::ip::udp::resolver::iterator i)
+{
+  if (ec == boost::asio::error::operation_aborted)
+    return;
+
+  {
+    const ScopeLock protect(mutex);
+    resolving = false;
+  }
+
+  if (ec) {
+    if (handler != nullptr)
+      handler->OnSkyLinesError(boost::system::system_error(ec));
+    return;
+  }
+
+  Open(*i);
+}

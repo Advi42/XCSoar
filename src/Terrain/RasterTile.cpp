@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,6 +22,8 @@ Copyright_License {
 */
 
 #include "Terrain/RasterTile.hpp"
+
+#include "jasper/jas_seq.h"
 
 #include <algorithm>
 
@@ -51,16 +53,27 @@ RasterTile::LoadCache(FILE *file)
 }
 
 void
-RasterTile::Enable()
+RasterTile::CopyFrom(const struct jas_matrix &m)
 {
-  if (!width || !height) {
-    Disable();
-  } else {
-    buffer.Resize(width, height);
+  if (!IsDefined())
+    return;
+
+  buffer.Resize(width, height);
+
+  auto *gcc_restrict dest = buffer.GetData();
+  assert(dest != nullptr);
+
+  const unsigned width = m.numcols_, height = m.numrows_;
+
+  for (unsigned y = 0; y != height; ++y) {
+    const jas_seqent_t *gcc_restrict src = m.rows_[y];
+
+    for (unsigned i = 0; i < width; ++i)
+      *dest++ = TerrainHeight(src[i]);
   }
 }
 
-short
+TerrainHeight
 RasterTile::GetHeight(unsigned x, unsigned y) const
 {
   assert(IsEnabled());
@@ -74,41 +87,46 @@ RasterTile::GetHeight(unsigned x, unsigned y) const
   return buffer.Get(x, y);
 }
 
-short
+TerrainHeight
 RasterTile::GetInterpolatedHeight(unsigned lx, unsigned ly,
                                   unsigned ix, unsigned iy) const
 {
+  assert(IsEnabled());
+
   // we want to exit out of this function as soon as possible
   // if we have the wrong tile
 
-  if (IsDisabled())
-    return RasterBuffer::TERRAIN_INVALID;
-
   // check x in range
   if ((lx -= xstart) >= width)
-    return RasterBuffer::TERRAIN_INVALID;
+    return TerrainHeight::Invalid();
 
   // check y in range
   if ((ly -= ystart) >= height)
-    return RasterBuffer::TERRAIN_INVALID;
+    return TerrainHeight::Invalid();
 
   return buffer.GetInterpolated(lx, ly, ix, iy);
 }
 
-bool
+inline unsigned
+RasterTile::CalcDistanceTo(int x, int y) const
+{
+  const unsigned int dx1 = abs(x - (int)xstart);
+  const unsigned int dx2 = abs((int)xend - x);
+  const unsigned int dy1 = abs(y - (int)ystart);
+  const unsigned int dy2 = abs((int)yend - y);
+
+  return std::max(std::min(dx1, dx2), std::min(dy1, dy2));
+}
+
+inline bool
 RasterTile::CheckTileVisibility(int view_x, int view_y, unsigned view_radius)
 {
-  if (!width || !height) {
-    Disable();
+  if (!IsDefined()) {
+    assert(!IsEnabled());
     return false;
   }
 
-  const unsigned int dx1 = abs(view_x - (int)xstart);
-  const unsigned int dx2 = abs((int)xend - view_x);
-  const unsigned int dy1 = abs(view_y - (int)ystart);
-  const unsigned int dy2 = abs((int)yend - view_y);
-
-  distance = std::max(std::min(dx1, dx2), std::min(dy1, dy2));
+  distance = CalcDistanceTo(view_x, view_y);
   return distance <= view_radius || IsEnabled();
 }
 

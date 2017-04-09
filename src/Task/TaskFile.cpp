@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,9 +25,6 @@ Copyright_License {
 #include "Task/TaskFileXCSoar.hpp"
 #include "Task/TaskFileSeeYou.hpp"
 #include "Task/TaskFileIGC.hpp"
-#include "OS/FileUtil.hpp"
-#include "OS/PathName.hpp"
-#include "Util/StringUtil.hpp"
 
 #include <stdlib.h>
 #include <memory>
@@ -38,35 +35,31 @@ TaskFile::~TaskFile()
     free ((TCHAR*)namesuffixes[i]);
 }
 TaskFile*
-TaskFile::Create(const TCHAR* path)
+TaskFile::Create(Path path)
 {
-  // If filename is empty or file does not exist
-  if (StringIsEmpty(path) || !File::Exists(path))
-    return NULL;
-
   // If XCSoar task file -> return new TaskFileXCSoar
-  if (MatchesExtension(path, _T(".tsk")))
+  if (path.MatchesExtension(_T(".tsk")))
     return new TaskFileXCSoar(path);
 
   // If SeeYou task file -> return new TaskFileSeeYou
-  if (MatchesExtension(path, _T(".cup")))
+  if (path.MatchesExtension(_T(".cup")))
     return new TaskFileSeeYou(path);
 
   // If IGC file -> return new TaskFileIGC
-  if (MatchesExtension(path, _T(".igc")))
+  if (path.MatchesExtension(_T(".igc")))
     return new TaskFileIGC(path);
 
   // unknown task file type
-  return NULL;
+  return nullptr;
 }
 
 OrderedTask *
-TaskFile::GetTask(const TCHAR *path, const TaskBehaviour &task_behaviour,
+TaskFile::GetTask(Path path, const TaskBehaviour &task_behaviour,
                   const Waypoints *waypoints, unsigned index)
 {
   std::unique_ptr<TaskFile> file(TaskFile::Create(path));
   if (!file)
-    return NULL;
+    return nullptr;
 
   return file->GetTask(task_behaviour, waypoints, index);
 }
@@ -75,7 +68,7 @@ const TCHAR *
 TaskFile::GetName(unsigned index) const
 {
   if (index >= namesuffixes.size())
-    return NULL;
+    return nullptr;
 
   return namesuffixes[index];
 }

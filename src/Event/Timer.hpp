@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,10 +24,13 @@ Copyright_License {
 #ifndef XCSOAR_EVENT_TIMER_HPP
 #define XCSOAR_EVENT_TIMER_HPP
 
+#ifdef USE_POLL_EVENT
+#include <boost/asio/steady_timer.hpp>
+#endif
+
 #include <atomic>
 
 #include <assert.h>
-#include <stddef.h>
 
 /**
  * A timer that, once initialized, periodically calls OnTimer() after
@@ -45,11 +48,19 @@ class Timer {
   std::atomic<bool> enabled, queued;
   unsigned ms;
 
+#ifdef USE_POLL_EVENT
+  boost::asio::steady_timer timer;
+#endif
+
 public:
   /**
    * Construct a Timer object that is not set initially.
    */
+#ifdef USE_POLL_EVENT
+  Timer();
+#else
   Timer():enabled(false), queued(false) {}
+#endif
 
   Timer(const Timer &other) = delete;
 
@@ -59,7 +70,11 @@ protected:
    * shall only be used by derived classes to pass inactive instances
    * around.
    */
-  Timer(Timer &&other) {
+  Timer(Timer &&other)
+#ifdef USE_POLL_EVENT
+    :timer(other.timer.get_io_service())
+#endif
+  {
     assert(!IsActive());
     assert(!other.IsActive());
   }
@@ -69,7 +84,7 @@ public:
     /* timer must be cleaned up explicitly */
     assert(!IsActive());
 
-#if defined(USE_CONSOLE) || defined(NON_INTERACTIVE)
+#ifdef USE_POLL_EVENT
     assert(!queued.load(std::memory_order_relaxed));
     assert(!enabled.load(std::memory_order_relaxed));
 #endif
@@ -108,8 +123,18 @@ protected:
    */
   virtual void OnTimer() = 0;
 
+#ifdef USE_POLL_EVENT
+private:
+  void AsyncWait() {
+    timer.async_wait(std::bind(&Timer::Invoke, this, std::placeholders::_1));
+  }
+
+  void Invoke(const boost::system::error_code &ec);
+
+#else
 public:
   void Invoke();
+#endif
 };
 
 #endif

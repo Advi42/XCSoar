@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,63 +22,57 @@
 
 #include "RouteLink.hpp"
 #include "RoutePolar.hpp"
-#include "GlideSolvers/GlideState.hpp"
-#include "GlideSolvers/GlideResult.hpp"
-#include "GlideSolvers/MacCready.hpp"
-#include "Geo/SpeedVector.hpp"
-#include "Geo/Flat/TaskProjection.hpp"
-#include "Math/FastMath.h"
+#include "Geo/Flat/FlatProjection.hpp"
 
 #include <assert.h>
-#include <limits.h>
 #include <stdlib.h>
 
 gcc_const
 static unsigned
 AngleToIndex(Angle a)
 {
-  fixed i = ROUTEPOLAR_POINTS * (fixed(1.25)
-                                 - a.AsBearing().Radians() / fixed_two_pi);
-  assert(positive(i));
+  auto i = ROUTEPOLAR_POINTS * (1.25
+                                - a.AsBearing() / Angle::FullCircle());
+  assert(i > 0);
   return uround(i) % ROUTEPOLAR_POINTS;
 }
 
 gcc_const
 static unsigned
-XYToIndex(fixed x, fixed y)
+XYToIndex(double x, double y)
 {
   return AngleToIndex(Angle::FromXY(y, x));
 }
 
-RouteLink::RouteLink (const RouteLinkBase& _link, const TaskProjection &proj)
+RouteLink::RouteLink (const RouteLinkBase& _link, const FlatProjection &proj)
   :RouteLinkBase(_link)
 {
   CalcSpeedups(proj);
 }
 
 RouteLink::RouteLink (const RoutePoint& _destination, const RoutePoint& _origin,
-                      const TaskProjection &proj)
+                      const FlatProjection &proj)
   :RouteLinkBase(_destination, _origin)
 {
   CalcSpeedups(proj);
 }
 
 void
-RouteLink::CalcSpeedups(const TaskProjection& proj)
+RouteLink::CalcSpeedups(const FlatProjection &proj)
 {
-  const fixed scale = proj.GetApproximateScale();
-  const fixed dx = fixed(first.longitude - second.longitude);
-  const fixed dy = fixed(first.latitude - second.latitude);
-  if (!positive(fabs(dx)) && !positive(fabs(dy))) {
-    d = fixed(0);
-    inv_d = fixed(0);
+  const auto scale = proj.GetApproximateScale();
+  const auto dx = first.x - second.x;
+  const auto dy = first.y - second.y;
+  if (dx == 0 && dy == 0) {
+    d = 0;
+    inv_d = 0;
     polar_index = 0;
     return;
   }
-  mag_rmag(dx, dy, d, inv_d);
+
   polar_index = XYToIndex(dx, dy);
-  d *= scale;
-  inv_d /= scale;
+  d = hypot(dx, dy) * scale;
+  inv_d = 1. / d;
 }
 
 RouteLink
@@ -94,6 +88,6 @@ RouteLink::Flat() const
 bool
 RouteLinkBase::IsShort() const
 {
-  return abs(first.longitude - second.longitude) < ROUTE_MIN_STEP &&
-         abs(first.latitude - second.latitude) < ROUTE_MIN_STEP;
+  return abs(first.x - second.x) < ROUTE_MIN_STEP &&
+         abs(first.y - second.y) < ROUTE_MIN_STEP;
 }

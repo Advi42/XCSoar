@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,6 +26,8 @@ Copyright_License {
 #include "Util/Macros.hpp"
 #include "Screen/Layout.hpp"
 
+#include <stdio.h>
+
 PixelSize
 OffsetButtonsWidget::GetMinimumSize() const
 {
@@ -43,7 +45,7 @@ OffsetButtonsWidget::GetMaximumSize() const
 static void
 LayoutOffsetButtons(const PixelRect &total_rc, PixelRect buttons[4])
 {
-  const unsigned total_width = total_rc.right - total_rc.left;
+  const unsigned total_width = total_rc.GetWidth();
   PixelRect rc = { 0, total_rc.top, total_rc.left, total_rc.bottom };
 
   for (unsigned i = 0; i < 4; ++i) {
@@ -60,15 +62,15 @@ OffsetButtonsWidget::Prepare(ContainerWindow &parent,
   PixelRect rc[ARRAY_SIZE(buttons)];
   LayoutOffsetButtons(total_rc, rc);
 
-  ButtonWindowStyle style;
+  WindowStyle style;
   style.TabStop();
   style.Hide();
 
   for (unsigned i = 0; i < ARRAY_SIZE(buttons); ++i) {
     TCHAR caption[16];
     _stprintf(caption, format, (double)offsets[i]);
-    buttons[i] = new WndButton(parent, look, caption, rc[i], style,
-                               *this, i);
+    buttons[i] = new Button(parent, look, caption, rc[i], style,
+                            *this, i);
   }
 }
 

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ Copyright_License {
 #include "Computer/Settings.hpp"
 
 DebugReplay::DebugReplay()
-  :glide_polar(fixed(1))
+  :glide_polar(1)
 {
   raw_basic.Reset();
   computed_basic.Reset();
@@ -38,6 +38,8 @@ DebugReplay::DebugReplay()
   flying_computer.Reset();
 
   wrap_clock.Reset();
+
+  qnh = AtmosphericPressure::Standard();
 }
 
 DebugReplay::~DebugReplay()
@@ -53,7 +55,7 @@ DebugReplay::Compute()
 
   FeaturesSettings features;
   features.nav_baro_altitude_enabled = true;
-  computer.Fill(computed_basic, AtmosphericPressure::Standard(), features);
+  computer.Fill(computed_basic, qnh, features);
 
   computer.Compute(computed_basic, last_basic, last_basic, calculated);
   flying_computer.Compute(glide_polar.GetVTakeoff(),
@@ -67,10 +69,10 @@ CreateDebugReplay(Args &args)
   DebugReplay *replay;
 
   if (!args.IsEmpty() && MatchesExtension(args.PeekNext(), ".igc")) {
-    replay = DebugReplayIGC::Create(args.ExpectNext());
+    replay = DebugReplayIGC::Create(args.ExpectNextPath());
   } else {
     const auto driver_name = args.ExpectNextT();
-    const auto input_file = args.ExpectNext();
+    const auto input_file = args.ExpectNextPath();
     replay = DebugReplayNMEA::Create(input_file, driver_name);
   }
 

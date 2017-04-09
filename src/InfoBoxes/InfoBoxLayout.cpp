@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@ static constexpr unsigned char geometry_counts[] = {
   8, 8, 8, 8, 8, 8,
   9, 5, 12, 24, 12,
   12, 9, 8, 4, 4, 4, 4,
-  8,
+  8, 16, 15,
 };
 
 namespace InfoBoxLayout
@@ -212,6 +212,22 @@ InfoBoxLayout::Calculate(PixelRect rc, InfoBoxSettings::Geometry geometry)
                                rc.top + 3 * layout.control_size.cy, rc.bottom);
     break;
 
+  case InfoBoxSettings::Geometry::LEFT_12_RIGHT_3_VARIO:
+    layout.vario.left = rc.right - layout.control_size.cx;
+    layout.vario.right = rc.right;
+    layout.vario.top = 0;
+    layout.vario.bottom = layout.vario.top + layout.control_size.cy * 3;
+
+    rc.right = MakeRightColumn(layout, layout.positions + 6, 3, rc.right,
+                               rc.top + 3 * layout.control_size.cy, rc.bottom);
+
+    layout.control_size.cx = layout.control_size.cy * 1.1;
+    rc.left = MakeLeftColumn(layout, layout.positions, 6,
+                             rc.left, rc.top, rc.bottom);
+    rc.left = MakeLeftColumn(layout, layout.positions + 9, 6,
+                             rc.left, rc.top, rc.bottom);
+    break;
+
   case InfoBoxSettings::Geometry::BOTTOM_RIGHT_12:
   case InfoBoxSettings::Geometry::OBSOLETE_BOTTOM_RIGHT_12:
     if (layout.landscape) {
@@ -240,6 +256,13 @@ InfoBoxLayout::Calculate(PixelRect rc, InfoBoxSettings::Geometry geometry)
       rc.top = MakeTopRow(layout, layout.positions + 6, 6,
                           rc.left, rc.right, rc.top);
     }
+    break;
+
+  case InfoBoxSettings::Geometry::RIGHT_16:
+    rc.right = MakeRightColumn(layout, layout.positions + 8, 8,
+                               rc.right, rc.top, rc.bottom);
+    rc.right = MakeRightColumn(layout, layout.positions, 8,
+                               rc.right, rc.top, rc.bottom);
     break;
 
   case InfoBoxSettings::Geometry::RIGHT_24:
@@ -315,10 +338,12 @@ InfoBoxLayout::ValidateGeometry(InfoBoxSettings::Geometry geometry,
     case InfoBoxSettings::Geometry::RIGHT_9_VARIO:
     case InfoBoxSettings::Geometry::RIGHT_5:
     case InfoBoxSettings::Geometry::BOTTOM_RIGHT_12:
+    case InfoBoxSettings::Geometry::RIGHT_16:
     case InfoBoxSettings::Geometry::RIGHT_24:
     case InfoBoxSettings::Geometry::OBSOLETE_BOTTOM_RIGHT_12:
     case InfoBoxSettings::Geometry::TOP_LEFT_12:
     case InfoBoxSettings::Geometry::LEFT_6_RIGHT_3_VARIO:
+    case InfoBoxSettings::Geometry::LEFT_12_RIGHT_3_VARIO:
       break;
 
     case InfoBoxSettings::Geometry::BOTTOM_8_VARIO:
@@ -355,6 +380,9 @@ InfoBoxLayout::ValidateGeometry(InfoBoxSettings::Geometry geometry,
     case InfoBoxSettings::Geometry::BOTTOM_RIGHT_12:
       break;
 
+    case InfoBoxSettings::Geometry::RIGHT_16:
+      return InfoBoxSettings::Geometry::BOTTOM_RIGHT_12;
+
     case InfoBoxSettings::Geometry::RIGHT_24:
       return InfoBoxSettings::Geometry::BOTTOM_RIGHT_12;
 
@@ -363,6 +391,9 @@ InfoBoxLayout::ValidateGeometry(InfoBoxSettings::Geometry geometry,
       break;
 
     case InfoBoxSettings::Geometry::LEFT_6_RIGHT_3_VARIO:
+      return InfoBoxSettings::Geometry::BOTTOM_8_VARIO;
+
+    case InfoBoxSettings::Geometry::LEFT_12_RIGHT_3_VARIO:
       return InfoBoxSettings::Geometry::BOTTOM_8_VARIO;
 
     case InfoBoxSettings::Geometry::BOTTOM_8_VARIO:
@@ -454,10 +485,22 @@ InfoBoxLayout::CalcInfoBoxSizes(Layout &layout, PixelSize screen_size,
     layout.control_size.cx = layout.control_size.cy * 1.44;
     break;
 
+  case InfoBoxSettings::Geometry::LEFT_12_RIGHT_3_VARIO:
+    // calculate control dimensions
+    layout.control_size.cy = screen_size.cy / 6;
+    // preserve relative shape
+    layout.control_size.cx = layout.control_size.cy * 1.35;
+    break;
+
   case InfoBoxSettings::Geometry::RIGHT_5:
     // calculate control dimensions
     layout.control_size.cx = screen_size.cx / 5;
     layout.control_size.cy = screen_size.cy / 5;
+    break;
+
+  case InfoBoxSettings::Geometry::RIGHT_16:
+    layout.control_size.cy = screen_size.cy / 8;
+    layout.control_size.cx = layout.control_size.cy * 1.44;
     break;
 
   case InfoBoxSettings::Geometry::RIGHT_24:
@@ -580,6 +623,15 @@ InfoBoxLayout::GetBorder(InfoBoxSettings::Geometry geometry, bool landscape,
       border |= BORDERLEFT;
     break;
 
+  case InfoBoxSettings::Geometry::LEFT_12_RIGHT_3_VARIO:
+    if (!((i == 0) ||(i == 9)))
+      border |= BORDERTOP;
+    if (i < 12)
+      border |= BORDERRIGHT;
+    else
+      border |= BORDERLEFT;
+    break;
+
   case InfoBoxSettings::Geometry::RIGHT_9_VARIO:
     if (i != 0)
       border |= BORDERTOP;
@@ -591,6 +643,12 @@ InfoBoxLayout::GetBorder(InfoBoxSettings::Geometry geometry, bool landscape,
     border |= BORDERLEFT;
     if (i != 0)
       border |= BORDERTOP;
+    break;
+
+  case InfoBoxSettings::Geometry::RIGHT_16:
+    if (i % 8 != 0)
+      border |= BORDERTOP;
+    border |= BORDERLEFT;
     break;
 
   case InfoBoxSettings::Geometry::RIGHT_24:

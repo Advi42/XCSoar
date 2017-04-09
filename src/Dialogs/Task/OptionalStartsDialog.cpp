@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,16 +24,14 @@ Copyright_License {
 #include "TaskDialogs.hpp"
 #include "Dialogs/WidgetDialog.hpp"
 #include "Dialogs/Waypoint/WaypointDialogs.hpp"
-#include "Form/Form.hpp"
 #include "Form/List.hpp"
 #include "Form/Button.hpp"
 #include "Widget/ListWidget.hpp"
 #include "Screen/Canvas.hpp"
-#include "Screen/Layout.hpp"
+#include "Renderer/TextRowRenderer.hpp"
 #include "Task/Factory/AbstractTaskFactory.hpp"
 #include "Engine/Task/Ordered/OrderedTask.hpp"
 #include "Engine/Task/Ordered/Points/OrderedTaskPoint.hpp"
-#include "Interface.hpp"
 #include "Language/Language.hpp"
 #include "UIGlobals.hpp"
 #include "Look/DialogLook.hpp"
@@ -47,15 +45,15 @@ class OptionStartsWidget : public ListWidget, private ActionListener {
   };
 
   OrderedTask &task;
-  const bool RealStartExists;
-  bool modified;
+  bool modified = false;
 
-  WndButton *relocate_button, *remove_button;
+  Button *relocate_button, *remove_button;
+
+  TextRowRenderer row_renderer;
 
 public:
-  OptionStartsWidget(OrderedTask &_task)
-    :task(_task), RealStartExists(task.TaskSize() > 0),
-     modified(false) {}
+  explicit OptionStartsWidget(OrderedTask &_task)
+    :task(_task) {}
 
   void CreateButtons(WidgetDialog &dialog) {
     relocate_button = dialog.AddButton(_("Relocate"), *this, RELOCATE);
@@ -74,15 +72,14 @@ public:
 
 protected:
   void UpdateList() {
-    GetList().SetLength(task.GetOptionalStartPointCount()
-                        + (RealStartExists ? 2 : 1));
+    GetList().SetLength(task.GetOptionalStartPointCount() + 2);
     GetList().Invalidate();
   }
 
   void UpdateButtons() {
     const unsigned current = GetCursorIndex();
-    relocate_button->SetEnabled(!RealStartExists || current >= 1);
-    remove_button->SetEnabled((!RealStartExists || current >= 1) &&
+    relocate_button->SetEnabled(current >= 1);
+    remove_button->SetEnabled(current >= 1 &&
                               current < GetList().GetLength() - 1);
   }
 
@@ -96,73 +93,62 @@ protected:
 
 public:
   /* virtual methods from class Widget */
-  virtual void Prepare(ContainerWindow &parent,
-                       const PixelRect &rc) override;
-  virtual void Unprepare() override {
+  void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
+  void Unprepare() override {
     DeleteWindow();
   }
 
   /* virtual methods from class List::Handler */
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned idx) override;
+  void OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned idx) override;
 
-  virtual void OnCursorMoved(unsigned index) override {
+  void OnCursorMoved(unsigned index) override {
     UpdateButtons();
   }
 
-  virtual bool CanActivateItem(unsigned index) const override {
-    if (index == 0 && RealStartExists)
-      return false;
-
-    return true;
+  bool CanActivateItem(unsigned index) const override {
+    return index > 0;
   }
 
-  virtual void OnActivateItem(unsigned index) override {
+  void OnActivateItem(unsigned index) override {
     Relocate(index);
   }
 
   /* virtual methods from class ActionListener */
-  virtual void OnAction(int id) override;
+  void OnAction(int id) override;
 };
 
 void
 OptionStartsWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
   CreateList(parent, UIGlobals::GetDialogLook(),
-             rc, Layout::GetMaximumControlHeight());
+             rc, row_renderer.CalculateLayout(*UIGlobals::GetDialogLook().list.font));
 
   RefreshView();
 }
 
 void
-OptionStartsWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
+OptionStartsWidget::OnPaintItem(Canvas &canvas, PixelRect rc,
                                 unsigned DrawListIndex)
 {
-  assert(DrawListIndex <= task.GetOptionalStartPointCount()
-         + (RealStartExists ? 2 : 1));
-  assert(GetList().GetLength() ==
-         task.GetOptionalStartPointCount() + (RealStartExists ? 2 : 1));
+  assert(DrawListIndex < task.GetOptionalStartPointCount() + 2);
+  assert(GetList().GetLength() == task.GetOptionalStartPointCount() + 2);
 
-  const unsigned padding = Layout::GetTextPadding();
-  const unsigned index_optional_starts = DrawListIndex - (RealStartExists ? 1 : 0);
+  const unsigned index_optional_starts = DrawListIndex - 1;
 
   if (DrawListIndex == GetList().GetLength() - 1) {
-    canvas.DrawText(rc.left + padding, rc.top + padding,
-                    _("(Add Alternate Start)"));
+    row_renderer.DrawTextRow(canvas, rc,
+                             _("(Add Alternate Start)"));
   } else {
-    RasterPoint pt(rc.left + padding, rc.top + padding);
-
     const OrderedTaskPoint *tp;
-    if (DrawListIndex == 0 && RealStartExists) {
+    if (DrawListIndex == 0) {
       tp = &task.GetPoint(0);
-      canvas.DrawText(pt.x, pt.y, _T("*"));
-      pt.x += canvas.CalcTextWidth(_T("*"));
+      rc.left = row_renderer.DrawColumn(canvas, rc, _T("*"));
     } else
       tp = &task.GetOptionalStartPoint(index_optional_starts);
 
     assert(tp != nullptr);
 
-    canvas.DrawText(pt.x, pt.y, tp->GetWaypoint().name.c_str());
+    row_renderer.DrawTextRow(canvas, rc, tp->GetWaypoint().name.c_str());
   }
 }
 
@@ -180,54 +166,39 @@ OptionStartsWidget::OnAction(int id)
   }
 }
 
-void
+inline void
 OptionStartsWidget::Relocate(unsigned ItemIndex)
 {
-  assert(ItemIndex <= task.GetOptionalStartPointCount()
-      +  (RealStartExists ? 2 : 1));
-  assert(GetList().GetLength() ==
-         task.GetOptionalStartPointCount() + (RealStartExists ? 2 : 1));
+  assert(ItemIndex <= task.GetOptionalStartPointCount() + 2);
+  assert(GetList().GetLength() == task.GetOptionalStartPointCount() + 2);
+  assert(task.TaskSize() > 0);
 
-  if (ItemIndex == 0 && RealStartExists)
+  if (ItemIndex == 0)
     return;
 
-  const unsigned index_optional_starts = ItemIndex - (RealStartExists ? 1 : 0);
+  const unsigned index_optional_starts = ItemIndex - 1;
+
+  const GeoPoint &location = task.GetPoint(0).GetLocation();
+  auto way_point = ShowWaypointListDialog(location);
+  if (!way_point)
+    return;
 
   if (index_optional_starts < task.GetOptionalStartPointCount()) {
-    const GeoPoint &location = task.TaskSize() > 0
-      ? task.GetPoint(0).GetLocation()
-      : CommonInterface::Basic().location;
-    const Waypoint* way_point =
-      ShowWaypointListDialog(location);
-    if (!way_point)
-      return;
-
-    if (task.RelocateOptionalStart(index_optional_starts, *way_point))
+    if (task.RelocateOptionalStart(index_optional_starts, std::move(way_point)))
       modified = true;
-
-  } else if (!task.IsFull()) {
-
-    const GeoPoint &location = task.TaskSize() > 0
-      ? task.GetPoint(0).GetLocation()
-      : CommonInterface::Basic().location;
-    const Waypoint* way_point =
-      ShowWaypointListDialog(location);
-    if (!way_point)
-      return;
-
+  } else {
     AbstractTaskFactory &factory = task.GetFactory();
-    if (factory.AppendOptionalStart(*way_point)) {
+    if (factory.AppendOptionalStart(std::move(way_point))) {
       modified = true;
     }
   }
   RefreshView();
 }
 
-void
+inline void
 OptionStartsWidget::Remove(unsigned i)
 {
-  if (RealStartExists)
-    --i;
+  --i;
 
   if (task.RemoveOptionalStart(i)) {
     RefreshView();
@@ -236,13 +207,16 @@ OptionStartsWidget::Remove(unsigned i)
 }
 
 bool
-dlgTaskOptionalStarts(OrderedTask** task)
+dlgTaskOptionalStarts(OrderedTask &task)
 {
-  OptionStartsWidget widget(**task);
+  assert(task.TaskSize() > 0);
+
+  OptionStartsWidget widget(task);
   WidgetDialog dialog(UIGlobals::GetDialogLook());
   dialog.CreateFull(UIGlobals::GetMainWindow(),
                     _("Alternate Start Points"), &widget);
   widget.CreateButtons(dialog);
+  dialog.EnableCursorSelection();
 
   dialog.ShowModal();
   dialog.StealWidget();

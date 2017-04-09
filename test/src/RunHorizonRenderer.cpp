@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,13 +21,14 @@ Copyright_License {
 }
 */
 
-#define ENABLE_SCREEN
+#define ENABLE_MAIN_WINDOW
+#define ENABLE_CLOSE_BUTTON
 
 #include "Main.hpp"
-#include "Screen/SingleWindow.hpp"
-#include "Screen/ButtonWindow.hpp"
-#include "Screen/Timer.hpp"
+#include "Event/LambdaTimer.hpp"
 #include "Screen/Canvas.hpp"
+#include "Form/Button.hpp"
+#include "Form/ActionListener.hpp"
 #include "Look/HorizonLook.hpp"
 #include "Renderer/HorizonRenderer.hpp"
 #include "NMEA/Attitude.hpp"
@@ -53,88 +54,31 @@ protected:
   }
 };
 
-class TestWindow : public SingleWindow
-{
-  ButtonWindow close_button;
-  HorizonWindow horizon;
-
-  WindowTimer timer;
-
-  enum {
-    ID_START = 100,
-    ID_CLOSE
-  };
-
-public:
-  TestWindow(const HorizonLook &look):horizon(look), timer(*this)
-  {
-    timer.Schedule(250);
-  }
-
-  ~TestWindow() {
-    timer.Cancel();
-  }
-
-  void Create(PixelSize size) {
-    TopWindowStyle style;
-    style.Resizable();
-
-    SingleWindow::Create(_T("RunHorizonRenderer"), size, style);
-
-    const PixelRect rc = GetClientRect();
-
-    WindowStyle with_border;
-    with_border.Border();
-
-    horizon.Create(*this, rc, with_border);
-
-    PixelRect button_rc = rc;
-    button_rc.top = button_rc.bottom - 30;
-    close_button.Create(*this, _T("Close"), ID_CLOSE, button_rc);
-  }
-
-protected:
-  virtual bool OnCommand(unsigned id, unsigned code) override {
-    switch (id) {
-    case ID_CLOSE:
-      Close();
-      return true;
-    }
-
-    return SingleWindow::OnCommand(id, code);
-  }
-
-  virtual bool OnTimer(WindowTimer &_timer) override {
-    if (_timer == timer) {
-      AttitudeState attitude;
-      attitude.bank_angle_available = true;
-      attitude.pitch_angle_available = true;
-      attitude.bank_angle = Angle::Zero();
-      attitude.pitch_angle = Angle::Zero();
-
-      horizon.SetAttitude(attitude);
-      return true;
-    }
-
-    return SingleWindow::OnTimer(_timer);
-  }
-
-  virtual void OnResize(PixelSize new_size) override {
-    SingleWindow::OnResize(new_size);
-    if (horizon.IsDefined())
-      horizon.Resize(new_size);
-  }
-};
-
 static void
 Main()
 {
   HorizonLook horizon_look;
   horizon_look.Initialise();
 
-  TestWindow window(horizon_look);
-  window.Create({160, 160});
+  WindowStyle with_border;
+  with_border.Border();
 
-  window.Show();
-  window.RunEventLoop();
+  HorizonWindow horizon(horizon_look);
+  horizon.Create(main_window, main_window.GetClientRect(), with_border);
+  main_window.SetFullWindow(horizon);
+
+  auto timer = MakeLambdaTimer([&horizon](){
+      AttitudeState attitude;
+      attitude.bank_angle_computed = true;
+      attitude.pitch_angle_computed = true;
+      attitude.bank_angle = Angle::Zero();
+      attitude.pitch_angle = Angle::Zero();
+
+      horizon.SetAttitude(attitude);
+    });
+  timer.Schedule(250);
+
+  main_window.RunEventLoop();
+
+  timer.Cancel();
 }

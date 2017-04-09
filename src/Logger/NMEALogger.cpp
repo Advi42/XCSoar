@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,11 +26,8 @@ Copyright_License {
 #include "LocalPath.hpp"
 #include "Time/BrokenDateTime.hpp"
 #include "Thread/Mutex.hpp"
-#include "OS/FileUtil.hpp"
-#include "Util/StaticString.hpp"
-
-#include <windef.h> // for MAX_PATH
-#include <stdio.h>
+#include "OS/Path.hpp"
+#include "Util/StaticString.hxx"
 
 namespace NMEALogger
 {
@@ -56,14 +53,20 @@ NMEALogger::Start()
               dt.year, dt.month, dt.day,
               dt.hour, dt.minute);
 
-  TCHAR path[MAX_PATH];
-  LocalPath(path, _T("logs"));
-  Directory::Create(path);
+  const auto logs_path = MakeLocalPath(_T("logs"));
 
-  LocalPath(path, _T("logs"), name);
-
+  const auto path = AllocatedPath::Build(logs_path, name);
   writer = new TextWriter(path, false);
-  return writer != nullptr;
+  if (writer == nullptr)
+    return false;
+
+  if (!writer->IsOpen()) {
+    delete writer;
+    writer = nullptr;
+    return false;
+  }
+
+  return true;
 }
 
 void

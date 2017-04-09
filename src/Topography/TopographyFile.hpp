@@ -3,7 +3,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,11 +27,11 @@ Copyright_License {
 
 #include "shapelib/mapserver.h"
 #include "Geo/GeoBounds.hpp"
-#include "Util/AllocatedArray.hpp"
+#include "Util/AllocatedArray.hxx"
 #include "Util/Serial.hpp"
-#include "Math/fixed.hpp"
 #include "Screen/Color.hpp"
 #include "ResourceId.hpp"
+#include "Thread/Mutex.hpp"
 
 #ifdef ENABLE_OPENGL
 #include "XShapePoint.hpp"
@@ -82,20 +82,20 @@ class TopographyFile {
    * The threshold value for the visibility check. If the current scale
    * is below this value the contents of this TopographyFile will be drawn.
    */
-  const fixed scale_threshold;
+  const double scale_threshold;
 
   /**
    * The threshold value for label rendering. If the current scale
    * is below this value no labels of this TopographyFile will be drawn.
    */
-  const fixed label_threshold;
+  const double label_threshold;
 
   /**
    * The threshold value for label rendering in important style . If the current
    * scale is below this value labels of this TopographyFile will be drawn
    * in standard style
    */
-  const fixed important_label_threshold;
+  const double important_label_threshold;
 
   /**
    * The current scope of the shape cache.  If the screen exceeds this
@@ -104,6 +104,12 @@ class TopographyFile {
   GeoBounds cache_bounds;
 
 public:
+  /**
+   * Protects #serial, #shapes, #first.
+   * The caller is responsible for locking it.
+   */
+  mutable Mutex mutex;
+
   class const_iterator {
     friend class TopographyFile;
 
@@ -157,8 +163,8 @@ public:
    * @return
    */
   TopographyFile(zzip_dir *dir, const char *shpname,
-                 fixed threshold, fixed label_threshold,
-                 fixed important_label_threshold,
+                 double threshold, double label_threshold,
+                 double important_label_threshold,
                  const Color color,
                  int label_field=-1,
                  ResourceId icon=ResourceId::Null(),
@@ -173,6 +179,8 @@ public:
   ~TopographyFile();
 
   const Serial &GetSerial() const {
+    assert(mutex.IsLockedByCurrent());
+
     return serial;
   }
 
@@ -184,15 +192,37 @@ public:
     return shapes.empty();
   }
 
-  bool IsVisible(fixed map_scale) const {
+  bool IsVisible(double map_scale) const {
     return map_scale <= scale_threshold;
   }
 
-  bool IsLabelVisible(fixed map_scale) const {
+  bool IsLabelVisible(double map_scale) const {
     return map_scale <= label_threshold;
   }
 
-  bool IsLabelImportant(fixed map_scale) const {
+  /**
+   * Returns the map scale threshold that will be reached next by
+   * zooming in.  This is used to decide when to rescan shapes that
+   * must be loaded.  A negative value is returned when all thresholds
+   * have been reached already.
+   */
+  gcc_pure
+  double GetNextScaleThreshold(double map_scale) const {
+    return map_scale <= scale_threshold
+      ? (map_scale <= label_threshold
+         /* both thresholds reached: not relevant */
+         ? -1.
+         /* only label_threshold not yet reached */
+         : label_threshold)
+      /* scale_threshold not yet reached */
+      : (map_scale <= label_threshold
+         /* only scale_threshold not yet reached */
+         ? scale_threshold
+         /* choose the bigger threshold, that will trigger next */
+         : std::max(scale_threshold, label_threshold));
+  }
+
+  bool IsLabelImportant(double map_scale) const {
     return map_scale <= important_label_threshold;
   }
 
@@ -213,28 +243,32 @@ public:
   }
 
   const_iterator begin() const {
+    assert(mutex.IsLockedByCurrent());
+
     return const_iterator(first);
   }
 
   const_iterator end() const {
+    assert(mutex.IsLockedByCurrent());
+
     return const_iterator(nullptr);
   }
 
   gcc_pure
-  unsigned GetSkipSteps(fixed map_scale) const;
+  unsigned GetSkipSteps(double map_scale) const;
 
 #ifdef ENABLE_OPENGL
   gcc_pure
   GeoPoint ToGeoPoint(const ShapePoint &p) const {
-    return GeoPoint(center.longitude + Angle::Native(fixed(p.x)),
-                    center.latitude + Angle::Native(fixed(p.y)));
+    return GeoPoint(center.longitude + Angle::Native(p.x),
+                    center.latitude + Angle::Native(p.y));
   }
 
   /**
    * @return thinning level, range: 0 .. XShape::THINNING_LEVELS-1
    */
   gcc_pure
-  unsigned GetThinningLevel(fixed map_scale) const;
+  unsigned GetThinningLevel(double map_scale) const;
 
   /**
    * @return minimum distance between points in ShapePoint coordinates

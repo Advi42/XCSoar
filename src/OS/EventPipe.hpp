@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Max Kellermann <max@duempel.org>
+ * Copyright (C) 2012 Max Kellermann <max.kellermann@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,19 +30,17 @@
 #ifndef XCSOAR_EVENT_PIPE_HPP
 #define XCSOAR_EVENT_PIPE_HPP
 
-#include "FileDescriptor.hpp"
-
-#include <assert.h>
+#include "UniqueFileDescriptor.hxx"
 
 /**
  * This class can be used to wake up a thread idling in select() or
  * poll().
  */
 class EventPipe {
-  FileDescriptor r;
+  UniqueFileDescriptor r;
 
 #ifndef HAVE_EVENTFD
-  FileDescriptor w;
+  UniqueFileDescriptor w;
 #endif
 
 public:
@@ -60,8 +58,8 @@ public:
   /**
    * Returns the file descriptor that should be polled on.
    */
-  int GetReadFD() const {
-    return r.Get();
+  FileDescriptor GetReadFD() const {
+    return r.ToFileDescriptor();
   }
 
   /**

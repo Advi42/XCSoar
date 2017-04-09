@@ -1,16 +1,6 @@
-RADIANS ?= y
 LLVM ?= n
 CLANG ?= $(LLVM)
 IWYU ?= n
-
-FIXED ?= $(call bool_not,$(HAVE_FPU))
-ifeq ($(FIXED),y)
-TARGET_CPPFLAGS += -DFIXED_MATH
-endif
-
-ifeq ($(RADIANS),y)
-TARGET_CPPFLAGS += -DRADIANS
-endif
 
 # shall we paint with some eye candy?
 EYE_CANDY ?= $(call bool_not,$(TARGET_IS_KOBO))
@@ -18,6 +8,11 @@ ifeq ($(EYE_CANDY),y)
 TARGET_CPPFLAGS += -DEYE_CANDY
 WINDRESFLAGS += -DEYE_CANDY
 endif
+
+ICF ?= n
+
+# enable gcc/clang sanitizers?
+SANITIZE ?= n
 
 # show map renderer times?
 STOP_WATCH ?= n
@@ -52,8 +47,4 @@ TESTING = y
 
 ifeq ($(TESTING),y)
   TARGET_CPPFLAGS += -DTESTING
-endif
-
-ifneq ($(WGS84),n)
-TARGET_CPPFLAGS += -DUSE_WGS84
 endif

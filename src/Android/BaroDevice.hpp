@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ Copyright_License {
 #define XCSOAR_ANDROID_BARO_DEVICE_HPP
 
 #include "BaroListener.hpp"
-#include "Java/Object.hpp"
+#include "Java/Object.hxx"
 #include "Math/SelfTimingKalmanFilter1d.hpp"
 #include "Compiler.h"
 #include "Device/Config.hpp"
@@ -34,15 +34,15 @@ Copyright_License {
 
 class BaroDevice final : public BaroListener {
   unsigned index;
-  Java::Object obj;
+  Java::GlobalObject obj;
   DeviceConfig::PressureType press_type;
   DeviceConfig::PressureUse press_use;
-  fixed offset;
-  fixed factor;
+  double offset;
+  double factor;
 
   int calibrate_count;
-  fixed calibrate_sum;
-  fixed calibrate_value;
+  double calibrate_sum;
+  double calibrate_value;
   /**
    * This Kalman filter is used to smooth the pressure input.
    */
@@ -55,13 +55,13 @@ public:
   BaroDevice(unsigned index,
                JNIEnv *env, jobject holder,
                DeviceConfig::PressureUse press_use,
-               fixed _offset, fixed _factor,
+               double _offset, double _factor,
                DeviceConfig::PressureType type, unsigned bus, unsigned addr,
                unsigned sample_rate, unsigned flags);
 
   ~BaroDevice();
 
-  void Calibrate(fixed value);
+  void Calibrate(double value);
   bool IsCalibrating();
 
 private:

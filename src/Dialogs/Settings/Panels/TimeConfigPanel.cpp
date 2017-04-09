@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,18 +22,13 @@ Copyright_License {
 */
 
 #include "TimeConfigPanel.hpp"
-#include "Form/DataField/Float.hpp"
 #include "Form/DataField/Listener.hpp"
-#include "Form/Form.hpp"
-#include "Form/Frame.hpp"
 #include "Formatter/LocalTimeFormatter.hpp"
-#include "Time/LocalTime.hpp"
 #include "Profile/Profile.hpp"
 #include "Interface.hpp"
 #include "Language/Language.hpp"
 #include "Widget/RowFormWidget.hpp"
 #include "UIGlobals.hpp"
-#include "Asset.hpp"
 
 enum ControlIndex {
   UTCOffset,
@@ -62,14 +57,8 @@ private:
 void
 TimeConfigPanel::SetLocalTime(RoughTimeDelta utc_offset)
 {
-  TCHAR temp[20];
-  int time(CommonInterface::Basic().time);
-  FormatLocalTimeHHMM(temp, time, utc_offset);
-
-  WndProperty &wp = GetControl(LocalTime);
-
-  wp.SetText(temp);
-  wp.RefreshDisplay();
+  SetText(LocalTime,
+          FormatLocalTimeHHMM((int)CommonInterface::Basic().time, utc_offset));
 }
 
 void

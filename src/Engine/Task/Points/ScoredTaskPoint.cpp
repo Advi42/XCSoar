@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -43,7 +43,7 @@ ScoredTaskPoint::TransitionEnter(const AircraftState &ref_now,
 bool 
 ScoredTaskPoint::TransitionExit(const AircraftState &ref_now,
                                 const AircraftState &ref_last,
-                                const TaskProjection &projection)
+                                const FlatProjection &projection)
 {
   if (!CheckExitTransition(ref_now, ref_last))
     return false;
@@ -59,12 +59,6 @@ ScoredTaskPoint::TransitionExit(const AircraftState &ref_now,
 }
 
 const GeoPoint &
-ScoredTaskPoint::GetLocationTravelled() const
-{
-  return GetLocationMin();
-}
-
-const GeoPoint &
 ScoredTaskPoint::GetLocationScored() const
 {
   if (IsBoundaryScored() || !HasEntered())
@@ -77,6 +71,6 @@ void
 ScoredTaskPoint::Reset()
 {
   SampledTaskPoint::Reset();
-  state_entered.time = fixed(-1);
+  state_entered.time = -1;
   has_exited = false;
 }

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,9 +23,10 @@ Copyright_License {
 
 #include "Thread/Thread.hpp"
 #include "Name.hpp"
+#include "Util.hpp"
 
 #ifdef ANDROID
-#include "Java/Global.hpp"
+#include "Java/Global.hxx"
 #endif
 
 #include <assert.h>
@@ -33,8 +34,6 @@ Copyright_License {
 #ifdef HAVE_POSIX
 #include <signal.h>
 #endif
-
-#include "LogFile.hpp"
 
 #ifndef NDEBUG
 #include "FastMutex.hpp"
@@ -44,8 +43,16 @@ static FastMutex all_threads_mutex;
  * This list keeps track of all active threads.  It is used to assert
  * that all threads have been cleaned up on shutdown.
  */
-static ListHead all_threads = ListHead(ListHead::empty());
+static boost::intrusive::list<Thread,
+                              boost::intrusive::member_hook<Thread, Thread::SiblingsHook, &Thread::siblings>,
+                              boost::intrusive::constant_time_size<false>> all_threads;
 #endif
+
+void
+Thread::SetIdlePriority()
+{
+  ::SetThreadIdlePriority();
+}
 
 bool
 Thread::Start()
@@ -57,7 +64,7 @@ Thread::Start()
   creating = true;
 #endif
 
-  defined = pthread_create(&handle, NULL, ThreadProc, this) == 0;
+  defined = pthread_create(&handle, nullptr, ThreadProc, this) == 0;
 
 #ifndef NDEBUG
   creating = false;
@@ -65,16 +72,16 @@ Thread::Start()
 
   bool success = defined;
 #else
-  handle = ::CreateThread(NULL, 0, ThreadProc, this, 0, &id);
+  handle = ::CreateThread(nullptr, 0, ThreadProc, this, 0, &id);
 
-  bool success = handle != NULL;
+  bool success = handle != nullptr;
 #endif
 
 #ifndef NDEBUG
   if (success) {
-    all_threads_mutex.Lock();
-    siblings.InsertAfter(all_threads);
-    all_threads_mutex.Unlock();
+    all_threads_mutex.lock();
+    all_threads.push_back(*this);
+    all_threads_mutex.unlock();
   }
 #endif
 
@@ -88,18 +95,18 @@ Thread::Join()
   assert(!IsInside());
 
 #ifdef HAVE_POSIX
-  pthread_join(handle, NULL);
+  pthread_join(handle, nullptr);
   defined = false;
 #else
   ::WaitForSingleObject(handle, INFINITE);
   ::CloseHandle(handle);
-  handle = NULL;
+  handle = nullptr;
 #endif
 
 #ifndef NDEBUG
-  all_threads_mutex.Lock();
-  siblings.Remove();
-  all_threads_mutex.Unlock();
+  all_threads_mutex.lock();
+  all_threads.erase(all_threads.iterator_to(*this));
+  all_threads_mutex.unlock();
 #endif
 }
 
@@ -113,13 +120,13 @@ Thread::Join(unsigned timeout_ms)
   bool result = ::WaitForSingleObject(handle, timeout_ms) == WAIT_OBJECT_0;
   if (result) {
     ::CloseHandle(handle);
-    handle = NULL;
+    handle = nullptr;
 
 #ifndef NDEBUG
     {
-      all_threads_mutex.Lock();
-      siblings.Remove();
-      all_threads_mutex.Unlock();
+      all_threads_mutex.lock();
+      all_threads.erase(all_threads.iterator_to(*this));
+      all_threads_mutex.unlock();
     }
 #endif
   }
@@ -152,7 +159,7 @@ Thread::ThreadProc(void *p)
   Java::DetachCurrentThread();
 #endif
 
-  return NULL;
+  return nullptr;
 }
 
 #else /* !HAVE_POSIX */
@@ -173,9 +180,9 @@ Thread::ThreadProc(LPVOID lpParameter)
 bool
 ExistsAnyThread()
 {
-  all_threads_mutex.Lock();
-  bool result = !all_threads.IsEmpty();
-  all_threads_mutex.Unlock();
+  all_threads_mutex.lock();
+  bool result = !all_threads.empty();
+  all_threads_mutex.unlock();
   return result;
 }
 

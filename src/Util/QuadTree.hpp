@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Max Kellermann <max@duempel.org>
+ * Copyright (C) 2011 Max Kellermann <max.kellermann@gmail.com>
  *               2012 Tobias Bieniek <tobias.bieniek@gmx.de>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,8 @@
 #ifndef QUAD_TREE_HPP
 #define QUAD_TREE_HPP
 
+#include "Compiler.h"
+
 #include <utility>
 #include <limits>
 #include <memory>
@@ -59,7 +61,7 @@ template<typename T, typename Accessor,
 class QuadTree {
   struct AlwaysTrue {
     constexpr
-    bool operator()(const T &value) const {
+    bool operator()(const T &) const {
       return true;
     }
   };
@@ -965,6 +967,15 @@ public:
     assert(IsFlat());
 
     bounds.Clear();
+  }
+
+  /**
+   * Is the specified point within the current bounds?  If yes, then
+   * it may be added without a rescan.
+   */
+  constexpr
+  bool IsWithinBounds(Point position) const {
+    return bounds.IsInside(position);
   }
 
   /**

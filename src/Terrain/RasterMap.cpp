@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,115 +23,55 @@ Copyright_License {
 
 #include "Terrain/RasterMap.hpp"
 #include "Geo/GeoClip.hpp"
-#include "IO/FileCache.hpp"
-#include "Util/ConvertString.hpp"
+#include "Math/Util.hpp"
 
 #include <algorithm>
 #include <assert.h>
-#include <string.h>
 
-/* use separate cache files for FIXED=y and FIXED=n because the file
-   format is different */
-#ifdef FIXED_MATH
-static const TCHAR *const terrain_cache_name = _T("terrain_fixed");
-#else
-static const TCHAR *const terrain_cache_name = _T("terrain");
-#endif
-
-static char *
-ToNarrowPath(const TCHAR *src)
+void
+RasterMap::UpdateProjection()
 {
-  return WideToACPConverter(src).StealDup();
-}
-
-RasterMap::RasterMap(const TCHAR *_path, const TCHAR *world_file,
-                     FileCache *cache, OperationEnvironment &operation)
-  :path(ToNarrowPath(_path))
-{
-  bool cache_loaded = false;
-  if (cache != NULL) {
-    /* load the cache file */
-    FILE *file = cache->Load(terrain_cache_name, _path);
-    if (file != NULL) {
-      cache_loaded = raster_tile_cache.LoadCache(file);
-      fclose(file);
-    }
-  }
-
-  if (!cache_loaded) {
-    if (!raster_tile_cache.LoadOverview(path, world_file, operation))
-      return;
-
-    if (cache != NULL) {
-      /* save the cache file */
-      FILE *file = cache->Save(terrain_cache_name, _path);
-      if (file != NULL) {
-        if (raster_tile_cache.SaveCache(file))
-          cache->Commit(terrain_cache_name, file);
-        else
-          cache->Cancel(terrain_cache_name, file);
-      }
-    }
-  }
-
   projection.Set(GetBounds(),
                  raster_tile_cache.GetFineWidth(),
                  raster_tile_cache.GetFineHeight());
 }
 
-RasterMap::~RasterMap() {
-  free(path);
-}
-
-static unsigned
-AngleToPixel(Angle value, Angle start, Angle end, unsigned width)
+bool
+RasterMap::LoadCache(FILE *file)
 {
-  return unsigned((value - start).Native() * width / (end - start).Native());
+  bool success = raster_tile_cache.LoadCache(file);
+  if (success)
+    UpdateProjection();
+
+  return success;
 }
 
-void
-RasterMap::SetViewCenter(const GeoPoint &location, fixed radius)
-{
-  if (!raster_tile_cache.GetInitialised())
-    return;
-
-  const GeoBounds &bounds = GetBounds();
-
-  int x = AngleToPixel(location.longitude, bounds.GetWest(), bounds.GetEast(),
-                       raster_tile_cache.GetWidth());
-
-  int y = AngleToPixel(location.latitude, bounds.GetNorth(), bounds.GetSouth(),
-                       raster_tile_cache.GetHeight());
-
-  raster_tile_cache.UpdateTiles(path, x, y,
-                                projection.DistancePixelsCoarse(radius));
-}
-
-short
+TerrainHeight
 RasterMap::GetHeight(const GeoPoint &location) const
 {
-  RasterLocation pt = projection.ProjectCoarse(location);
+  const auto pt = projection.ProjectCoarse(location);
   return raster_tile_cache.GetHeight(pt.x, pt.y);
 }
 
-short
+TerrainHeight
 RasterMap::GetInterpolatedHeight(const GeoPoint &location) const
 {
-  RasterLocation pt = projection.ProjectFine(location);
+  const auto pt = projection.ProjectFine(location);
   return raster_tile_cache.GetInterpolatedHeight(pt.x, pt.y);
 }
 
 void
 RasterMap::ScanLine(const GeoPoint &start, const GeoPoint &end,
-                    short *buffer, unsigned size, bool interpolate) const
+                    TerrainHeight *buffer, unsigned size,
+                    bool interpolate) const
 {
-  assert(buffer != NULL);
+  assert(buffer != nullptr);
   assert(size > 0);
 
-  const short invalid = RasterBuffer::TERRAIN_INVALID;
+  constexpr TerrainHeight invalid = TerrainHeight::Invalid();
 
-  const fixed total_distance = start.Distance(end);
-  if (!positive(total_distance)) {
+  const double total_distance = start.DistanceS(end);
+  if (total_distance <= 0) {
     std::fill_n(buffer, size, invalid);
     return;
   }
@@ -145,10 +85,10 @@ RasterMap::ScanLine(const GeoPoint &start, const GeoPoint &end,
     return;
   }
 
-  fixed clipped_start_distance =
-    std::max(clipped_start.Distance(start), fixed(0));
-  fixed clipped_end_distance =
-    std::max(clipped_end.Distance(start), fixed(0));
+  double clipped_start_distance =
+    std::max(clipped_start.DistanceS(start), 0.);
+  double clipped_end_distance =
+    std::max(clipped_end.DistanceS(start), 0.);
 
   /* calculate the offsets of the clipped range within the buffer */
 
@@ -201,9 +141,9 @@ RasterMap::FirstIntersection(const GeoPoint &origin, const int h_origin,
                              const int h_safety,
                              GeoPoint &intx, int &h) const
 {
-  const RasterLocation c_origin = projection.ProjectCoarse(origin);
-  const RasterLocation c_destination = projection.ProjectCoarse(destination);
-  const int c_diff = c_origin.ManhattanDistance(c_destination);
+  const auto c_origin = projection.ProjectCoarseRound(origin);
+  const auto c_destination = projection.ProjectCoarseRound(destination);
+  const int c_diff = ManhattanDistance(c_origin, c_destination);
   const bool can_climb = (h_destination< h_virt);
 
   intx = destination; h = h_destination; // fallback, pass
@@ -217,8 +157,7 @@ RasterMap::FirstIntersection(const GeoPoint &origin, const int h_origin,
                                  - ((c_diff * slope_fact) >> RASTER_SLOPE_FACT));
 
   RasterLocation c_int;
-  if (raster_tile_cache.FirstIntersection(c_origin.x, c_origin.y,
-                                          c_destination.x, c_destination.y,
+  if (raster_tile_cache.FirstIntersection(c_origin, c_destination,
                                           vh_origin, h_destination,
                                           slope_fact, h_ceiling, h_safety,
                                           c_int, h,
@@ -238,24 +177,22 @@ RasterMap::FirstIntersection(const GeoPoint &origin, const int h_origin,
 GeoPoint
 RasterMap::Intersection(const GeoPoint& origin,
                         const int h_origin, const int h_glide,
-                        const GeoPoint& destination) const
+                        const GeoPoint& destination,
+                        const int height_floor) const
 {
-  const RasterLocation c_origin = projection.ProjectCoarse(origin);
-  const RasterLocation c_destination = projection.ProjectCoarse(destination);
-  const int c_diff = c_origin.ManhattanDistance(c_destination);
-  if (c_diff==0) {
-    return destination; // no distance
-  }
+  const auto c_origin = projection.ProjectCoarseRound(origin);
+  const auto c_destination = projection.ProjectCoarseRound(destination);
+  const int c_diff = ManhattanDistance(c_origin, c_destination);
+  if (c_diff == 0)
+    return GeoPoint::Invalid();
+
   const int slope_fact = (((int)h_glide) << RASTER_SLOPE_FACT) / c_diff;
 
-  RasterLocation c_int =
-    raster_tile_cache.Intersection(c_origin.x, c_origin.y,
-                                   c_destination.x, c_destination.y,
-                                   h_origin, slope_fact);
-
-  if (c_int == c_destination) // made it to grid location, return exact location
-                              // of destination
-    return destination;
+  auto c_int =
+    raster_tile_cache.Intersection(c_origin, c_destination,
+                                   h_origin, slope_fact, height_floor);
+  if (c_int.x < 0)
+    return GeoPoint::Invalid();
 
   return projection.UnprojectCoarse(c_int);
 }

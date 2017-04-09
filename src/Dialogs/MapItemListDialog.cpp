@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,12 +24,11 @@ Copyright_License {
 #include "Dialogs/MapItemListDialog.hpp"
 #include "Dialogs/WidgetDialog.hpp"
 #include "Screen/Canvas.hpp"
-#include "Screen/Layout.hpp"
 #include "Dialogs/Airspace/Airspace.hpp"
 #include "Dialogs/Task/TaskDialogs.hpp"
 #include "Dialogs/Waypoint/WaypointDialogs.hpp"
 #include "Dialogs/Traffic/TrafficDialogs.hpp"
-#include "Look/DialogLook.hpp"
+#include "Dialogs/Weather/WeatherDialog.hpp"
 #include "Language/Language.hpp"
 #include "MapSettings.hpp"
 #include "MapWindow/Items/MapItem.hpp"
@@ -45,7 +44,7 @@ Copyright_License {
 #include "UIGlobals.hpp"
 
 #ifdef HAVE_NOAA
-#include "Dialogs/Weather/WeatherDialogs.hpp"
+#include "Dialogs/Weather/NOAADetails.hpp"
 #endif
 
 static bool
@@ -55,9 +54,8 @@ HasDetails(const MapItem &item)
   case MapItem::LOCATION:
   case MapItem::ARRIVAL_ALTITUDE:
   case MapItem::SELF:
-  case MapItem::MARKER:
   case MapItem::THERMAL:
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
+#ifdef HAVE_SKYLINES_TRACKING
   case MapItem::SKYLINES_TRAFFIC:
 #endif
     return false;
@@ -69,6 +67,8 @@ HasDetails(const MapItem &item)
 #ifdef HAVE_NOAA
   case MapItem::WEATHER:
 #endif
+  case MapItem::OVERLAY:
+  case MapItem::RASP:
     return true;
   }
 
@@ -86,13 +86,12 @@ class MapItemListWidget final
   const MapItemList &list;
 
   const DialogLook &dialog_look;
-  const MapLook &look;
-  const TrafficLook &traffic_look;
-  const FinalGlideBarLook &final_glide_look;
   const MapSettings &settings;
 
-  WndButton *settings_button, *details_button, *cancel_button, *goto_button;
-  WndButton *ack_button;
+  MapItemListRenderer renderer;
+
+  Button *settings_button, *details_button, *cancel_button, *goto_button;
+  Button *ack_button;
 
 public:
   void CreateButtons(WidgetDialog &dialog);
@@ -104,9 +103,10 @@ public:
                     const FinalGlideBarLook &_final_glide_look,
                     const MapSettings &_settings)
     :list(_list),
-     dialog_look(_dialog_look), look(_look),
-     traffic_look(_traffic_look), final_glide_look(_final_glide_look),
-     settings(_settings) {}
+     dialog_look(_dialog_look),
+     settings(_settings),
+     renderer(_look, _traffic_look, _final_glide_look,
+              _settings, CommonInterface::GetComputerSettings().utc_offset) {}
 
   unsigned GetCursorIndex() const {
     return GetList().GetCursorIndex();
@@ -182,11 +182,8 @@ MapItemListWidget::CreateButtons(WidgetDialog &dialog)
 void
 MapItemListWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
-  UPixelScalar item_height = dialog_look.list.font_bold->GetHeight()
-    + Layout::Scale(6) + dialog_look.small_font->GetHeight();
-  assert(item_height > 0);
-
-  CreateList(parent, dialog_look, rc, item_height);
+  CreateList(parent, dialog_look, rc,
+             renderer.CalculateLayout(dialog_look));
 
   GetList().SetLength(list.size());
   UpdateButtons();
@@ -205,11 +202,8 @@ MapItemListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
                                unsigned idx)
 {
   const MapItem &item = *list[idx];
-  MapItemListRenderer::Draw(canvas, rc, item,
-                            dialog_look, look, traffic_look,
-                            final_glide_look, settings,
-                            CommonInterface::GetComputerSettings().utc_offset,
-                            &CommonInterface::Basic().flarm.traffic);
+  renderer.Draw(canvas, rc, item,
+                &CommonInterface::Basic().flarm.traffic);
 
   if ((settings.item_list.add_arrival_altitude &&
        item.type == MapItem::Type::ARRIVAL_ALTITUDE) ||
@@ -223,7 +217,7 @@ MapItemListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
 void
 MapItemListWidget::OnActivateItem(unsigned index)
 {
-  details_button->OnClicked();
+  details_button->Click();
 }
 
 inline void
@@ -237,9 +231,9 @@ MapItemListWidget::OnGotoClicked()
 
   assert(item.type == MapItem::WAYPOINT);
 
-  auto const &waypoint = ((const WaypointMapItem &)item).waypoint;
-  protected_task_manager->DoGoto(waypoint);
-  cancel_button->OnClicked();
+  auto waypoint = ((const WaypointMapItem &)item).waypoint;
+  protected_task_manager->DoGoto(std::move(waypoint));
+  cancel_button->Click();
 }
 
 inline void
@@ -282,6 +276,7 @@ ShowMapItemListDialog(const MapItemList &list,
   dialog.CreateFull(UIGlobals::GetMainWindow(),
                     _("Map elements at this location"), &widget);
   widget.CreateButtons(dialog);
+  dialog.EnableCursorSelection();
 
   int result = dialog.ShowModal() == mrOK
     ? (int)widget.GetCursorIndex()
@@ -299,9 +294,8 @@ ShowMapItemDialog(const MapItem &item,
   case MapItem::LOCATION:
   case MapItem::ARRIVAL_ALTITUDE:
   case MapItem::SELF:
-  case MapItem::MARKER:
   case MapItem::THERMAL:
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
+#ifdef HAVE_SKYLINES_TRACKING
   case MapItem::SKYLINES_TRAFFIC:
 #endif
     break;
@@ -311,7 +305,8 @@ ShowMapItemDialog(const MapItem &item,
                        airspace_warnings);
     break;
   case MapItem::WAYPOINT:
-    dlgWaypointDetailsShowModal(((const WaypointMapItem &)item).waypoint);
+    dlgWaypointDetailsShowModal(((const WaypointMapItem &)item).waypoint,
+                                true, true);
     break;
   case MapItem::TASK_OZ:
     dlgTargetShowModal(((const TaskOZMapItem &)item).index);
@@ -325,6 +320,14 @@ ShowMapItemDialog(const MapItem &item,
     dlgNOAADetailsShowModal(((const WeatherStationMapItem &)item).station);
     break;
 #endif
+
+  case MapItem::OVERLAY:
+    ShowWeatherDialog(_T("overlay"));
+    break;
+
+  case MapItem::RASP:
+    ShowWeatherDialog(_T("rasp"));
+    break;
   }
 }
 

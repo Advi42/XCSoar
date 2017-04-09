@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -34,7 +34,7 @@ KeyholeZone::GetBoundary() const
   boundary.GenerateArcExcluding(GetReference(), GetRadius(),
                                 GetStartRadial(), GetEndRadial());
 
-  const fixed small_radius = GetInnerRadius();
+  const auto small_radius = GetInnerRadius();
   GeoVector small_vector(small_radius, GetStartRadial());
   boundary.push_front(small_vector.EndPoint(GetReference()));
   small_vector.bearing = GetEndRadial();
@@ -43,10 +43,10 @@ KeyholeZone::GetBoundary() const
   boundary.GenerateArcExcluding(GetReference(), small_radius,
                                 GetEndRadial(), GetStartRadial());
 
-  return std::move(boundary);
+  return boundary;
 }
 
-fixed
+double
 KeyholeZone::ScoreAdjustment() const
 {
   return GetInnerRadius();

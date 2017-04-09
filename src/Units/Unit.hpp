@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -46,7 +46,13 @@ enum class Unit: uint8_t {
   MILLIBAR,
   TORR,
   INCH_MERCURY,
-
+  KG_PER_M2,
+  LB_PER_FT2,
+  KG,
+  LB,
+  PERCENT,
+  GRADIENT,
+  VOLT,
   /**
    * The sentinel: the number of units in this enum.
    */

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,8 +26,6 @@ Copyright_License {
 
 #include "Screen/SingleWindow.hpp"
 #include "Screen/Timer.hpp"
-#include "InfoBoxes/InfoBoxLayout.hpp"
-#include "PopupMessage.hpp"
 #include "BatteryTimer.hpp"
 #include "Widget/ManagedWidget.hpp"
 #include "UIUtil/GestureManager.hpp"
@@ -35,28 +33,28 @@ Copyright_License {
 #include <stdint.h>
 #include <assert.h>
 
+#ifdef KOBO
+#define HAVE_SHOW_MENU_BUTTON
+#include "Menu/ShowMenuButton.hpp"
+#endif
+
 struct ComputerSettings;
 struct MapSettings;
 struct UIState;
 struct Look;
 class GlueMapWindow;
 class Widget;
-class StatusMessageList;
 class RasterTerrain;
 class TopographyStore;
 class MapWindowProjection;
+class PopupMessage;
+namespace InfoBoxLayout { struct Layout; }
 
 /**
  * The XCSoar main window.
  */
 class MainWindow : public SingleWindow {
   enum class Command: uint8_t {
-    /**
-     * Check the airspace_warning_pending flag and show the airspace
-     * warning dialog.
-     */
-    AIRSPACE_WARNING,
-
     /**
      * Called by the #MergeThread when new GPS data is available.
      */
@@ -72,19 +70,15 @@ class MainWindow : public SingleWindow {
      * @see DeferredRestorePage()
      */
     RESTORE_PAGE,
-
-#ifdef ANDROID
-    /**
-     * A previous crash has been detected, and the crash log was
-     * saved.
-     */
-    CRASH,
-#endif
   };
 
   static constexpr const TCHAR *title = _T("XCSoar");
 
   Look *look;
+
+#ifdef HAVE_SHOW_MENU_BUTTON
+  ShowMenuButton *show_menu_button;
+#endif
 
   GlueMapWindow *map;
 
@@ -96,7 +90,7 @@ class MainWindow : public SingleWindow {
   /**
    * A #Widget that is shown instead of the map.  The #GlueMapWindow
    * is hidden and the DrawThread is suspended while this attribute is
-   * non-NULL.
+   * non-nullptr.
    */
   Widget *widget;
 
@@ -111,7 +105,7 @@ class MainWindow : public SingleWindow {
   GestureManager gestures;
 
 public:
-  PopupMessage popup;
+  PopupMessage *popup;
 
 private:
   WindowTimer timer;
@@ -131,17 +125,9 @@ private:
 
   bool restore_page_pending;
 
-  bool airspace_warning_pending;
-
 public:
-  MainWindow(const StatusMessageList &status_messages);
+  MainWindow();
   virtual ~MainWindow();
-
-#ifdef USE_GDI
-  static bool Find() {
-    return SingleWindow::Find(title);
-  }
-#endif
 
 protected:
   /**
@@ -150,7 +136,7 @@ protected:
   bool IsRunning() {
     /* it is safe enough to say that XCSoar initialization is complete
        after the MapWindow has been created */
-    return map != NULL;
+    return map != nullptr;
   }
 
   /**
@@ -158,6 +144,14 @@ protected:
    * caller is responsible for reactivating the map or another Widget.
    */
   void KillWidget();
+
+  bool HaveBottomWidget() const {
+    /* currently, the bottom widget is only visible below the map, but
+       not below a custom main widget */
+    /* TODO: eliminate this limitation; don't forget to remove the
+       "widget==nullptr" check from MainWindow::KillBottomWidget() */
+    return bottom_widget != nullptr && widget == nullptr;
+  }
 
   /**
    * Destroy the current "bottom" Widget, but don't resize the main
@@ -250,16 +244,6 @@ public:
 
   void SetFullScreen(bool _full_screen);
 
-  /**
-   * A new airspace warning was found.  This method sends the
-   * Command::AIRSPACE_WARNING command to this window, which displays the
-   * airspace warning dialog.
-   */
-  void SendAirspaceWarning() {
-    airspace_warning_pending = true;
-    SendUser((unsigned)Command::AIRSPACE_WARNING);
-  }
-
   void SendGPSUpdate() {
     SendUser((unsigned)Command::GPS_UPDATE);
   }
@@ -268,23 +252,17 @@ public:
     SendUser((unsigned)Command::CALCULATED_UPDATE);
   }
 
-#ifdef ANDROID
-  void SendCrash() {
-    SendUser((unsigned)Command::CRASH);
-  }
-#endif
-
   void SetTerrain(RasterTerrain *terrain);
   void SetTopography(TopographyStore *topography);
 
   const Look &GetLook() const {
-    assert(look != NULL);
+    assert(look != nullptr);
 
     return *look;
   }
 
   Look &SetLook() {
-    assert(look != NULL);
+    assert(look != nullptr);
 
     return *look;
   }
@@ -294,7 +272,7 @@ public:
   void SetUIState(const UIState &ui_state);
 
   /**
-   * Returns the map even if it is not active.  May return NULL if
+   * Returns the map even if it is not active.  May return nullptr if
    * there is no map.
    */
   gcc_pure
@@ -306,18 +284,18 @@ public:
    * Is the map active, i.e. currently visible?
    */
   bool IsMapActive() const {
-    return widget == NULL;
+    return widget == nullptr;
   }
 
   /**
-   * Returns the map if it is active, or NULL if the map is not
+   * Returns the map if it is active, or nullptr if the map is not
    * active.
    */
   gcc_pure
   GlueMapWindow *GetMapIfActive();
 
   /**
-   * Activate the map and return a pointer to it.  May return NULL if
+   * Activate the map and return a pointer to it.  May return nullptr if
    * there is no map.
    */
   GlueMapWindow *ActivateMap();
@@ -371,11 +349,10 @@ protected:
   virtual void OnResize(PixelSize new_size) override;
   virtual void OnSetFocus() override;
   virtual void OnCancelMode() override;
-  virtual bool OnMouseDown(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseUp(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseMove(PixelScalar x, PixelScalar y,
-                           unsigned keys) override;
-  virtual bool OnMouseDouble(PixelScalar x, PixelScalar y) override;
+  bool OnMouseDown(PixelPoint p) override;
+  bool OnMouseUp(PixelPoint p) override;
+  bool OnMouseMove(PixelPoint p, unsigned keys) override;
+  bool OnMouseDouble(PixelPoint p) override;
   virtual bool OnKeyDown(unsigned key_code) override;
   virtual bool OnUser(unsigned id) override;
   virtual bool OnTimer(WindowTimer &timer) override;
@@ -383,7 +360,6 @@ protected:
 
   /* virtual methods from class TopWindow */
   virtual bool OnClose() override;
-  virtual bool OnActivate() override;
 
 #ifdef ANDROID
   virtual void OnPause() override;

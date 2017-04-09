@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -33,10 +33,12 @@ Copyright_License {
  * @see http://developer.android.com/reference/android/view/KeyEvent.html
  */
 enum {
+  KEYCODE_BACK = 0x04,
   KEYCODE_0 = 0x07,
   KEYCODE_9 = 0x10,
   KEYCODE_A = 0x1d,
   KEYCODE_Z = 0x36,
+  KEYCODE_ESCAPE = 0x6f,
 };
 
 static constexpr unsigned KEYCODE_DPAD_UP = 0x13;
@@ -45,6 +47,10 @@ static constexpr unsigned KEYCODE_DPAD_DOWN = 0x14;
 static unsigned
 TranslateKeyCode(unsigned key_code)
 {
+  if (key_code == KEYCODE_BACK)
+    /* the "back" key acts as escape */
+    return KEYCODE_ESCAPE;
+
   if (key_code >= KEYCODE_0 && key_code <= KEYCODE_9)
     return '0' + (key_code - KEYCODE_0);
 
@@ -67,7 +73,7 @@ gcc_visibility_default
 void
 Java_org_xcsoar_EventBridge_onKeyDown(JNIEnv *env, jclass cls, jint key_code)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 
@@ -84,7 +90,7 @@ gcc_visibility_default
 void
 Java_org_xcsoar_EventBridge_onKeyUp(JNIEnv *env, jclass cls, jint key_code)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 
@@ -97,11 +103,11 @@ void
 Java_org_xcsoar_EventBridge_onMouseDown(JNIEnv *env, jclass cls,
                                         jint x, jint y)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 
-  event_queue->Push(Event(Event::MOUSE_DOWN, x, y));
+  event_queue->Push(Event(Event::MOUSE_DOWN, PixelPoint(x, y)));
   ResetUserIdle();
 }
 
@@ -110,11 +116,11 @@ void
 Java_org_xcsoar_EventBridge_onMouseUp(JNIEnv *env, jclass cls,
                                       jint x, jint y)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 
-  event_queue->Push(Event(Event::MOUSE_UP, x, y));
+  event_queue->Push(Event(Event::MOUSE_UP, PixelPoint(x, y)));
   ResetUserIdle();
 }
 
@@ -123,12 +129,12 @@ void
 Java_org_xcsoar_EventBridge_onMouseMove(JNIEnv *env, jclass cls,
                                         jint x, jint y)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 
   event_queue->Purge(Event::MOUSE_MOTION);
-  event_queue->Push(Event(Event::MOUSE_MOTION, x, y));
+  event_queue->Push(Event(Event::MOUSE_MOTION, PixelPoint(x, y)));
   ResetUserIdle();
 }
 
@@ -136,7 +142,7 @@ gcc_visibility_default
 void
 Java_org_xcsoar_EventBridge_onPointerDown(JNIEnv *env, jclass cls)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 
@@ -148,7 +154,7 @@ gcc_visibility_default
 void
 Java_org_xcsoar_EventBridge_onPointerUp(JNIEnv *env, jclass cls)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     /* XCSoar not yet initialised */
     return;
 

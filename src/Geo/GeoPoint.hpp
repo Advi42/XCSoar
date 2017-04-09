@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@ Copyright_License {
 #define XCSOAR_GeoPoint_HPP
 
 #include "Math/Angle.hpp"
-#include "Rough/RoughAltitude.hpp"
 #include "Compiler.h"
 
 #include <type_traits>
@@ -103,6 +102,16 @@ struct GeoPoint {
   }
 
   /**
+   * Check if both longitude and latitude are in the allowed range.
+   */
+  constexpr bool Check() const {
+    return longitude >= -Angle::HalfCircle() &&
+      longitude <= Angle::HalfCircle() &&
+      latitude >= -Angle::QuarterCircle() &&
+      latitude <= Angle::QuarterCircle();
+  }
+
+  /**
    * Normalize the values, so this object can be used properly in
    * calculations, without unintended side effects (such as -1 degrees
    * vs 359 degrees).  This modification is in-place.
@@ -127,7 +136,7 @@ struct GeoPoint {
    * @return Location of point
    */
   gcc_pure
-  GeoPoint Parametric(const GeoPoint &delta, const fixed t) const;
+  GeoPoint Parametric(const GeoPoint &delta, double t) const;
 
   /**
    * Find location interpolated from this point towards end
@@ -138,7 +147,7 @@ struct GeoPoint {
    * @return Location of point
    */
   gcc_pure
-  GeoPoint Interpolate(const GeoPoint &end, const fixed t) const;
+  GeoPoint Interpolate(const GeoPoint &end, double t) const;
 
   /**
    * Multiply a point by a factor (used for deltas)
@@ -148,7 +157,7 @@ struct GeoPoint {
    * @return Modified point
    */
   gcc_pure
-  GeoPoint operator* (const fixed x) const {
+  GeoPoint operator* (const double x) const {
     GeoPoint res = *this;
     res.longitude *= x;
     res.latitude *= x;
@@ -206,7 +215,7 @@ struct GeoPoint {
    * @return Distance (m)
    */
   gcc_pure
-  fixed Distance(const GeoPoint &other) const;
+  double Distance(const GeoPoint &other) const;
 
   /**
    * Calculate great circle initial bearing from this to the other
@@ -225,6 +234,27 @@ struct GeoPoint {
   GeoVector DistanceBearing(const GeoPoint &other) const;
 
   /**
+   * Like Distance(), but use a simplified faster formula that may be
+   * less accurate.
+   */
+  gcc_pure
+  double DistanceS(const GeoPoint &other) const;
+
+  /**
+   * Like Bearing(), but use a simplified faster formula that may be
+   * less accurate.
+   */
+  gcc_pure
+  Angle BearingS(const GeoPoint &other) const;
+
+  /**
+   * Like DistanceBearing(), but use a simplified faster formula that
+   * may be less accurate.
+   */
+  gcc_pure
+  GeoVector DistanceBearingS(const GeoPoint &other) const;
+
+  /**
    * Find distance along a great-circle path that this point
    * is projected to
    *
@@ -234,7 +264,7 @@ struct GeoPoint {
    * @return Distance (m) along from-to line
    */
   gcc_pure
-  fixed ProjectedDistance(const GeoPoint &from, const GeoPoint &to) const;
+  double ProjectedDistance(const GeoPoint &from, const GeoPoint &to) const;
 
   /**
    * Find point a set distance along a great-circle path towards
@@ -247,7 +277,7 @@ struct GeoPoint {
    */
   gcc_pure
   GeoPoint IntermediatePoint(const GeoPoint &destination,
-                             const fixed distance) const;
+                             double distance) const;
 
   /**
    * Find the nearest great-circle middle point between this point and
@@ -310,12 +340,12 @@ static_assert(std::is_trivial<GeoPoint>::value, "type is not trivial");
  */
 struct AGeoPoint: public GeoPoint {
   /**< Nav reference altitude (m) */
-  RoughAltitude altitude;
+  double altitude;
 
   AGeoPoint() = default;
 
   constexpr
-  AGeoPoint(const GeoPoint p, const RoughAltitude alt)
+  AGeoPoint(const GeoPoint p, const double alt)
     :GeoPoint(p),altitude(alt) {};
 };
 

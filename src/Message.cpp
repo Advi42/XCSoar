@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,11 +22,13 @@ Copyright_License {
 */
 
 #include "Message.hpp"
+#include "PopupMessage.hpp"
 #include "MainWindow.hpp"
 #include "Interface.hpp"
 
 void
 Message::AddMessage(const TCHAR* text, const TCHAR *data)
 {
-  CommonInterface::main_window->popup.AddMessage(text, data);
+  if (CommonInterface::main_window->popup != nullptr)
+    CommonInterface::main_window->popup->AddMessage(text, data);
 }

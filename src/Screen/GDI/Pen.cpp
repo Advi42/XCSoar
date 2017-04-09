@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,22 +27,22 @@ Copyright_License {
 #include <assert.h>
 
 void
-Pen::Set(Style Style, unsigned width, const Color c)
+Pen::Create(Style Style, unsigned width, const Color c)
 {
   assert(IsScreenInitialized());
 
-  Reset();
+  Destroy();
   pen = ::CreatePen(Style, width, c);
 }
 
 void
-Pen::Set(unsigned width, const Color c)
+Pen::Create(unsigned width, const Color c)
 {
-  Set(SOLID, width, c);
+  Create(SOLID, width, c);
 }
 
 void
-Pen::Reset()
+Pen::Destroy()
 {
   assert(!IsDefined() || IsScreenInitialized());
 

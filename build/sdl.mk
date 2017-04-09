@@ -14,25 +14,15 @@ endif
 
 ifeq ($(ENABLE_SDL),y)
 
-# Currently the default is not to use SDL2, but SDL 1.2, except for iOS,
-# where no official SDL 1.2 release is available
-ifeq ($(TARGET_IS_IOS),y)
-USE_SDL2 ?= y
+ifeq ($(TARGET_IS_DARWIN),y)
+COREGRAPHICS = y
 else
-USE_SDL2 ?= n
-endif
-
 LIBPNG = y
 LIBJPEG = y
+endif
 FREETYPE = y
 
-ifeq ($(USE_SDL2),y)
 $(eval $(call pkg-config-library,SDL,sdl2))
-SDL_CPPFLAGS := $(patsubst -I%,-isystem %,$(SDL_CPPFLAGS))
-else
-$(eval $(call pkg-config-library,SDL,sdl))
-endif
-
 SDL_CPPFLAGS += -DENABLE_SDL
 
 endif

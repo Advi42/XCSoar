@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2015 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,7 +24,9 @@ Copyright_License {
 #ifndef XCSOAR_COMPATIBILITY_PATH_H
 #define XCSOAR_COMPATIBILITY_PATH_H
 
-#if defined(WIN32) && !defined(__WINE__)
+#include <tchar.h>
+
+#ifdef WIN32
 
 #define DIR_SEPARATOR '\\'
 #define DIR_SEPARATOR_S "\\"
@@ -40,11 +42,7 @@ static inline bool
 IsDirSeparator(TCHAR ch)
 {
 #ifdef WIN32
-#if defined(__WINE__) || defined(_WIN32_WCE)
-  return ch == _T('/') || ch == _T('\\');
-#else
   return ch == _T('\\');
-#endif
 #else
   return ch == _T('/');
 #endif

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,8 +22,7 @@ Copyright_License {
 */
 
 #include "ChartLook.hpp"
-#include "Asset.hpp"
-#include "StandardFonts.hpp"
+#include "FontDescription.hpp"
 #include "Screen/Layout.hpp"
 
 #include <algorithm>
@@ -31,18 +30,37 @@ Copyright_License {
 void
 ChartLook::Initialise()
 {
-  pens[STYLE_BLUETHIN].Set(Pen::DASH, IsAltair() ? 1 : 2, Color(0, 50, 255));
-  pens[STYLE_REDTHICK].Set(Pen::DASH, 3, Color(200, 50, 50));
-  pens[STYLE_DASHGREEN].Set(Pen::DASH, 2, COLOR_GREEN);
-  pens[STYLE_MEDIUMBLACK].Set(IsAltair() ? 1 : 2, Color(50, 243, 45));
-  pens[STYLE_THINDASHPAPER].Set(Pen::DASH, 1, Color(0xB0, 0xB0, 0xB0));
+  const auto width_thin = Layout::ScalePenWidth(1);
+  const auto width_normal = Layout::ScalePenWidth(2);
+  const auto width_thick = Layout::ScalePenWidth(3);
 
-  bar_brush.Set(COLOR_GREEN);
+  pens[STYLE_BLUETHINDASH].Create(Pen::DASH2, width_thin, Color(0, 50, 255));
+  pens[STYLE_BLUEDASH].Create(Pen::DASH2, width_normal, Color(0, 50, 255));
+  pens[STYLE_BLUE].Create(width_normal, Color(0, 50, 255));
 
-  PixelScalar axis_label_size = std::max(PixelScalar(8), Layout::FastScale(6));
-  PixelScalar axis_value_size = std::max(PixelScalar(8), Layout::FastScale(7));
+  pens[STYLE_REDTHICKDASH].Create(Pen::DASH3, width_thick, Color(200, 50, 50));
+  pens[STYLE_RED].Create(width_normal, Color(200, 50, 50));
 
-  label_font.Load(GetStandardFontFace(), Layout::FastScale(12));
-  axis_label_font.Load(GetStandardFontFace(), axis_label_size, true);
-  axis_value_font.Load(GetStandardFontFace(), axis_value_size);
+  pens[STYLE_GREENDASH].Create(Pen::DASH2, width_normal, COLOR_GREEN);
+  pens[STYLE_GREEN].Create(width_normal, COLOR_GREEN);
+
+  pens[STYLE_BLACK].Create(width_normal, COLOR_BLACK);
+  pens[STYLE_WHITE].Create(width_normal, COLOR_WHITE);
+  pens[STYLE_GRID].Create(Pen::DASH1, 1, Color(0xB0, 0xB0, 0xB0));
+  pens[STYLE_GRIDMINOR].Create(1, Color(0xB0, 0xB0, 0xB0));
+  pens[STYLE_GRIDZERO].Create(width_normal, Color(0xB0, 0xB0, 0xB0));
+
+  bar_brush.Create(COLOR_GREEN);
+  neg_brush.Create(COLOR_RED);
+
+  label_blank_brush.Create(ColorWithAlpha(COLOR_WHITE,0xC0));
+  blank_brush.Create(ColorWithAlpha(LightColor(COLOR_GRAY),0x80));
+  black_brush.Create(COLOR_BLACK);
+
+  label_font.Load(FontDescription(Layout::FontScale(12)));
+  axis_label_font.Load(FontDescription(Layout::FontScale(10), true));
+  axis_value_font.Load(FontDescription(Layout::FontScale(9)));
+
+  color_positive = Color(0xa0, 0xd0, 0xf3);
+  color_negative = Color(0xf3, 0xd0, 0xa0);
 }

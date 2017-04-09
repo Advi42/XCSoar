@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -30,7 +30,9 @@ Copyright_License {
 #include <stddef.h>
 
 class OperationEnvironment;
+class PortListener;
 class DataHandler;
+class TimeoutClock;
 
 /**
  * Generic Port thread handler class
@@ -65,10 +67,12 @@ public:
   };
 
 protected:
+  PortListener *const listener;
+
   DataHandler &handler;
 
 public:
-  Port(DataHandler &_handler);
+  Port(PortListener *_listener, DataHandler &_handler);
   virtual ~Port();
 
   /**
@@ -206,8 +210,20 @@ public:
   /**
    * Read data from the serial port, take care for partial reads.
    *
-   * Note that this port's receive timeout is still in effect for each
-   * individual read operation.
+   * @param env an OperationEnvironment that allows canceling the
+   * operation
+   * @param first_timeout_ms timeout for the first read
+   * @param subsequent_timeout_ms timeout for the subsequent reads
+   * @param total_timeout_ms timeout for the whole operation
+   * @return true on success
+   */
+  gcc_nonnull_all
+  bool FullRead(void *buffer, size_t length, OperationEnvironment &env,
+                unsigned first_timeout_ms, unsigned subsequent_timeout_ms,
+                unsigned total_timeout_ms);
+
+  /**
+   * Read data from the serial port, take care for partial reads.
    *
    * @param env an OperationEnvironment that allows canceling the
    * operation
@@ -228,6 +244,22 @@ public:
    */
   WaitResult WaitRead(OperationEnvironment &env, unsigned timeout_ms);
 
+  /**
+   * Combination of WaitRead() and Read().
+   *
+   * @return 0 on timeout/canceled/error or the number of bytes read
+   */
+  size_t WaitAndRead(void *buffer, size_t length,
+                     OperationEnvironment &env, unsigned timeout_ms);
+
+  /**
+   * Combination of WaitRead() and Read().
+   *
+   * @return 0 on timeout/canceled/error or the number of bytes read
+   */
+  size_t WaitAndRead(void *buffer, size_t length,
+                     OperationEnvironment &env, TimeoutClock timeout);
+
   gcc_nonnull_all
   bool ExpectString(const char *token, OperationEnvironment &env,
                     unsigned timeout_ms = 2000);
@@ -243,6 +275,18 @@ public:
    */
   WaitResult WaitForChar(const char token, OperationEnvironment &env,
                          unsigned timeout_ms);
+
+protected:
+  /**
+   * Implementations should call this method whenever the return value
+   * of GetState() would change.
+   */
+  void StateChanged();
+
+  /**
+   * Call PortListener::PortError().
+   */
+  void Error(const char *msg);
 };
 
 #endif

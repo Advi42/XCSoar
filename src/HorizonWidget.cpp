@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -34,6 +34,7 @@
  */
 class HorizonWindow : public AntiFlickerWindow {
   const HorizonLook &look;
+  const bool& inverse;
 
   AttitudeState attitude;
 
@@ -41,7 +42,7 @@ public:
   /**
    * Constructor. Initializes most class members.
    */
-  HorizonWindow(const HorizonLook &_look):look(_look) {
+  HorizonWindow(const HorizonLook &_look, const bool &_inverse):look(_look),inverse(_inverse) {
     attitude.Reset();
   }
 
@@ -52,11 +53,13 @@ public:
 
 protected:
   /* virtual methods from AntiFlickerWindow */
-  virtual void OnPaintBuffer(Canvas &canvas) override {
-    canvas.ClearWhite();
+  void OnPaintBuffer(Canvas &canvas) override {
+    if (inverse)
+      canvas.Clear(COLOR_BLACK);
+    else
+      canvas.ClearWhite();
 
-    if (!CommonInterface::Basic().attitude.bank_angle_available &&
-        !CommonInterface::Basic().attitude.pitch_angle_available)
+    if (!attitude.IsBankAngleUseable() && !attitude.IsPitchAngleUseable())
       // TODO: paint "no data" hint
       return;
 
@@ -81,7 +84,7 @@ HorizonWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
   style.Hide();
   style.Disable();
 
-  HorizonWindow *w = new HorizonWindow(look.horizon);
+  HorizonWindow *w = new HorizonWindow(look.horizon, look.info_box.inverse);
   w->Create(parent, rc, style);
   SetWindow(w);
 }

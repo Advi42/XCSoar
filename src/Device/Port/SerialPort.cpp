@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,12 +25,7 @@ Copyright_License {
 #include "Asset.hpp"
 #include "OS/LogError.hpp"
 #include "OS/Sleep.h"
-
-#ifdef _WIN32_WCE
-#include "Widcomm.hpp"
-#else
 #include "OS/OverlappedEvent.hpp"
-#endif
 
 #include <windows.h>
 
@@ -39,8 +34,8 @@ Copyright_License {
 #include <tchar.h>
 #include <stdio.h>
 
-SerialPort::SerialPort(DataHandler &_handler)
-  :BufferedPort(_handler), StoppableThread("SerialPort")
+SerialPort::SerialPort(PortListener *_listener, DataHandler &_handler)
+  :BufferedPort(_listener, _handler), StoppableThread("SerialPort")
 {
 }
 
@@ -52,16 +47,10 @@ SerialPort::~SerialPort()
   if (hPort != INVALID_HANDLE_VALUE) {
     StoppableThread::BeginStop();
 
-    /* Some CE widcomm drivers has a bug that locks/hangs
-       ReadFile if the handle is closed.
-       Wait for the thread to finish before closing the handle. */
-    bool finished = is_widcomm && Thread::Join(2000);
-      
     if (CloseHandle(hPort) && !IsEmbedded())
       Sleep(2000); // needed for windows bug
 
-    if (!finished)
-      Thread::Join();
+    Thread::Join();
   }
 
   BufferedPort::EndClose();
@@ -72,24 +61,16 @@ SerialPort::Open(const TCHAR *path, unsigned _baud_rate)
 {
   assert(!Thread::IsInside());
 
-#ifdef _WIN32_WCE
-  is_widcomm = IsWidcommDevice(path);
-#endif
-
   DCB PortDCB;
 
   // Open the serial port.
   hPort = CreateFile(path,
                      GENERIC_READ | GENERIC_WRITE, // Access (read-write) mode
                      0,            // Share mode
-                     NULL,         // Pointer to the security attribute
+                     nullptr, // Pointer to the security attribute
                      OPEN_EXISTING,// How to open the serial port
-#ifdef _WIN32_WCE
-                     FILE_ATTRIBUTE_NORMAL, // Port attributes
-#else
                      FILE_FLAG_OVERLAPPED, // Overlapped I/O
-#endif
-                     NULL);        // Handle to port with attribute to copy
+                     nullptr); // Handle to port with attribute to copy
 
   // If it fails to open the port, return false.
   if (hPort == INVALID_HANDLE_VALUE) {
@@ -142,6 +123,8 @@ SerialPort::Open(const TCHAR *path, unsigned _baud_rate)
 
   StoppableThread::Start();
 
+  StateChanged();
+
   return true;
 }
 
@@ -164,7 +147,7 @@ SerialPort::Drain()
 
   ::SetCommMask(hPort, EV_ERR|EV_TXEMPTY);
   DWORD events;
-  return WaitCommEvent(hPort, &events, NULL) &&
+  return WaitCommEvent(hPort, &events, nullptr) &&
     (events & EV_TXEMPTY) != 0;
 }
 
@@ -200,8 +183,6 @@ SerialPort::GetDataPending() const
     ? (int)com_stat.cbInQue
     : -1;
 }
-
-#ifndef _WIN32_WCE
 
 Port::WaitResult
 SerialPort::WaitDataPending(OverlappedEvent &overlapped,
@@ -252,8 +233,6 @@ SerialPort::WaitDataPending(OverlappedEvent &overlapped,
     : WaitResult::FAILED;
 }
 
-#endif
-
 void
 SerialPort::Run()
 {
@@ -265,24 +244,16 @@ SerialPort::Run()
   // JMW added purging of port on open to prevent overflow
   Flush();
 
-#ifndef _WIN32_WCE
   OverlappedEvent osStatus, osReader;
   if (!osStatus.Defined() || !osReader.Defined())
      // error creating event; abort
      return;
-#endif
 
   // Specify a set of events to be monitored for the port.
-  if (is_widcomm)
-    SetRxTimeout(180);
-  else {
-    ::SetCommMask(hPort, EV_RXCHAR);
-    SetRxTimeout(0);
-  }
+  ::SetCommMask(hPort, EV_RXCHAR);
+  SetRxTimeout(0);
 
   while (!CheckStopped()) {
-
-#ifndef _WIN32_WCE
 
     WaitResult result = WaitDataPending(osStatus, INFINITE);
     switch (result) {
@@ -329,35 +300,6 @@ SerialPort::Run()
         continue;
     }
 
-#else
-
-    if (is_widcomm) {
-      /* WaitCommEvent() doesn't work with the Widcomm Bluetooth
-         driver, it blocks for 11 seconds, regardless whether data is
-         received.  This workaround polls for input manually.
-         Observed on an iPaq hx4700 with WM6. */
-    } else {
-      // Wait for an event to occur for the port.
-      DWORD dwCommModemStatus;
-      if (!::WaitCommEvent(hPort, &dwCommModemStatus, 0)) {
-        // error reading from port
-        Sleep(100);
-        continue;
-      }
-
-      if ((dwCommModemStatus & EV_RXCHAR) == 0)
-        /* no data available */
-        continue;
-    }
-
-    // Read the data from the serial port.
-    if (!ReadFile(hPort, inbuf, 1024, &dwBytesTransferred, NULL) ||
-        dwBytesTransferred == 0) {
-      Sleep(100);
-      continue;
-    }
-#endif
-
     DataReceived(inbuf, dwBytesTransferred);
   }
 
@@ -371,30 +313,6 @@ SerialPort::Write(const void *data, size_t length)
 
   if (hPort == INVALID_HANDLE_VALUE)
     return 0;
-
-#ifdef _WIN32_WCE
-
-#if 0
-  /* this workaround is currently disabled because it causes major
-    problems with some of our device drivers, causing timeouts; this
-    may be a regression on the bugged HP31x, but I prefer to support
-    sane platforms any day */
-
-  if (IsWindowsCE() && !IsAltair())
-    /* this is needed to work around a driver bug on the HP31x -
-       without it, the second consecutive write without a task switch
-       will hang the whole PNA; this Sleep() call enforces a task
-       switch */
-    Sleep(100);
-#endif
-
-  // lpNumberOfBytesWritten : This parameter can be NULL only when the lpOverlapped parameter is not NULL.
-  if (!::WriteFile(hPort, data, length, &NumberOfBytesWritten, NULL))
-    return 0;
-
-  return NumberOfBytesWritten;
-
-#else
 
   OverlappedEvent osWriter;
 
@@ -419,7 +337,6 @@ SerialPort::Write(const void *data, size_t length)
     osWriter.Wait();
     return 0;
   }
-#endif
 }
 
 bool

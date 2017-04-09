@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ Copyright_License {
 #include "Weather/METAR.hpp"
 #include "Weather/NOAAStore.hpp"
 #include "Weather/NOAAUpdater.hpp"
-#include "Net/Init.hpp"
+#include "Net/HTTP/Init.hpp"
 #include "ConsoleJobRunner.hpp"
 #include "Units/Units.hpp"
 #include "Formatter/UserUnits.hpp"
@@ -49,12 +49,9 @@ DisplayParsedMETAR(const NOAAStore::Item &station)
   if (parsed.name_available)
     _tprintf(_T("Name: %s\n"), parsed.name.c_str());
 
-  if (parsed.location_available) {
-    TCHAR buffer[256];
-    FormatGeoPoint(parsed.location, buffer, ARRAY_SIZE(buffer),
-                   CoordinateFormat::DDMMSS);
-    _tprintf(_T("Location: %s\n"), buffer);
-  }
+  if (parsed.location_available)
+    _tprintf(_T("Location: %s\n"),
+             FormatGeoPoint(parsed.location, CoordinateFormat::DDMMSS).c_str());
 
   if (parsed.qnh_available) {
     TCHAR buffer[256];
@@ -82,8 +79,7 @@ DisplayParsedMETAR(const NOAAStore::Item &station)
     if (parsed.visibility >= 9999)
       _tcscpy(buffer, _T("unlimited"));
     else {
-      fixed visibility(parsed.visibility);
-      FormatUserDistanceSmart(visibility, buffer, ARRAY_SIZE(buffer));
+      FormatUserDistanceSmart(parsed.visibility, buffer, ARRAY_SIZE(buffer));
     }
     _tprintf(_T("Visibility: %s\n"), buffer);
   }

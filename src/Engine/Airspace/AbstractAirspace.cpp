@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,14 +26,20 @@
 #include "AirspaceInterceptSolution.hpp"
 #include "Geo/Flat/FlatBoundingBox.hpp"
 #include "Geo/Flat/FlatRay.hpp"
-#include "Geo/Flat/TaskProjection.hpp"
+#include "Geo/Flat/FlatProjection.hpp"
 #include "Geo/GeoBounds.hpp"
 #include "AirspaceIntersectionVector.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/StringAPI.hxx"
 
 #include <assert.h>
 
 AbstractAirspace::~AbstractAirspace() {}
+
+bool
+AbstractAirspace::Inside(const AltitudeState &state) const
+{
+  return altitude_base.IsBelow(state) && altitude_top.IsAbove(state);
+}
 
 bool
 AbstractAirspace::Inside(const AircraftState &state) const
@@ -44,7 +50,7 @@ AbstractAirspace::Inside(const AircraftState &state) const
 }
 
 void
-AbstractAirspace::SetGroundLevel(const fixed alt)
+AbstractAirspace::SetGroundLevel(const double alt)
 {
   altitude_base.SetGroundLevel(alt);
   altitude_top.SetGroundLevel(alt);
@@ -60,7 +66,7 @@ AbstractAirspace::SetFlightLevel(const AtmosphericPressure &press)
 AirspaceInterceptSolution
 AbstractAirspace::InterceptVertical(const AircraftState &state,
                                     const AirspaceAircraftPerformance &perf,
-                                    fixed distance) const
+                                    double distance) const
 {
   AirspaceInterceptSolution solution;
   solution.distance = distance;
@@ -75,8 +81,8 @@ AbstractAirspace::InterceptVertical(const AircraftState &state,
 AirspaceInterceptSolution
 AbstractAirspace::InterceptHorizontal(const AircraftState &state,
                                       const AirspaceAircraftPerformance &perf,
-                                      fixed distance_start,
-                                      fixed distance_end,
+                                      double distance_start,
+                                      double distance_end,
                                       const bool lower) const
 {
   if (lower && altitude_base.IsTerrain())
@@ -95,25 +101,24 @@ AbstractAirspace::InterceptHorizontal(const AircraftState &state,
   return solution;
 }
 
-bool
+AirspaceInterceptSolution
 AbstractAirspace::Intercept(const AircraftState &state,
                             const AirspaceAircraftPerformance &perf,
-                            AirspaceInterceptSolution &solution,
                             const GeoPoint &loc_start,
                             const GeoPoint &loc_end) const
 {
   const bool only_vertical = (loc_start == loc_end) &&
     (loc_start == state.location);
 
-  const fixed distance_start = only_vertical ?
-                               fixed(0) : state.location.Distance(loc_start);
+  const auto distance_start = only_vertical
+    ? double(0)
+    : state.location.Distance(loc_start);
 
-  const fixed distance_end =
-      (loc_start == loc_end) ?
-      distance_start :
-      (only_vertical ? fixed(0) : state.location.Distance(loc_end));
+  const auto distance_end = loc_start == loc_end
+    ? distance_start
+    : (only_vertical ? double(0) : state.location.Distance(loc_end));
 
-  AirspaceInterceptSolution solution_this =
+  AirspaceInterceptSolution solution =
     AirspaceInterceptSolution::Invalid();
 
   // need to scan at least three sides, top, far, bottom (if not terrain)
@@ -124,83 +129,62 @@ AbstractAirspace::Intercept(const AircraftState &state,
   if (!only_vertical) {
     solution_candidate = InterceptVertical(state, perf, distance_start);
     // search near wall
-    if (solution_candidate.IsValid() &&
-        ((solution_candidate.elapsed_time < solution_this.elapsed_time) ||
-         negative(solution_this.elapsed_time)))
-      solution_this = solution_candidate;
-
+    if (solution_candidate.IsEarlierThan(solution))
+      solution = solution_candidate;
 
     if (distance_end != distance_start) {
       // need to search far wall also
       solution_candidate = InterceptVertical(state, perf, distance_end);
-      if (solution_candidate.IsValid() &&
-          ((solution_candidate.elapsed_time < solution_this.elapsed_time) ||
-           negative(solution_this.elapsed_time)))
-        solution_this = solution_candidate;
+      if (solution_candidate.IsEarlierThan(solution))
+        solution = solution_candidate;
     }
   }
 
   solution_candidate = InterceptHorizontal(state, perf, distance_start,
                                            distance_end, false);
   // search top wall
-  if (solution_candidate.IsValid() &&
-      ((solution_candidate.elapsed_time < solution_this.elapsed_time) ||
-       negative(solution_this.elapsed_time)))
-    solution_this = solution_candidate;
+  if (solution_candidate.IsEarlierThan(solution))
+    solution = solution_candidate;
 
   // search bottom wall
   if (!altitude_base.IsTerrain()) {
     solution_candidate = InterceptHorizontal(state, perf, distance_start,
                                              distance_end, true);
-    if (solution_candidate.IsValid() &&
-        ((solution_candidate.elapsed_time < solution_this.elapsed_time) ||
-         negative(solution_this.elapsed_time)))
-      solution_this = solution_candidate;
+    if (solution_candidate.IsEarlierThan(solution))
+      solution = solution_candidate;
   }
 
-  if (solution_this.IsValid()) {
-    solution = solution_this;
+  if (solution.IsValid()) {
     if (solution.distance == distance_start)
       solution.location = loc_start;
     else if (solution.distance == distance_end)
       solution.location = loc_end;
-    else if (positive(distance_end))
+    else if (distance_end > 0)
       solution.location =
         state.location.Interpolate(loc_end, solution.distance / distance_end);
     else
       solution.location = loc_start;
 
-    assert(!negative(solution.distance));
-    return true;
+    assert(solution.distance >= 0);
   }
-  else
-    solution = AirspaceInterceptSolution::Invalid();
 
-  return false;
+  return solution;
 }
 
-bool
+AirspaceInterceptSolution
 AbstractAirspace::Intercept(const AircraftState &state,
                             const GeoPoint &end,
-                            const TaskProjection &projection,
-                            const AirspaceAircraftPerformance &perf,
-                            AirspaceInterceptSolution &solution) const
+                            const FlatProjection &projection,
+                            const AirspaceAircraftPerformance &perf) const
 {
-  AirspaceIntersectionVector vis = Intersects(state.location, end,
-                                              projection);
-  if (vis.empty())
-    return false;
+  AirspaceInterceptSolution solution = AirspaceInterceptSolution::Invalid();
+  for (const auto &i : Intersects(state.location, end, projection)) {
+    auto new_solution = Intercept(state, perf, i.first, i.second);
+    if (new_solution.IsEarlierThan(solution))
+      solution = new_solution;
+  }
 
-  AirspaceInterceptSolution this_solution =
-    AirspaceInterceptSolution::Invalid();
-  for (const auto &i : vis)
-    Intercept(state, perf, this_solution, i.first, i.second);
-
-  if (!this_solution.IsValid())
-    return false;
-
-  solution = this_solution;
-  return true;
+  return solution;
 }
 
 bool
@@ -211,15 +195,15 @@ AbstractAirspace::MatchNamePrefix(const TCHAR *prefix) const
 }
 
 void
-AbstractAirspace::Project(const TaskProjection &task_projection)
+AbstractAirspace::Project(const FlatProjection &projection)
 {
-  m_border.Project(task_projection);
+  m_border.Project(projection);
 }
 
 const FlatBoundingBox
-AbstractAirspace::GetBoundingBox(const TaskProjection& task_projection)
+AbstractAirspace::GetBoundingBox(const FlatProjection &projection)
 {
-  Project(task_projection);
+  Project(projection);
   return m_border.CalculateBoundingbox();
 }
 
@@ -230,7 +214,7 @@ AbstractAirspace::GetGeoBounds() const
 }
 
 const SearchPointVector&
-AbstractAirspace::GetClearance(const TaskProjection &projection) const
+AbstractAirspace::GetClearance(const FlatProjection &projection) const
 {
   #define RADIUS 5
 
@@ -249,7 +233,7 @@ AbstractAirspace::GetClearance(const TaskProjection &projection) const
     FlatRay r(center, p);
     int mag = r.Magnitude();
     int mag_new = mag + RADIUS;
-    p = r.Parametric((fixed)mag_new / mag);
+    p = r.Parametric((double)mag_new / mag);
     i = SearchPoint(projection.Unproject(p), p);
   }
 

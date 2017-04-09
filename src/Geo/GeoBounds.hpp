@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -112,11 +112,21 @@ public:
    * Check if this object is "valid".  Returns false when it was
    * constructed by Invalid().  This is not an extensive plausibility
    * check; it is only designed to catch instances created by
-   * Invalid().
+   * Invalid().  If you want a real check, call Check().
    */
   constexpr
   bool IsValid() const {
     return latitude.end <= Angle::HalfCircle();
+  }
+
+  /**
+   * Check if this object is "valid".  This is an extensive test; if
+   * all you want is check if this object was constructed by
+   * Invalid(), then call the cheaper method IsValid().
+   */
+  constexpr bool Check() const {
+    return GetSouthWest().Check() && GetNorthEast().Check() &&
+      GetNorth() >= GetSouth();
   }
 
   constexpr bool IsEmpty() const {
@@ -136,7 +146,7 @@ public:
    * center in metres.
    */
   gcc_pure
-  fixed GetGeoWidth() const {
+  double GetGeoWidth() const {
     const Angle middle_latitude = latitude.GetMiddle();
     return GeoPoint(GetWest(), middle_latitude)
       .Distance(GeoPoint(GetEast(), middle_latitude));
@@ -147,11 +157,16 @@ public:
    * metres.
    */
   gcc_pure
-  fixed GetGeoHeight() const {
+  double GetGeoHeight() const {
     return GetNorthWest().Distance(GetSouthWest());
   }
 
-  void Extend(const GeoPoint pt);
+  /**
+   * Extend the bounds so the given point is inside.
+   *
+   * @return true if the bounds have been modified
+   */
+  bool Extend(const GeoPoint pt);
 
   bool IsInside(Angle _longitude, Angle _latitude) const {
     return longitude.IsInside(_longitude) && latitude.IsInside(_latitude);
@@ -193,7 +208,7 @@ public:
    * @return A scaled version of the GeoBounds
    */
   gcc_pure
-  GeoBounds Scale(fixed factor) const;
+  GeoBounds Scale(double factor) const;
 };
 
 #endif

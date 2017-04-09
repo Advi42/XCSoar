@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -59,7 +59,8 @@ public:
    * @param previous Previous task point (origin of inbound leg)
    * @param next Following task point (destination of outbound leg)
    */
-  virtual void SetLegs(const GeoPoint *previous, const GeoPoint *next) {}
+  virtual void SetLegs(gcc_unused const GeoPoint *previous,
+                       gcc_unused const GeoPoint *next) {}
 
   /**
    * Test whether an OZ is equivalent to this one
@@ -77,7 +78,7 @@ public:
    *
    * @return Location of point
    */
-  virtual GeoPoint GetRandomPointInSector(const fixed mag) const = 0;
+  virtual GeoPoint GetRandomPointInSector(double mag) const = 0;
 
   /**
    * Clone this object with optional shift
@@ -102,7 +103,7 @@ protected:
   /**
    * distance from this to the reference
    */
-  fixed DistanceTo(const GeoPoint &ref) const {
+  double DistanceTo(const GeoPoint &ref) const {
     return reference.Distance(ref);
   }
 };

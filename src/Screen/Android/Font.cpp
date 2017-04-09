@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,31 +23,26 @@ Copyright_License {
 
 #include "Screen/Font.hpp"
 #include "Screen/Debug.hpp"
-#include "Java/Global.hpp"
-#include "Java/Class.hpp"
-#include "Java/String.hpp"
+#include "Look/FontDescription.hpp"
+#include "Java/Global.hxx"
+#include "Java/Class.hxx"
+#include "Java/String.hxx"
 #include "Android/TextUtil.hpp"
+#include "Util/StringCompare.hxx"
 
 #include <assert.h>
-
-bool
-Font::Load(const LOGFONT &log)
-{
-  return Load(log.lfFaceName, (int) log.lfHeight,
-              log.lfWeight > 600, log.lfItalic != 0);
-}
 
 /*
  * create a new instance of org.xcsoar.TextUtil and store it with a global
  * reference in text_util_object member.
  */
 bool
-Font::Load(const TCHAR *facename, UPixelScalar height, bool bold, bool italic)
+Font::Load(const FontDescription &d)
 {
   assert(IsScreenInitialized());
 
   delete text_util_object;
-  text_util_object = TextUtil::create(facename, height, bold, italic);
+  text_util_object = TextUtil::create(d);
   if (!text_util_object)
     return false;
 
@@ -56,7 +51,7 @@ Font::Load(const TCHAR *facename, UPixelScalar height, bool bold, bool italic)
   capital_height = text_util_object->get_capital_height();
   line_spacing = text_util_object->GetLineSpacing();
 
-  return text_util_object != nullptr;
+  return true;
 }
 
 void
@@ -86,7 +81,7 @@ Font::TextTextureGL(const TCHAR *text, PixelSize &size,
   if (!text_util_object)
     return 0;
 
-  if (*text == _T('\0'))
+  if (StringIsEmpty(text))
     return 0;
 
   const TextUtil::Texture texture =

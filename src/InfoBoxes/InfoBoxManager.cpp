@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,12 +26,11 @@ Copyright_License {
 #include "InfoBoxes/InfoBoxWindow.hpp"
 #include "InfoBoxes/InfoBoxLayout.hpp"
 #include "InfoBoxes/Content/Factory.hpp"
-#include "InfoBoxes/Content/Base.hpp"
-#include "Screen/Layout.hpp"
 #include "Language/Language.hpp"
 #include "Form/DataField/ComboList.hpp"
 #include "Dialogs/ComboPicker.hpp"
 #include "Profile/InfoBoxConfig.hpp"
+#include "Profile/Current.hpp"
 #include "Interface.hpp"
 #include "UIState.hpp"
 
@@ -47,9 +46,6 @@ namespace InfoBoxManager
 
   static void DisplayInfoBox();
   static void InfoBoxDrawIfDirty();
-
-  gcc_pure
-  static int GetFocused();
 }
 
 static bool infoboxes_dirty = false;
@@ -82,66 +78,6 @@ InfoBoxManager::Show()
     infoboxes[i]->Show();
 
   SetDirty();
-}
-
-int
-InfoBoxManager::GetFocused()
-{
-  for (unsigned i = 0; i < layout.count; i++)
-    if (infoboxes[i]->HasFocus())
-      return i;
-
-  return -1;
-}
-
-void
-InfoBoxManager::Event_Select(int i)
-{
-  int InfoFocus = GetFocused();
-
-  if (InfoFocus < 0) {
-    InfoFocus = (i >= 0 ? 0 : layout.count - 1);
-  } else {
-    InfoFocus += i;
-
-    if (InfoFocus < 0 || (unsigned)InfoFocus >= layout.count)
-      InfoFocus = -1;
-  }
-
-  if (InfoFocus >= 0)
-    infoboxes[InfoFocus]->SetFocus();
-  else
-    infoboxes[0]->FocusParent();
-}
-
-void
-InfoBoxManager::Event_Change(int i)
-{
-  InfoBoxFactory::Type j = InfoBoxFactory::MIN_TYPE_VAL;
-  InfoBoxFactory::Type k;
-
-  int InfoFocus = GetFocused();
-  if (InfoFocus < 0)
-    return;
-
-  InfoBoxSettings &settings = CommonInterface::SetUISettings().info_boxes;
-  const unsigned panel_index = CommonInterface::GetUIState().panel_index;
-  InfoBoxSettings::Panel &panel = settings.panels[panel_index];
-
-  k = panel.contents[InfoFocus];
-  if (i > 0)
-    j = InfoBoxFactory::GetNext(k);
-  else if (i < 0)
-    j = InfoBoxFactory::GetPrevious(k);
-
-  // TODO code: if i==0, go to default or reset
-
-  if (j == k)
-    return;
-
-  panel.contents[InfoFocus] = j;
-
-  infoboxes[InfoFocus]->UpdateContent();
 }
 
 void
@@ -208,7 +144,7 @@ InfoBoxManager::ProcessTimer()
 void
 InfoBoxManager::Create(ContainerWindow &parent,
                        const InfoBoxLayout::Layout &_layout,
-                       const InfoBoxLook &look, const UnitsLook &units_look)
+                       const InfoBoxLook &look)
 {
   const InfoBoxSettings &settings =
     CommonInterface::GetUISettings().info_boxes;
@@ -230,7 +166,7 @@ InfoBoxManager::Create(ContainerWindow &parent,
       : InfoBoxLayout::GetBorder(layout.geometry, layout.landscape, i);
 
     infoboxes[i] = new InfoBoxWindow(parent, rc,
-                                     Border, settings, look, units_look,
+                                     Border, settings, look,
                                      i, style);
   }
 
@@ -247,16 +183,8 @@ InfoBoxManager::Destroy()
 }
 
 void
-InfoBoxManager::ShowInfoBoxPicker(const int id)
+InfoBoxManager::ShowInfoBoxPicker(const int i)
 {
-  int i;
-
-  if (id < 0) i = GetFocused();
-  else i = id;
-
-  if (i < 0)
-    return;
-
   InfoBoxSettings &settings = CommonInterface::SetUISettings().info_boxes;
   const unsigned panel_index = CommonInterface::GetUIState().panel_index;
   InfoBoxSettings::Panel &panel = settings.panels[panel_index];
@@ -272,7 +200,7 @@ InfoBoxManager::ShowInfoBoxPicker(const int id)
   }
 
   list.Sort();
-  list.ComboPopupItemSavedIndex = list.LookUp(old_type);
+  list.current_index = list.LookUp(old_type);
 
   /* let the user select */
 
@@ -284,7 +212,7 @@ InfoBoxManager::ShowInfoBoxPicker(const int id)
 
   /* was there a modification? */
 
-  InfoBoxFactory::Type new_type = (InfoBoxFactory::Type)list[result].DataFieldIndex;
+  InfoBoxFactory::Type new_type = (InfoBoxFactory::Type)list[result].int_value;
   if (new_type == old_type)
     return;
 
@@ -293,5 +221,5 @@ InfoBoxManager::ShowInfoBoxPicker(const int id)
   panel.contents[i] = new_type;
   DisplayInfoBox();
 
-  Profile::Save(panel, panel_index);
+  Profile::Save(Profile::map, panel, panel_index);
 }

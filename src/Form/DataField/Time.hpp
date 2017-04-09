@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@ Copyright_License {
 
 #include "Base.hpp"
 #include "Time/PeriodClock.hpp"
-#include "Math/fixed.hpp"
 
 class DataFieldTime final : public DataField {
 private:
@@ -44,12 +43,6 @@ protected:
   int SpeedUp(bool keyup);
 
 public:
-  DataFieldTime(int _min, int _max, int _value, unsigned _step,
-                DataAccessCallback OnDataAccess)
-    :DataField(Type::TIME, true, OnDataAccess),
-     value(_value), min(_min), max(_max), step(_step), max_tokens(2),
-     speedup(0) {}
-
   DataFieldTime(int _min, int _max, int _value, unsigned _step,
                 DataFieldListener *listener)
     :DataField(Type::TIME, true, listener),
@@ -88,23 +81,22 @@ public:
   }
 
   /* virtual methods from class DataField */
-  virtual void Inc() override;
-  virtual void Dec() override;
+  void Inc() override;
+  void Dec() override;
 
-  virtual int GetAsInteger() const override {
+  int GetAsInteger() const override {
     return value;
   }
 
-  virtual const TCHAR *GetAsString() const override;
-  virtual const TCHAR *GetAsDisplayString() const override;
+  const TCHAR *GetAsString() const override;
+  const TCHAR *GetAsDisplayString() const override;
 
-  virtual void SetAsInteger(int _value) override {
+  void SetAsInteger(int _value) override {
     SetValue(_value);
   }
 
-  virtual ComboList CreateComboList(const TCHAR *reference) const override;
-  virtual void SetFromCombo(int data_field_index,
-                            TCHAR *value_string) override;
+  ComboList CreateComboList(const TCHAR *reference) const override;
+  void SetFromCombo(int data_field_index, const TCHAR *value_string) override;
 
 protected:
   void AppendComboValue(ComboList &combo_list, int value) const;

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -31,27 +31,23 @@ Copyright_License {
 struct AttitudeState;
 class LiveBlackboard;
 struct ThermalAssistantLook;
-class WndButton;
+class Button;
 class BigThermalAssistantWindow;
 
 class BigThermalAssistantWidget
   : public ContainerWidget,
-#ifndef GNAV
     private ActionListener,
-#endif
     private NullBlackboardListener {
   LiveBlackboard &blackboard;
   const ThermalAssistantLook &look;
 
   BigThermalAssistantWindow *view;
 
-#ifndef GNAV
   enum Action {
     CLOSE,
   };
 
-  WndButton *close_button;
-#endif
+  Button *close_button;
 
 public:
   BigThermalAssistantWidget(LiveBlackboard &_blackboard,
@@ -71,10 +67,8 @@ private:
   void UpdateLayout();
   void Update(const AttitudeState &attitude, const DerivedInfo &calculated);
 
-#ifndef GNAV
   /* virtual methods from class ActionListener */
   virtual void OnAction(int id) override;
-#endif
 
   /* virtual methods from class BlackboardListener */
   virtual void OnCalculatedUpdate(const MoreData &basic,

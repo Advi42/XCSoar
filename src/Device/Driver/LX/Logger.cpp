@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -18,7 +18,7 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-  }
+}
 */
 
 #include "Internal.hpp"
@@ -26,8 +26,10 @@
 #include "Protocol.hpp"
 #include "Convert.hpp"
 #include "Device/Port/Port.hpp"
+#include "Device/RecordedFlight.hpp"
 #include "Operation/Operation.hpp"
 #include "OS/ByteOrder.hpp"
+#include "OS/Path.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -119,7 +121,8 @@ ReadFlightListInner(Port &port, RecordedFlightList &flight_list,
   bool success = false;
   while (!flight_list.full()) {
     LX::FlightInfo flight;
-    if (!LX::ReadCRC(port, &flight, sizeof(flight), env, 20000))
+    if (!LX::ReadCRC(port, &flight, sizeof(flight), env,
+                     20000, 2000, 180000))
       break;
 
     success = true;
@@ -184,7 +187,7 @@ DownloadFlightInner(Port &port, const RecordedFlightInfo &flight,
   LX::MemorySection memory_section;
   if (!LX::ReceivePacketRetry(port, LX::READ_MEMORY_SECTION,
                               &memory_section, sizeof(memory_section), env,
-                              5000, 2))
+                              5000, 2000, 60000, 2))
       return false;
 
   unsigned lengths[LX::MemorySection::N];
@@ -199,7 +202,8 @@ DownloadFlightInner(Port &port, const RecordedFlightInfo &flight,
   uint8_t *data = new uint8_t[total_length], *p = data;
   for (unsigned i = 0; i < LX::MemorySection::N && lengths[i] > 0; ++i) {
     if (!LX::ReceivePacketRetry(port, (LX::Command)(LX::READ_LOGGER_DATA + i),
-                                p, lengths[i], env, 60000, 2)) {
+                                p, lengths[i], env,
+                                20000, 2000, 300000, 2)) {
       delete [] data;
       return false;
     }
@@ -216,7 +220,7 @@ DownloadFlightInner(Port &port, const RecordedFlightInfo &flight,
 
 bool
 LXDevice::DownloadFlight(const RecordedFlightInfo &flight,
-                         const TCHAR *path,
+                         Path path,
                          OperationEnvironment &env)
 {
   if (flight.internal.lx.nano_filename[0] != 0) {
@@ -231,8 +235,8 @@ LXDevice::DownloadFlight(const RecordedFlightInfo &flight,
   if (!EnableCommandMode(env))
     return false;
 
-  FILE *file = _tfopen(path, _T("wb"));
-  if (file == NULL)
+  FILE *file = _tfopen(path.c_str(), _T("wb"));
+  if (file == nullptr)
     return false;
 
   assert(!busy);

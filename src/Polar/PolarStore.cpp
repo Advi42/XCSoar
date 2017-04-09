@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ Copyright_License {
 #include "Polar/Polar.hpp"
 #include "Units/System.hpp"
 #include "Util/Macros.hpp"
-#include "Compiler.h"
 
 #include <assert.h>
 
@@ -34,12 +33,12 @@ PolarStore::Item::ToPolarShape() const
 {
   PolarShape shape;
 
-  shape[0].v = Units::ToSysUnit(fixed(v1), Unit::KILOMETER_PER_HOUR);
-  shape[0].w = fixed(w1);
-  shape[1].v = Units::ToSysUnit(fixed(v2), Unit::KILOMETER_PER_HOUR);
-  shape[1].w = fixed(w2);
-  shape[2].v = Units::ToSysUnit(fixed(v3), Unit::KILOMETER_PER_HOUR);
-  shape[2].w = fixed(w3);
+  shape[0].v = Units::ToSysUnit(v1, Unit::KILOMETER_PER_HOUR);
+  shape[0].w = w1;
+  shape[1].v = Units::ToSysUnit(v2, Unit::KILOMETER_PER_HOUR);
+  shape[1].w = w2;
+  shape[2].v = Units::ToSysUnit(v3, Unit::KILOMETER_PER_HOUR);
+  shape[2].w = w3;
 
   return shape;
 }
@@ -49,11 +48,11 @@ PolarStore::Item::ToPolarInfo() const
 {
   PolarInfo polar;
 
-  polar.reference_mass = fixed(reference_mass);
-  polar.max_ballast = fixed(max_ballast);
+  polar.reference_mass = reference_mass;
+  polar.max_ballast = max_ballast;
   polar.shape = ToPolarShape();
-  polar.wing_area = fixed(wing_area);
-  polar.v_no = fixed(v_no);
+  polar.wing_area = wing_area;
+  polar.v_no = v_no;
 
   return polar;
 }
@@ -280,6 +279,12 @@ static constexpr PolarStore::Item internal_polars[] =
 
   //Derived from Pilatus B4 PH-448, fixed gear serial production, measured at Idaflieg-vergleichsfliegen at Aalen in the year 1973.
   {_T("Pilatus B4"), 306, 0, 90.0, -0.847, 126.0, -1.644, 198.0, -5.098},
+
+  { _T("SGS 2-33 (PAS)"), 470, 0, 82.32, -0.96, 130.0, -1.74, 170.0, -3.44, 20.35, 33, 0 },
+  // 170
+  { _T("SGS 2-33 (PIL)"), 360, 0, 69.75, -0.84, 130.0, -2.13, 170.0, -4.39, 20.35, 33, 0 },
+  { _T("R-26S Gobe (PIL)"), 320, 0, 45.7, -0.78, 60.93, -0.73, 106.63, -2.45, 18.00, 0.0, 0 },
+  { _T("R-26S Gobe (PAS)"), 420, 0, 60.0, -1.02, 80.0, -0.96, 120.0, -2.11, 18.00, 0.0, 0 },
 
 };
 

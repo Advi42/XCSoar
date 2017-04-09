@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@ namespace ActionInterface {
    *
    * @param to_devices send the new settings to all devices?
    */
-  void SetBallast(fixed ballast, bool to_devices=true);
+  void SetBallast(double ballast, bool to_devices=true);
 
   /**
    * Configure a new Bugs setting in #ComputerSettings, and
@@ -47,7 +47,7 @@ namespace ActionInterface {
    *
    * @param to_devices send the new settings to all devices?
    */
-  void SetBugs(fixed mc, bool to_devices=true);
+  void SetBugs(double mc, bool to_devices=true);
 
   /**
    * Configure a new MacCready setting in #ComputerSettings, and
@@ -55,7 +55,7 @@ namespace ActionInterface {
    *
    * @param to_devices send the new settings to all devices?
    */
-  void SetMacCready(fixed mc, bool to_devices=true);
+  void SetMacCready(double mc, bool to_devices=true);
 
   /**
    * Configure a new MacCready setting in #ComputerSettings, and
@@ -64,21 +64,33 @@ namespace ActionInterface {
    *
    * @param to_devices send the new settings to all devices?
    */
-  void SetManualMacCready(fixed mc, bool to_devices=true);
+  void SetManualMacCready(double mc, bool to_devices=true);
 
   /**
    * Same as SetManualMacCready(), but adds the given value to the
    * current MacCready setting.  It performs bounds checking.
    */
-  void OffsetManualMacCready(fixed offset, bool to_devices=true);
+  void OffsetManualMacCready(double offset, bool to_devices=true);
 
   /**
    * Call this after MapSettings has been modified with
    * SetMapSettings().  It sends the new values to all sub systems,
    * and optionally forces a redraw.
-   * @param trigger_draw Triggers the draw event after sending if true
+   *
+   * @param trigger_draw triggers a map redraw immediately if true,
+   * rather than waiting for eventual redraw
    */
   void SendMapSettings(const bool trigger_draw = false);
+
+  /**
+   * Call this after #UIState has been modified with SetUIState().  It
+   * sends the new values to all sub systems, and optionally forces a
+   * redraw.
+   *
+   * @param trigger_draw triggers a map redraw immediately if true,
+   * rather than waiting for eventual redraw
+   */
+  void SendUIState(const bool trigger_draw);
 
   /**
    * Update UIState::display_mode and other attributes related to it.

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,14 +28,12 @@ Copyright_License {
 #include "Dialogs/TextEntry.hpp"
 #include "Form/Button.hpp"
 #include "Form/ButtonPanel.hpp"
-#include "Form/Frame.hpp"
 #include "Form/List.hpp"
 #include "Widget/ListWidget.hpp"
 #include "Widget/TextWidget.hpp"
 #include "Widget/ButtonPanelWidget.hpp"
 #include "Widget/TwoWidgets.hpp"
 #include "Task/TaskStore.hpp"
-#include "Components.hpp"
 #include "LocalPath.hpp"
 #include "OS/FileUtil.hpp"
 #include "Language/Language.hpp"
@@ -43,9 +41,9 @@ Copyright_License {
 #include "Screen/Canvas.hpp"
 #include "Screen/Layout.hpp"
 #include "Engine/Task/Ordered/OrderedTask.hpp"
+#include "Util/StringCompare.hxx"
 
 #include <assert.h>
-#include <windef.h>
 
 static unsigned task_list_serial;
 
@@ -76,7 +74,7 @@ class TaskListPanel final
    */
   bool more;
 
-  WndButton *more_button;
+  Button *more_button;
   TextWidget &summary;
   TwoWidgets *two_widgets;
   ButtonPanelWidget *buttons;
@@ -113,10 +111,10 @@ public:
 
   void OnMoreClicked();
 
-  virtual void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
-  virtual void Unprepare() override;
-  virtual void Show(const PixelRect &rc) override;
-  virtual void Hide() override;
+  void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
+  void Unprepare() override;
+  void Show(const PixelRect &rc) override;
+  void Hide() override;
 
 protected:
   const OrderedTask *get_cursor_task();
@@ -126,21 +124,20 @@ protected:
 
 private:
   /* virtual methods from ActionListener */
-  virtual void OnAction(int id) override;
+  void OnAction(int id) override;
 
   /* virtual methods from class ListControl::Handler */
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned idx) override;
+  void OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned idx) override;
 
-  virtual void OnCursorMoved(unsigned index) override {
+  void OnCursorMoved(unsigned index) override {
     RefreshView();
   }
 
-  virtual bool CanActivateItem(unsigned index) const override {
+  bool CanActivateItem(unsigned index) const override {
       return true;
   }
 
-  virtual void OnActivateItem(unsigned index) override {
+  void OnActivateItem(unsigned index) override {
     LoadTask();
   }
 };
@@ -269,8 +266,8 @@ TaskListPanel::DeleteTask()
   if (cursor_index >= task_store->Size())
     return;
 
-  const TCHAR *path = task_store->GetPath(cursor_index);
-  if (StringEndsWithIgnoreCase(path, _T(".cup"))) {
+  const auto path = task_store->GetPath(cursor_index);
+  if (StringEndsWithIgnoreCase(path.c_str(), _T(".cup"))) {
     ShowMessageBox(_("Can't delete .CUP files"), _("Error"),
                    MB_OK | MB_ICONEXCLAMATION);
     return;
@@ -329,12 +326,10 @@ TaskListPanel::RenameTask()
 
   newname.append(_T(".tsk"));
 
-  TCHAR newpath[MAX_PATH];
-  LocalPath(newpath, _T("tasks"));
-  Directory::Create(newpath);
-  LocalPath(newpath, _T("tasks"), newname.c_str());
+  const auto tasks_path = MakeLocalPath(_T("tasks"));
 
-  File::Rename(task_store->GetPath(cursor_index), newpath);
+  File::Rename(task_store->GetPath(cursor_index),
+               AllocatedPath::Build(tasks_path, newname));
 
   task_store->Scan(more);
   RefreshView();

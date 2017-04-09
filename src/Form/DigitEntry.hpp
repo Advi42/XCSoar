@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2011 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,11 +26,11 @@ Copyright_License {
 
 #include "Screen/PaintWindow.hpp"
 #include "Renderer/ButtonRenderer.hpp"
-#include "Math/fixed.hpp"
 
 #include <assert.h>
 #include <stdint.h>
 
+enum class CoordinateFormat : uint8_t;
 class RoughTime;
 class Angle;
 class ContainerWindow;
@@ -39,8 +39,7 @@ struct DialogLook;
 
 /**
  * A control that allows entering numbers or other data types digit by
- * digit.  It aims to be usable for both touch screens and knob-only
- * (e.g. Altair).
+ * digit.  It aims to be usable for both touch screens and knob-only.
  */
 class DigitEntry : public PaintWindow {
   static constexpr unsigned MAX_LENGTH = 16;
@@ -60,6 +59,7 @@ class DigitEntry : public PaintWindow {
       UNIT,
       DEGREES,
       APOSTROPHE,
+      QUOTE,
     };
 
     Type type;
@@ -114,7 +114,7 @@ class DigitEntry : public PaintWindow {
 
   const DialogLook &look;
 
-  ButtonRenderer button_renderer;
+  ButtonFrameRenderer button_renderer;
 
   ActionListener *action_listener;
   int action_id;
@@ -160,10 +160,10 @@ public:
                    const WindowStyle style);
 
   void CreateLatitude(ContainerWindow &parent, const PixelRect &rc,
-                      const WindowStyle style);
+                      const WindowStyle style, CoordinateFormat format);
 
   void CreateLongitude(ContainerWindow &parent, const PixelRect &rc,
-                       const WindowStyle style);
+                       const WindowStyle style, CoordinateFormat format);
 
   void CalculateLayout();
 
@@ -187,7 +187,7 @@ public:
 
   void SetValue(int value);
   void SetValue(unsigned value);
-  void SetValue(fixed value);
+  void SetValue(double value);
   void SetValue(RoughTime value);
   void SetValue(Angle value);
 
@@ -198,7 +198,7 @@ public:
   unsigned GetUnsignedValue() const;
 
   gcc_pure
-  fixed GetFixedValue() const;
+  double GetDoubleValue() const;
 
   gcc_pure
   RoughTime GetTimeValue() const;
@@ -206,17 +206,17 @@ public:
   gcc_pure
   Angle GetAngleValue() const;
 
-  void SetLatitude(Angle value);
-  void SetLongitude(Angle value);
+  void SetLatitude(Angle value, CoordinateFormat format);
+  void SetLongitude(Angle value, CoordinateFormat format);
 
   gcc_pure
-  Angle GetGeoAngle() const;
+  Angle GetGeoAngle(CoordinateFormat format) const;
 
   gcc_pure
-  Angle GetLatitude() const;
+  Angle GetLatitude(CoordinateFormat format) const;
 
   gcc_pure
-  Angle GetLongitude() const;
+  Angle GetLongitude(CoordinateFormat format) const;
 
 protected:
   gcc_pure
@@ -257,7 +257,7 @@ protected:
   unsigned GetPositiveInteger() const;
 
   gcc_pure
-  fixed GetPositiveFractional() const;
+  double GetPositiveFractional() const;
 
   void IncrementColumn(unsigned i);
   void DecrementColumn(unsigned i);
@@ -265,13 +265,16 @@ protected:
   gcc_pure
   int FindColumnAt(unsigned x) const;
 
+private:
+  void SetDigits(double degrees, CoordinateFormat format, bool isLatitude);
+
 protected:
-  virtual void OnSetFocus() override;
-  virtual void OnKillFocus() override;
-  virtual bool OnMouseDown(PixelScalar x, PixelScalar y) override;
-  virtual bool OnKeyCheck(unsigned key_code) const override;
-  virtual bool OnKeyDown(unsigned key_code) override;
-  virtual void OnPaint(Canvas &canvas) override;
+  void OnSetFocus() override;
+  void OnKillFocus() override;
+  bool OnMouseDown(PixelPoint p) override;
+  bool OnKeyCheck(unsigned key_code) const override;
+  bool OnKeyDown(unsigned key_code) override;
+  void OnPaint(Canvas &canvas) override;
 };
 
 #endif

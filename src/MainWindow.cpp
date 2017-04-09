@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,12 +22,10 @@ Copyright_License {
 */
 
 #include "MainWindow.hpp"
-#include "Startup.hpp"
 #include "MapWindow/GlueMapWindow.hpp"
+#include "PopupMessage.hpp"
 #include "InfoBoxes/InfoBoxManager.hpp"
 #include "InfoBoxes/InfoBoxLayout.hpp"
-#include "Interface.hpp"
-#include "ActionInterface.hpp"
 #include "UIActions.hpp"
 #include "PageActions.hpp"
 #include "Input/InputEvents.hpp"
@@ -41,28 +39,21 @@ Copyright_License {
 #include "Gauge/GaugeFLARM.hpp"
 #include "Gauge/GaugeThermalAssistant.hpp"
 #include "Gauge/GlueGaugeVario.hpp"
-#include "Menu/MenuBar.hpp"
 #include "Form/Form.hpp"
 #include "Widget/Widget.hpp"
 #include "UtilsSystem.hpp"
 #include "Look/GlobalFonts.hpp"
-#include "Look/CustomFonts.hpp"
 #include "Look/DefaultFonts.hpp"
 #include "Look/Look.hpp"
-#include "Profile/ProfileKeys.hpp"
-#include "Profile/Profile.hpp"
 #include "ProgressGlue.hpp"
 #include "UIState.hpp"
 #include "DrawThread.hpp"
 #include "UIReceiveBlackboard.hpp"
-#include "Event/Idle.hpp"
+#include "UISettings.hpp"
+#include "Interface.hpp"
 
 #ifdef ANDROID
 #include "Dialogs/Message.hpp"
-#endif
-
-#ifdef HAVE_TEXT_CACHE
-#include "Screen/Custom/Cache.hpp"
 #endif
 
 #if !defined(WIN32) && !defined(ANDROID)
@@ -74,6 +65,22 @@ Copyright_License {
 #endif
 
 static constexpr unsigned separator_height = 2;
+
+#ifdef HAVE_SHOW_MENU_BUTTON
+gcc_pure
+static PixelRect
+GetShowMenuButtonRect(const PixelRect rc)
+{
+  const unsigned padding = Layout::GetTextPadding();
+  const unsigned size = Layout::GetMaximumControlHeight();
+  const int right = rc.right - padding;
+  const int left = right - size;
+  const int top = rc.top + padding;
+  const int bottom = top + size;
+
+  return PixelRect(left, top, right, bottom);
+}
+#endif
 
 gcc_pure
 static PixelRect
@@ -87,13 +94,13 @@ GetBottomWidgetRect(const PixelRect &rc, const Widget *bottom_widget)
     return result;
   }
 
-  const UPixelScalar requested_height = bottom_widget->GetMinimumSize().cy;
-  UPixelScalar height;
+  const unsigned requested_height = bottom_widget->GetMinimumSize().cy;
+  unsigned height;
   if (requested_height > 0) {
-    const UPixelScalar max_height = (rc.bottom - rc.top) / 2;
+    const unsigned max_height = rc.GetHeight() / 2;
     height = std::min(max_height, requested_height);
   } else {
-    const UPixelScalar recommended_height = (rc.bottom - rc.top) / 3;
+    const unsigned recommended_height = rc.GetHeight() / 3;
     height = recommended_height;
   }
 
@@ -113,21 +120,23 @@ GetMapRectAbove(const PixelRect &rc, const PixelRect &bottom_rect)
   return result;
 }
 
-MainWindow::MainWindow(const StatusMessageList &status_messages)
-  :look(NULL),
+MainWindow::MainWindow()
+  :look(nullptr),
+#ifdef HAVE_SHOW_MENU_BUTTON
+   show_menu_button(nullptr),
+#endif
    map(nullptr), bottom_widget(nullptr), widget(nullptr), vario(*this),
    traffic_gauge(*this),
    suppress_traffic_gauge(false), force_traffic_gauge(false),
    thermal_assistant(*this),
    dragging(false),
-   popup(status_messages, *this, CommonInterface::GetUISettings()),
+   popup(nullptr),
    timer(*this),
    FullScreen(false),
 #ifndef ENABLE_OPENGL
    draw_suspended(false),
 #endif
-   restore_page_pending(false),
-   airspace_warning_pending(false)
+   restore_page_pending(false)
 {
 }
 
@@ -143,7 +152,6 @@ MainWindow::~MainWindow()
 void
 MainWindow::Create(PixelSize size, TopWindowStyle style)
 {
-  style.EnableDoubleClicks();
   SingleWindow::Create(title, size, style);
 }
 
@@ -162,10 +170,10 @@ FatalError(const TCHAR *msg)
 
   /* now try to get a GUI error message out to the user */
 #ifdef WIN32
-  MessageBox(NULL, msg, _T("XCSoar"), MB_ICONEXCLAMATION|MB_OK);
+  MessageBox(nullptr, msg, _T("XCSoar"), MB_ICONEXCLAMATION|MB_OK);
 #elif !defined(ANDROID) && !defined(KOBO)
-  execl("/usr/bin/xmessage", "xmessage", msg, NULL);
-  execl("/usr/X11/bin/xmessage", "xmessage", msg, NULL);
+  execl("/usr/bin/xmessage", "xmessage", msg, nullptr);
+  execl("/usr/X11/bin/xmessage", "xmessage", msg, nullptr);
 #endif
   exit(EXIT_FAILURE);
 }
@@ -180,7 +188,9 @@ NoFontsAvailable()
 void
 MainWindow::Initialise()
 {
-  Layout::Initialize(GetSize());
+  Layout::Initialize(GetSize(),
+                     CommonInterface::GetUISettings().GetPercentScale(),
+                     CommonInterface::GetUISettings().custom_dpi);
 
   LogFormat("Initialise fonts");
   if (!Fonts::Initialize()) {
@@ -188,11 +198,10 @@ MainWindow::Initialise()
     NoFontsAvailable();
   }
 
-  if (look == NULL)
+  if (look == nullptr)
     look = new Look();
 
-  look->Initialise(Fonts::dialog, Fonts::dialog_bold, Fonts::dialog_small,
-                   Fonts::map);
+  look->Initialise(Fonts::map);
 }
 
 void
@@ -200,49 +209,24 @@ MainWindow::InitialiseConfigured()
 {
   const UISettings &ui_settings = CommonInterface::GetUISettings();
 
+  if (ui_settings.scale != 100)
+    /* call Initialise() again to reload fonts with the new scale */
+    Initialise();
+
   PixelRect rc = GetClientRect();
 
   const InfoBoxLayout::Layout ib_layout =
     InfoBoxLayout::Calculate(rc, ui_settings.info_boxes.geometry);
 
-#ifndef GNAV
-  if (ui_settings.custom_fonts) {
-    LogFormat("Load custom fonts");
-    if (!Fonts::LoadCustom()) {
-      LogFormat("Failed to load custom fonts");
-      if (!Fonts::Initialize()) {
-        Destroy();
-        NoFontsAvailable();
-      }
-    }
-
-#ifdef HAVE_TEXT_CACHE
-    /* fonts may have changed, discard all pre-rendered font
-       textures */
-    TextCache::Flush();
-#endif
-  }
-#endif
-
-  Fonts::SizeInfoboxFont(ib_layout.control_size.cx);
-
-  assert(look != NULL);
+  assert(look != nullptr);
   look->InitialiseConfigured(CommonInterface::GetUISettings(),
-                             Fonts::dialog, Fonts::dialog_bold,
-                             Fonts::dialog_small,
-                             Fonts::map, Fonts::map_bold, Fonts::map_label,
-                             Fonts::cdi, Fonts::monospace,
-                             Fonts::infobox, Fonts::infobox_small,
-#ifndef GNAV
-                             Fonts::infobox_units,
-#endif
-                             Fonts::title);
+                             Fonts::map, Fonts::map_bold,
+                             ib_layout.control_size.cx);
 
-  InfoBoxManager::Create(*this, ib_layout, look->info_box, look->units);
+  InfoBoxManager::Create(*this, ib_layout, look->info_box);
   map_rect = ib_layout.remaining;
 
-  ButtonLabel::CreateButtonLabels(*this);
-  ButtonLabel::SetFont(Fonts::dialog_bold);
+  ButtonLabel::CreateButtonLabels(*this, look->dialog.button);
 
   ReinitialiseLayout_vario(ib_layout);
 
@@ -254,13 +238,22 @@ MainWindow::InitialiseConfigured()
 
   ReinitialiseLayout_flarm(rc, ib_layout);
 
+#ifdef HAVE_SHOW_MENU_BUTTON
+  const UISettings &settings = CommonInterface::GetUISettings();
+  if (settings.show_menu_button){
+    show_menu_button = new ShowMenuButton();
+    show_menu_button->Create(*this, GetShowMenuButtonRect(map_rect));
+  }
+#endif
+
   map = new GlueMapWindow(*look);
   map->SetComputerSettings(CommonInterface::GetComputerSettings());
   map->SetMapSettings(CommonInterface::GetMapSettings());
   map->SetUIState(CommonInterface::GetUIState());
   map->Create(*this, map_rect);
 
-  popup.Create(rc);
+  popup = new PopupMessage(*this, look->dialog, ui_settings);
+  popup->Create(rc);
 }
 
 void
@@ -269,21 +262,27 @@ MainWindow::Deinitialise()
   InfoBoxManager::Destroy();
   ButtonLabel::Destroy();
 
-  popup.Destroy();
+  delete popup;
+  popup = nullptr;
 
   // During destruction of GlueMapWindow WM_SETFOCUS gets called for
   // MainWindow which tries to set the focus to GlueMapWindow. Prevent
-  // this issue by setting map to NULL before calling delete.
+  // this issue by setting map to nullptr before calling delete.
   GlueMapWindow *temp_map = map;
-  map = NULL;
+  map = nullptr;
   delete temp_map;
+
+#ifdef HAVE_SHOW_MENU_BUTTON
+  delete show_menu_button;
+  show_menu_button = nullptr;
+#endif
 
   vario.Clear();
   traffic_gauge.Clear();
   thermal_assistant.Clear();
 
   delete look;
-  look = NULL;
+  look = nullptr;
 }
 
 void
@@ -296,7 +295,7 @@ MainWindow::ReinitialiseLayout_vario(const InfoBoxLayout::Layout &layout)
 
   if (!vario.IsDefined())
     vario.Set(new GlueGaugeVario(CommonInterface::GetLiveBlackboard(),
-                                 look->vario, look->units));
+                                 look->vario));
 
   vario.Move(layout.vario);
   vario.Show();
@@ -308,8 +307,8 @@ void
 MainWindow::ReinitialiseLayoutTA(PixelRect rc,
                                  const InfoBoxLayout::Layout &layout)
 {
-  UPixelScalar sz = std::min(layout.control_size.cy,
-                             layout.control_size.cx) * 2;
+  unsigned sz = std::min(layout.control_size.cy,
+                         layout.control_size.cx) * 2;
   rc.right = rc.left + sz;
   rc.top = rc.bottom - sz;
   thermal_assistant.Move(rc);
@@ -327,7 +326,7 @@ MainWindow::ReinitialiseLayout()
   const PixelRect rc = GetClientRect();
 
 #ifndef ENABLE_OPENGL
-  if (draw_thread == NULL)
+  if (draw_thread == nullptr)
     /* no layout changes during startup */
     return;
 #endif
@@ -339,14 +338,13 @@ MainWindow::ReinitialiseLayout()
   const InfoBoxLayout::Layout ib_layout =
     InfoBoxLayout::Calculate(rc, ui_settings.info_boxes.geometry);
 
-  Fonts::SizeInfoboxFont(ib_layout.control_size.cx);
+  look->ReinitialiseLayout(ib_layout.control_size.cx);
 
-  InfoBoxManager::Create(*this, ib_layout, look->info_box, look->units);
+  InfoBoxManager::Create(*this, ib_layout, look->info_box);
   InfoBoxManager::ProcessTimer();
   map_rect = ib_layout.remaining;
 
-  popup.Destroy();
-  popup.Create(rc);
+  popup->UpdateLayout(rc);
 
   ReinitialiseLayout_vario(ib_layout);
 
@@ -354,7 +352,7 @@ MainWindow::ReinitialiseLayout()
 
   ReinitialiseLayoutTA(rc, ib_layout);
 
-  if (map != NULL) {
+  if (map != nullptr) {
     if (FullScreen)
       InfoBoxManager::Hide();
     else
@@ -364,17 +362,22 @@ MainWindow::ReinitialiseLayout()
     const PixelRect bottom_rect = GetBottomWidgetRect(main_rect,
                                                       bottom_widget);
 
-    if (bottom_widget != nullptr)
+    if (HaveBottomWidget())
       bottom_widget->Move(bottom_rect);
 
     map->Move(GetMapRectAbove(main_rect, bottom_rect));
     map->FullRedraw();
   }
 
-  if (widget != NULL)
+  if (widget != nullptr)
     widget->Move(GetMainRect(rc));
 
-  if (map != NULL)
+#ifdef HAVE_SHOW_MENU_BUTTON
+  if (show_menu_button != nullptr)
+    show_menu_button->Move(GetShowMenuButtonRect(GetMainRect()));
+#endif
+
+  if (map != nullptr)
     map->BringToBottom();
 }
 
@@ -470,23 +473,23 @@ MainWindow::BeginShutdown()
 void
 MainWindow::SuspendThreads()
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->SuspendThreads();
 }
 
 void
 MainWindow::ResumeThreads()
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->ResumeThreads();
 }
 
 void
 MainWindow::SetDefaultFocus()
 {
-  if (map != NULL && widget == NULL)
+  if (map != nullptr && widget == nullptr)
     map->SetFocus();
-  else if (widget == NULL || !widget->SetFocus())
+  else if (widget == nullptr || !widget->SetFocus())
     SetFocus();
 }
 
@@ -500,7 +503,7 @@ MainWindow::FlushRendererCaches()
 void
 MainWindow::FullRedraw()
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->FullRedraw();
 }
 
@@ -509,32 +512,17 @@ MainWindow::FullRedraw()
 void
 MainWindow::OnResize(PixelSize new_size)
 {
-  Layout::Initialize(new_size);
+  Layout::Initialize(new_size,
+                     CommonInterface::GetUISettings().GetPercentScale(),
+                     CommonInterface::GetUISettings().custom_dpi);
 
   SingleWindow::OnResize(new_size);
 
   ReinitialiseLayout();
 
-  if (map != NULL) {
-    /* the map being created already is an indicator that XCSoar is
-       running already, and so we assume the menu buttons have been
-       created, too */
-    map->BringToBottom();
-  }
-
   const PixelRect rc = GetClientRect();
   ButtonLabel::OnResize(rc);
   ProgressGlue::Move(rc);
-}
-
-bool
-MainWindow::OnActivate()
-{
-  SingleWindow::OnActivate();
-
-  Fullscreen();
-
-  return true;
 }
 
 void
@@ -546,9 +534,9 @@ MainWindow::OnSetFocus()
     /* the main window should never have the keyboard focus; if we
        happen to get the focus despite of that, forward it to the map
        window to make keyboard shortcuts work */
-    if (map != NULL && widget == NULL)
+    if (map != nullptr && widget == nullptr)
       map->SetFocus();
-    else if (widget != NULL)
+    else if (widget != nullptr)
       widget->SetFocus();
   } else
     /* recover the dialog focus if it got lost */
@@ -573,24 +561,24 @@ MainWindow::OnCancelMode()
 }
 
 bool
-MainWindow::OnMouseDown(PixelScalar x, PixelScalar y)
+MainWindow::OnMouseDown(PixelPoint p)
 {
-  if (SingleWindow::OnMouseDown(x, y))
+  if (SingleWindow::OnMouseDown(p))
     return true;
 
   if (!dragging && !HasDialog()) {
     dragging = true;
     SetCapture();
-    gestures.Start(x, y, Layout::Scale(20));
+    gestures.Start(p, Layout::Scale(20));
   }
 
   return true;
 }
 
 bool
-MainWindow::OnMouseUp(PixelScalar x, PixelScalar y)
+MainWindow::OnMouseUp(PixelPoint p)
 {
-  if (SingleWindow::OnMouseUp(x, y))
+  if (SingleWindow::OnMouseUp(p))
     return true;
 
   if (dragging) {
@@ -605,9 +593,9 @@ MainWindow::OnMouseUp(PixelScalar x, PixelScalar y)
 }
 
 bool
-MainWindow::OnMouseDouble(PixelScalar x, PixelScalar y)
+MainWindow::OnMouseDouble(PixelPoint p)
 {
-  if (SingleWindow::OnMouseDouble(x, y))
+  if (SingleWindow::OnMouseDouble(p))
     return true;
 
   StopDragging();
@@ -618,13 +606,13 @@ MainWindow::OnMouseDouble(PixelScalar x, PixelScalar y)
 }
 
 bool
-MainWindow::OnMouseMove(PixelScalar x, PixelScalar y, unsigned keys)
+MainWindow::OnMouseMove(PixelPoint p, unsigned keys)
 {
-  if (SingleWindow::OnMouseMove(x, y, keys))
+  if (SingleWindow::OnMouseMove(p, keys))
     return true;
 
   if (dragging)
-    gestures.Update(x, y);
+    gestures.Update(p);
 
   return true;
 }
@@ -633,7 +621,7 @@ bool
 MainWindow::OnKeyDown(unsigned key_code)
 {
   return (widget != nullptr && widget->KeyPress(key_code)) ||
-    (bottom_widget != nullptr && bottom_widget->KeyPress(key_code)) ||
+    (HaveBottomWidget() && bottom_widget->KeyPress(key_code)) ||
     InputEvents::processKey(key_code) ||
     SingleWindow::OnKeyDown(key_code);
 }
@@ -675,25 +663,7 @@ MainWindow::OnTimer(WindowTimer &_timer)
 bool
 MainWindow::OnUser(unsigned id)
 {
-  ProtectedAirspaceWarningManager *airspace_warnings;
-
   switch ((Command)id) {
-  case Command::AIRSPACE_WARNING:
-    airspace_warnings = GetAirspaceWarnings();
-    if (!airspace_warning_pending || airspace_warnings == NULL)
-      return true;
-
-    airspace_warning_pending = false;
-    if (dlgAirspaceWarningVisible())
-      /* already visible */
-      return true;
-
-    /* un-blank the display, play a sound and show the dialog */
-    ResetUserIdle();
-    PlayResource(_T("IDR_WAV_BEEPBWEEP"));
-    dlgAirspaceWarningsShowModal(*this, *airspace_warnings, true);
-    return true;
-
   case Command::GPS_UPDATE:
     UIReceiveSensorData();
     return true;
@@ -706,18 +676,6 @@ MainWindow::OnUser(unsigned id)
     if (restore_page_pending)
       PageActions::Restore();
     return true;
-
-#ifdef ANDROID
-  case Command::CRASH:
-    ShowMessageBox(_T("How embarassing, we're terribly sorry!\n"
-                      "Please submit a bug report and "
-                      "include the file from the 'crash' directory.\n"
-                      "http://bugs.xcsoar.org/newticket\n"
-                      "After your report, we'll fix it ASAP."),
-                   _T("XCSoar has crashed recently"),
-                   MB_OK|MB_ICONERROR);
-    return true;
-#endif
   }
 
   return false;
@@ -741,7 +699,7 @@ bool MainWindow::OnClose() {
     return SingleWindow::OnClose();
 
   if (UIActions::CheckShutdown()) {
-    Shutdown();
+    PostQuit();
   }
   return true;
 }
@@ -749,7 +707,7 @@ bool MainWindow::OnClose() {
 void
 MainWindow::OnPaint(Canvas &canvas)
 {
-  if (bottom_widget != nullptr && map != nullptr) {
+  if (HaveBottomWidget() && map != nullptr) {
     /* draw a separator between main area and bottom area */
     PixelRect rc = map->GetPosition();
     rc.top = rc.bottom;
@@ -773,10 +731,10 @@ MainWindow::SetFullScreen(bool _full_screen)
   else
     InfoBoxManager::Show();
 
-  if (widget != NULL)
+  if (widget != nullptr)
     widget->Move(GetMainRect());
 
-  if (map != NULL)
+  if (map != nullptr)
     map->FastMove(GetMainRect());
 
   // the repaint will be triggered by the DrawThread
@@ -787,35 +745,35 @@ MainWindow::SetFullScreen(bool _full_screen)
 void
 MainWindow::SetTerrain(RasterTerrain *terrain)
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->SetTerrain(terrain);
 }
 
 void
 MainWindow::SetTopography(TopographyStore *topography)
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->SetTopography(topography);
 }
 
 void
 MainWindow::SetComputerSettings(const ComputerSettings &settings_computer)
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->SetComputerSettings(settings_computer);
 }
 
 void
 MainWindow::SetMapSettings(const MapSettings &settings_map)
 {
-  if (map != NULL)
+  if (map != nullptr)
     map->SetMapSettings(settings_map);
 }
 
 void
 MainWindow::SetUIState(const UIState &ui_state)
 {
-  if (map != NULL) {
+  if (map != nullptr) {
     map->SetUIState(ui_state);
     map->FullRedraw();
   }
@@ -824,7 +782,7 @@ MainWindow::SetUIState(const UIState &ui_state)
 GlueMapWindow *
 MainWindow::GetMapIfActive()
 {
-  return IsMapActive() ? map : NULL;
+  return IsMapActive() ? map : nullptr;
 }
 
 GlueMapWindow *
@@ -832,17 +790,19 @@ MainWindow::ActivateMap()
 {
   restore_page_pending = false;
 
-  if (map == NULL)
-    return NULL;
+  if (map == nullptr)
+    return nullptr;
 
-  if (widget != NULL) {
+  if (widget != nullptr) {
     KillWidget();
     map->Show();
     map->SetFocus();
 
-    if (bottom_widget != nullptr)
+    if (bottom_widget != nullptr) {
+      assert(HaveBottomWidget());
       bottom_widget->Show(GetBottomWidgetRect(GetMainRect(),
                                               bottom_widget));
+    }
 
 #ifndef ENABLE_OPENGL
     if (draw_suspended) {
@@ -868,16 +828,16 @@ MainWindow::DeferredRestorePage()
 void
 MainWindow::KillWidget()
 {
-  if (widget == NULL)
+  if (widget == nullptr)
     return;
 
   widget->Leave();
   widget->Hide();
   widget->Unprepare();
   delete widget;
-  widget = NULL;
+  widget = nullptr;
 
-  InputEvents::SetFlavour(NULL);
+  InputEvents::SetFlavour(nullptr);
 }
 
 void
@@ -887,7 +847,10 @@ MainWindow::KillBottomWidget()
     return;
 
   if (widget == nullptr)
+    /* the bottom widget is only visible below the map, but not below
+       a custom main widget; see HaveBottomWidget() */
     bottom_widget->Hide();
+
   bottom_widget->Unprepare();
   delete bottom_widget;
   bottom_widget = nullptr;
@@ -918,6 +881,8 @@ MainWindow::SetBottomWidget(Widget *_widget)
     bottom_widget->Prepare(*this, bottom_rect);
 
     if (widget == nullptr)
+      /* the bottom widget is only visible below the map, but not
+         below a custom main widget; see HaveBottomWidget() */
       bottom_widget->Show(bottom_rect);
   }
 
@@ -928,15 +893,17 @@ MainWindow::SetBottomWidget(Widget *_widget)
 void
 MainWindow::SetWidget(Widget *_widget)
 {
-  assert(_widget != NULL);
+  assert(_widget != nullptr);
 
   restore_page_pending = false;
+
+  const bool have_bottom_widget = HaveBottomWidget();
 
   /* delete the old widget */
   KillWidget();
 
   /* hide the map (might be hidden already) */
-  if (map != NULL) {
+  if (map != nullptr) {
     map->FastHide();
 
 #ifndef ENABLE_OPENGL
@@ -947,7 +914,7 @@ MainWindow::SetWidget(Widget *_widget)
 #endif
   }
 
-  if (bottom_widget != nullptr)
+  if (have_bottom_widget)
     bottom_widget->Hide();
 
   widget = _widget;
@@ -1029,7 +996,7 @@ const MapWindowProjection &
 MainWindow::GetProjection() const
 {
   AssertThread();
-  assert(map != NULL);
+  assert(map != nullptr);
 
   return map->VisibleProjection();
 }

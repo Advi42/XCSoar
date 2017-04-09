@@ -29,9 +29,12 @@
 #include "Parser.hpp"
 #include "Node.hpp"
 #include "Util/CharUtil.hpp"
+#include "Util/StringAPI.hxx"
 #include "Util/StringUtil.hpp"
 #include "Util/NumberParser.hpp"
 #include "IO/FileLineReader.hpp"
+
+#include <stdexcept>
 
 #include <assert.h>
 
@@ -351,6 +354,10 @@ XML::GetNextToken(Parser *pXML)
     // If we haven't found a short hand closing tag then drop into the
     // text process
 
+#if GCC_CHECK_VERSION(7,0)
+    [[fallthrough]];
+#endif
+
     // Other characters
   default:
     is_text = true;
@@ -440,24 +447,6 @@ XML::GetErrorMessage(Error error)
 }
 
 /**
- * Trim the end of the text to remove white space characters.
- */
-gcc_pure
-static size_t
-FindEndOfText(const TCHAR *token, size_t length)
-{
-  assert(token != nullptr);
-
-  --length;
-  while (1) {
-    if (IsWhitespaceOrNull(token[length]))
-      return length + 1;
-
-    --length;
-  }
-}
-
-/**
  * Recursively parse an XML element.
  */
 static bool
@@ -515,7 +504,7 @@ XML::ParseXMLElement(XMLNode &node, Parser *pXML)
 
         // If we have node text then add this to the element
         if (text != nullptr) {
-          size_t length = FindEndOfText(text, token.pStr - text);
+          size_t length = StripRight(text, token.pStr - text);
           node.AddText(text, length);
           text = nullptr;
         }
@@ -580,7 +569,7 @@ XML::ParseXMLElement(XMLNode &node, Parser *pXML)
 
         // If we have node text then add this to the element
         if (text != nullptr) {
-          size_t length = FindEndOfText(text, token.pStr - text);
+          size_t length = StripRight(text, token.pStr - text);
           TCHAR *text2 = FromXMLString(text, length);
           if (text2 == nullptr) {
             pXML->error = eXMLErrorUnexpectedToken;
@@ -694,11 +683,7 @@ XML::ParseXMLElement(XMLNode &node, Parser *pXML)
           // If we are a declaration element '<?' then we need
           // to remove extra closing '?' if it exists
           if (node.IsDeclaration() && attribute_name.back() == _T('?')) {
-#if GCC_VERSION >= 40700
             attribute_name.pop_back();
-#else
-            attribute_name.erase(std::prev(attribute_name.end()));
-#endif
           }
 
           if (!attribute_name.empty())
@@ -758,6 +743,11 @@ XML::ParseXMLElement(XMLNode &node, Parser *pXML)
 
           {
             TCHAR *value = FromXMLString(token.pStr, token.length);
+            if (value == nullptr) {
+              pXML->error = eXMLErrorUnexpectedToken;
+              return false;
+            }
+
             node.AddAttribute(std::move(attribute_name),
                               value, _tcslen(value));
             free(value);
@@ -903,13 +893,11 @@ XML::ParseString(const TCHAR *xml_string, Results *pResults)
 }
 
 static bool
-ReadTextFile(const TCHAR *path, tstring &buffer)
-{
+ReadTextFile(Path path, tstring &buffer)
+try {
   /* auto-detect the character encoding, to be able to parse XCSoar
      6.0 task files */
-  FileLineReader reader(path, ConvertLineReader::AUTO);
-  if (reader.error())
-    return false;
+  FileLineReader reader(path, Charset::AUTO);
 
   long size = reader.GetSize();
   if (size > 65536)
@@ -930,6 +918,8 @@ ReadTextFile(const TCHAR *path, tstring &buffer)
   }
 
   return true;
+} catch (const std::runtime_error &) {
+  return false;
 }
 
 /**
@@ -941,7 +931,7 @@ ReadTextFile(const TCHAR *path, tstring &buffer)
  * @return The main XMLNode or an empty node on error
  */
 XMLNode *
-XML::ParseFile(const TCHAR *filename, Results *pResults)
+XML::ParseFile(Path filename, Results *pResults)
 {
   // Open the file for reading
   tstring buffer;

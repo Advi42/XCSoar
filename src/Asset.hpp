@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,6 @@ Copyright_License {
 #ifndef ASSET_H
 #define ASSET_H
 
-#include "Hardware/ModelType.hpp"
 #include "Compiler.h"
 
 #ifdef ANDROID
@@ -44,17 +43,6 @@ extern TCHAR asset_number[];
  */
 void ReadAssetNumber();
 
-// model info
-#ifdef HAVE_MODEL_TYPE
-
-extern ModelType global_model_type;
-
-#else
-
-#define global_model_type ModelType::GENERIC
-
-#endif
-
 /**
  * Returns whether this is a debug build.
  */
@@ -70,37 +58,6 @@ IsDebug()
 }
 
 /**
- * Returns whether the application is running on Pocket PC / Windows
- * CE / Windows Mobile.
- */
-constexpr
-static inline bool
-IsWindowsCE()
-{
-#ifdef _WIN32_WCE
-  return true;
-#else
-  return false;
-#endif
-}
-
-/**
- * Returns whether the application is running on an old version of
- * Windows CE (pre 5.0).  Starting with version 5.0, several bug
- * workarounds are disabled at compile time.
- */
-constexpr
-static inline bool
-IsOldWindowsCE()
-{
-#if defined(_WIN32_WCE) && _WIN32_WCE < 0x0500
-  return true;
-#else
-  return false;
-#endif
-}
-
-/**
  * Is XCSoar running on ancient and slow hardware?  If yes, then some
  * expensive UI features are disabled.
  */
@@ -108,38 +65,7 @@ constexpr
 static inline bool
 IsAncientHardware()
 {
-#if defined(_WIN32_WCE) && _WIN32_WCE < 0x0400
-  /* Windows CE 3.0 (PPC2000 & PPC2002) */
-  return true;
-#else
-  /* we assume that all other platforms are fast enough */
   return false;
-#endif
-}
-
-/**
- * Returns whether the application is running on a HP31x
- * @return True if host hardware is a HP31x, False otherwise
- */
-static inline bool
-IsHP31X()
-{
-  return global_model_type == ModelType::HP31X;
-}
-
-/**
- * Returns whether the application is running on an Altair
- * @return True if host hardware is an Altair, False otherwise
- */
-constexpr
-static inline bool
-IsAltair()
-{
-#if defined(GNAV)
-  return true;
-#else
-  return false;
-#endif
 }
 
 /**
@@ -220,7 +146,7 @@ constexpr
 static inline bool
 IsEmbedded()
 {
-  return IsAndroid() || IsWindowsCE() || IsKobo();
+  return IsAndroid() || IsKobo() || IsIOS();
 }
 
 /**
@@ -231,7 +157,7 @@ constexpr
 static inline bool
 HasLittleMemory()
 {
-  return IsAncientHardware() || IsAltair();
+  return IsAncientHardware();
 }
 
 /**
@@ -262,7 +188,7 @@ constexpr
 static inline bool
 HasPointer()
 {
-  return !IsAltair();
+  return true;
 }
 
 #endif
@@ -271,24 +197,36 @@ HasPointer()
  * Does this device have a touch screen?  This is useful to know for
  * sizing controls, as a touch screen may require bigger areas.
  */
+#ifdef USE_LIBINPUT
+gcc_pure
+bool
+HasTouchScreen();
+#else
 constexpr
 static inline bool
 HasTouchScreen()
 {
-  return IsAndroid() || (IsWindowsCE() && !IsAltair()) || IsKobo();
+  return IsAndroid() || IsKobo() || IsIOS();
 }
+#endif
 
 /**
  * Does this device have a keyboard device?
  * @return True if a keyboard is assumed for the hardware
  * that XCSoar is running on, False if the hardware has no keyboard
  */
+#ifdef USE_LIBINPUT
+gcc_pure
+bool
+HasKeyboard();
+#else
 constexpr
 static inline bool
 HasKeyboard()
 {
   return !IsEmbedded();
 }
+#endif
 
 /**
  * Does this device have a cursor keys?  These may be used to navigate
@@ -307,7 +245,7 @@ HasCursorKeys()
 #ifdef ANDROID
   return has_cursor_keys;
 #else
-  return !IsKobo();
+  return !IsKobo() && !IsIOS();
 #endif
 }
 

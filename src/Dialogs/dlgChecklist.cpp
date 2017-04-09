@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,12 +27,10 @@ Copyright_License {
 #include "Widget/LargeTextWidget.hpp"
 #include "Look/DialogLook.hpp"
 #include "UIGlobals.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/StringCompare.hxx"
 #include "IO/DataFile.hpp"
+#include "IO/LineReader.hpp"
 #include "Language/Language.hpp"
-#include "Compiler.h"
-
-#include <assert.h>
 
 #define XCSCHKLIST  "xcsoar-checklist.txt"
 
@@ -73,7 +71,7 @@ addChecklist(const TCHAR *name, const TCHAR *details)
 
 static void
 LoadChecklist()
-{
+try {
   nLists = 0;
 
   free(ChecklistText[0]);
@@ -82,11 +80,7 @@ LoadChecklist()
   free(ChecklistTitle[0]);
   ChecklistTitle[0] = NULL;
 
-  TLineReader *reader = OpenDataTextFile(_T(XCSCHKLIST));
-  if (reader == NULL) {
-    addChecklist(_("No checklist loaded"), _("Create xcsoar-checklist.txt"));
-    return;
-  }
+  auto reader = OpenDataTextFile(_T(XCSCHKLIST));
 
   StaticString<MAXDETAILS> Details;
   TCHAR Name[100];
@@ -119,15 +113,14 @@ LoadChecklist()
     } else {
       // append text to details string
       Details.append(TempString);
-      Details.Append(_T('\n'));
+      Details.push_back(_T('\n'));
     }
   }
-
-  delete reader;
 
   if (inDetails) {
     addChecklist(Name, Details);
   }
+} catch (const std::runtime_error &e) {
 }
 
 void
@@ -137,6 +130,8 @@ dlgChecklistShowModal()
   static bool first = true;
   if (first) {
     LoadChecklist();
+    if (nLists == 0)
+      addChecklist(_("No checklist loaded"), _("Create xcsoar-checklist.txt"));
     first = false;
   }
 

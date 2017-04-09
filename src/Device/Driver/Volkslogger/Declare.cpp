@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ Copyright_License {
 #include "Protocol.hpp"
 #include "Device/Port/Port.hpp"
 #include "Device/Declaration.hpp"
-#include "Operation/Operation.hpp"
 #include "vlapi2.h"
 #include "dbbconv.h"
 #include "Engine/Waypoint/Waypoint.hpp"
@@ -46,7 +45,7 @@ CopyToNarrowBuffer(char *dest, size_t max_size, const TCHAR *src)
 
   int dest_length = WideCharToMultiByte(CP_ACP, 0, src, src_length,
                                         dest, max_size - 1,
-                                        NULL, NULL);
+                                        nullptr, nullptr);
   if (dest_length < 0)
     dest_length = 0;
   dest[dest_length] = 0;
@@ -71,19 +70,25 @@ CopyTurnPoint(VLAPI_DATA::DCLWPT &dest, const Declaration::TurnPoint &src)
   switch (src.shape) {
   case Declaration::TurnPoint::CYLINDER:
     dest.oztyp = VLAPI_DATA::DCLWPT::OZTYP_CYLSKT;
-    dest.lw = dest.rz = src.radius;
+    dest.rz = src.radius;
     dest.rs = 0;
+    break;
+
+  case Declaration::TurnPoint::DAEC_KEYHOLE:
+    dest.oztyp = VLAPI_DATA::DCLWPT::OZTYP_CYLSKT;
+    dest.lw = dest.rs = 10000;
+    dest.rz = 500;
     break;
 
   case Declaration::TurnPoint::SECTOR:
     dest.oztyp = VLAPI_DATA::DCLWPT::OZTYP_CYLSKT;
-    dest.lw = dest.rs = src.radius;
+    dest.rs = src.radius;
     dest.rz = 0;
     break;
 
   case Declaration::TurnPoint::LINE:
     dest.oztyp = VLAPI_DATA::DCLWPT::OZTYP_LINE;
-    dest.lw = src.radius;
+    dest.lw = (src.radius*2)/1000; //Linewidth is radius*2 unit for lw is km
     dest.rs = dest.rz = 0;
     break;
   }
@@ -117,7 +122,7 @@ DeclareInner(Port &port, const unsigned bulkrate,
                      sizeof(vl_declaration.flightinfo.glidertype),
                      declaration.aircraft_type);
 
-  if (home != NULL)
+  if (home != nullptr)
     CopyWaypoint(vl_declaration.flightinfo.homepoint, *home);
 
   // start..

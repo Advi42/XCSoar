@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,13 +26,6 @@ Copyright_License {
 
 #include "Compiler.h"
 
-#if defined(CLANG_VERSION) && CLANG_VERSION >= 30300
-/* no thanks, constexpr without const is fine -
-   WritableImageBuffer::At() returns a writable buffer; the pointer
-   itself is constexpr, but the result may modify the buffer object */
-#pragma GCC diagnostic ignored "-Wconstexpr-not-const"
-#endif
-
 /**
  * A reference to an image buffer (or a portion of it) that we can
  * write to.  This class does not allocate or free any memory, it
@@ -42,6 +35,8 @@ template<typename PixelTraits>
 struct WritableImageBuffer {
   typedef typename PixelTraits::pointer_type pointer_type;
   typedef typename PixelTraits::rpointer_type rpointer_type;
+
+  typedef typename PixelTraits::const_pointer_type const_pointer_type;
 
   rpointer_type data;
 
@@ -71,6 +66,12 @@ struct WritableImageBuffer {
   constexpr pointer_type At(unsigned x, unsigned y) {
     return PixelTraits::At(data, pitch, x, y);
   }
+
+#if !GCC_OLDER_THAN(5,0)
+  constexpr const_pointer_type At(unsigned x, unsigned y) const {
+    return PixelTraits::At(data, pitch, x, y);
+  }
+#endif
 };
 
 /**
@@ -105,7 +106,7 @@ struct ConstImageBuffer {
     return x < width && y < height;
   }
 
-  constexpr pointer_type At(unsigned x, unsigned y) {
+  constexpr pointer_type At(unsigned x, unsigned y) const {
     return PixelTraits::At(data, pitch, x, y);
   }
 };

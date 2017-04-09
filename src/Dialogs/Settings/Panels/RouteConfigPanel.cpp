@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,7 +27,6 @@ Copyright_License {
 #include "Form/DataField/Listener.hpp"
 #include "Interface.hpp"
 #include "Language/Language.hpp"
-#include "Form/Form.hpp"
 #include "Form/DataField/Base.hpp"
 #include "Widget/RowFormWidget.hpp"
 #include "UIGlobals.hpp"
@@ -111,7 +110,7 @@ RouteConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
     { 0 }
   };
 
-  AddEnum(_("Route mode"), NULL, route_mode_list,
+  AddEnum(_("Route mode"), nullptr, route_mode_list,
           (unsigned)route_planner.mode, this);
 
   AddBoolean(_("Route climb"),
@@ -160,14 +159,20 @@ RouteConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
   static constexpr StaticEnumChoice final_glide_terrain_list[] = {
     { (unsigned)FeaturesSettings::FinalGlideTerrain::OFF, N_("Off"),
       N_("Disables the reach display.") },
-    { (unsigned)FeaturesSettings::FinalGlideTerrain::LINE, N_("Line"),
-      N_("Draws a dashed line at the glide reach.") },
-    { (unsigned)FeaturesSettings::FinalGlideTerrain::SHADE, N_("Shade"),
+    { (unsigned)FeaturesSettings::FinalGlideTerrain::TERRAIN_LINE, N_("Terrain line"),
+      N_("Draws a dashed line at the terrain glide reach.") },
+    { (unsigned)FeaturesSettings::FinalGlideTerrain::TERRAIN_SHADE, N_("Terrain shade"),
       N_("Shades terrain outside glide reach.") },
+    { (unsigned)FeaturesSettings::FinalGlideTerrain::WORKING, N_("Working line"),
+      N_("Draws a dashed line at the working glide reach.") },
+    { (unsigned)FeaturesSettings::FinalGlideTerrain::WORKING_TERRAIN_LINE, N_("Working line, terrain line"),
+      N_("Draws a dashed line at the working and terrain glide reaches.") },
+    { (unsigned)FeaturesSettings::FinalGlideTerrain::WORKING_TERRAIN_SHADE, N_("Working line, terrain shade"),
+      N_("Draws a dashed line at working, and shade terrain, glide reaches.") },
     { 0 }
   };
 
-  AddEnum(_("Reach display"), NULL, final_glide_terrain_list,
+  AddEnum(_("Reach display"), nullptr, final_glide_terrain_list,
           (unsigned)settings_computer.features.final_glide_terrain);
 
   ShowRouteControls(route_planner.mode != RoutePlannerConfig::Mode::NONE);

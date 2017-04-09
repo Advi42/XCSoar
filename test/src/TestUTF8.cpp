@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #include "Util/Macros.hpp"
 #include "TestUtil.hpp"
 
+#include <assert.h>
 #include <string.h>
 
 static const char *const valid[] = {
@@ -79,23 +80,98 @@ static const struct {
   { "foo\xe7", "foo", },
 };
 
-#include <stdio.h>
+static size_t
+MyLengthUTF8(const char *p)
+{
+  for (size_t length = 0;; ++length) {
+    if (*p == 0)
+      return length;
+
+    size_t s = SequenceLengthUTF8(p);
+    assert(s > 0);
+    p += s;
+  }
+}
+
+static bool
+MyValidateUTF8(const char *p)
+{
+  for (size_t length = 0;; ++length) {
+    if (*p == 0)
+      return true;
+
+    size_t s = SequenceLengthUTF8(p);
+    if (s == 0)
+      return false;
+
+    p += s;
+  }
+}
+
+#ifndef _UNICODE
+
+static constexpr struct {
+  const char *src;
+  size_t truncate, dest_size;
+  const char *expected_result;
+} truncate_string_tests[] = {
+  { "", 100, 100, "" },
+  { "a", 100, 100, "a" },
+  { "abc", 100, 100, "abc" },
+  { "abc", 100, 4, "abc" },
+  { "abc", 100, 3, "ab" },
+  { "abc", 100, 2, "a" },
+  { "abc", 100, 1, "" },
+  { "foo\xc3\xbc", 100, 100, "foo\xc3\xbc", },
+  { "foo\xc3\xbc", 4, 100, "foo\xc3\xbc", },
+  { "foo\xc3\xbc", 3, 100, "foo", },
+  { "foo\xc3\xbc", 100, 6, "foo\xc3\xbc", },
+  { "foo\xc3\xbc", 100, 5, "foo", },
+  { "foo\xc3\xbc", 100, 4, "foo", },
+  { "foo\xc3\xbc", 100, 3, "fo", },
+  { "foo\xe7\x9b\xae", 4, 7, "foo\xe7\x9b\xae", },
+  { "foo\xe7\x9b\xae", 3, 7, "foo", },
+  { "foo\xe7\x9b\xae", 4, 6, "foo", },
+};
+
+static void
+TestTruncateString()
+{
+  for (const auto &t : truncate_string_tests) {
+    char buffer[1024];
+    CopyTruncateStringUTF8(buffer, t.dest_size, t.src, t.truncate);
+    ok1(strcmp(buffer, t.expected_result) == 0);
+  }
+}
+
+#endif
+
 int main(int argc, char **argv)
 {
-  plan_tests(ARRAY_SIZE(valid) + ARRAY_SIZE(invalid) +
-             ARRAY_SIZE(length) +
-             ARRAY_SIZE(crop) +
+  plan_tests(2 * ARRAY_SIZE(valid) +
+             2 * ARRAY_SIZE(invalid) +
+             2 * ARRAY_SIZE(length) +
+             4 * ARRAY_SIZE(crop) +
              ARRAY_SIZE(latin1_chars) +
+#ifndef _UNICODE
+             ARRAY_SIZE(truncate_string_tests) +
+#endif
              9 + 27);
 
-  for (auto i : valid)
+  for (auto i : valid) {
     ok1(ValidateUTF8(i));
+    ok1(LengthUTF8(i) == MyLengthUTF8(i));
+  }
 
-  for (auto i : invalid)
+  for (auto i : invalid) {
     ok1(!ValidateUTF8(i));
+    ok1(!MyValidateUTF8(i));
+  }
 
-  for (auto &l : length)
+  for (auto &l : length) {
     ok1(l.length == LengthUTF8(l.value));
+    ok1(l.length == MyLengthUTF8(l.value));
+  }
 
   char buffer[64];
 
@@ -106,9 +182,16 @@ int main(int argc, char **argv)
 
   for (auto &c : crop) {
     strcpy(buffer, c.input);
-    CropIncompleteUTF8(buffer);
+    auto *end = CropIncompleteUTF8(buffer);
     ok1(strcmp(c.output, buffer) == 0);
+    ok1(end != nullptr);
+    ok1(*end == '\0');
+    ok1(end == buffer + strlen(buffer));
   }
+
+#ifndef _UNICODE
+  TestTruncateString();
+#endif
 
   {
     const char *p = "foo\xe7\x9b\xae";

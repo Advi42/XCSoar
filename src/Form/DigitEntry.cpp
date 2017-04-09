@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2011 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,13 +26,15 @@ Copyright_License {
 #include "Screen/Font.hpp"
 #include "Screen/Layout.hpp"
 #include "Screen/Point.hpp"
-#include "Screen/Key.h"
+#include "Event/KeyCode.hpp"
 #include "Screen/Canvas.hpp"
 #include "Look/DialogLook.hpp"
 #include "Units/Descriptor.hpp"
 #include "Time/RoughTime.hpp"
 #include "Math/Angle.hpp"
+#include "Math/Util.hpp"
 #include "Renderer/SymbolRenderer.hpp"
+#include "Geo/CoordinateFormat.hpp"
 
 #include <algorithm>
 
@@ -67,7 +69,7 @@ DigitEntry::Create(ContainerWindow &parent, const PixelRect &rc,
     digit.value = 0;
   }
 
-  max_width = rc.right - rc.left;
+  max_width = rc.GetWidth();
 
   CalculateLayout();
 
@@ -121,17 +123,48 @@ DigitEntry::CreateAngle(ContainerWindow &parent, const PixelRect &rc,
 
 void
 DigitEntry::CreateLatitude(ContainerWindow &parent, const PixelRect &rc,
-                           const WindowStyle style)
+                           const WindowStyle style,
+                           CoordinateFormat format)
 {
-  // TODO: support all CoordinateFormats
+  switch (format) {
+  case CoordinateFormat::DD_DDDDD:
+    Create(parent, rc, style, 10);
+    columns[0].type = Column::Type::NORTH_SOUTH;
+    columns[3].type = Column::Type::DECIMAL_POINT;
+    columns[9].type = Column::Type::DEGREES;
+    break;
 
-  Create(parent, rc, style, 9);
+  case CoordinateFormat::DDMM_MMM:
+    Create(parent, rc, style, 11);
+    columns[0].type = Column::Type::NORTH_SOUTH;
+    columns[3].type = Column::Type::DEGREES;
+    columns[4].type = Column::Type::DIGIT6;
+    columns[6].type = Column::Type::DECIMAL_POINT;
+    columns[10].type = Column::Type::APOSTROPHE;
+    break;
 
-  columns[0].type = Column::Type::NORTH_SOUTH;
-  columns[3].type = Column::Type::DEGREES;
-  columns[4].type = Column::Type::DIGIT6;
-  columns[6].type = Column::Type::APOSTROPHE;
-  columns[7].type = Column::Type::DIGIT6;
+  case CoordinateFormat::DDMMSS_S:
+    Create(parent, rc, style, 12);
+    columns[0].type = Column::Type::NORTH_SOUTH;
+    columns[3].type = Column::Type::DEGREES;
+    columns[4].type = Column::Type::DIGIT6;
+    columns[6].type = Column::Type::APOSTROPHE;
+    columns[7].type = Column::Type::DIGIT6;
+    columns[9].type = Column::Type::DECIMAL_POINT;
+    columns[11].type = Column::Type::QUOTE;
+    break;
+
+  case CoordinateFormat::DDMMSS:
+  case CoordinateFormat::UTM: /// \todo support UTM format
+    Create(parent, rc, style, 10);
+    columns[0].type = Column::Type::NORTH_SOUTH;
+    columns[3].type = Column::Type::DEGREES;
+    columns[4].type = Column::Type::DIGIT6;
+    columns[6].type = Column::Type::APOSTROPHE;
+    columns[7].type = Column::Type::DIGIT6;
+    columns[9].type = Column::Type::QUOTE;
+    break;
+  }
 
   cursor = 0;
 
@@ -140,18 +173,52 @@ DigitEntry::CreateLatitude(ContainerWindow &parent, const PixelRect &rc,
 
 void
 DigitEntry::CreateLongitude(ContainerWindow &parent, const PixelRect &rc,
-                            const WindowStyle style)
+                            const WindowStyle style,
+                            CoordinateFormat format)
 {
-  // TODO: support all CoordinateFormats
+  switch (format) {
+  case CoordinateFormat::DD_DDDDD:
+    Create(parent, rc, style, 10);
+    columns[0].type = Column::Type::EAST_WEST;
+    columns[1].type = Column::Type::DIGIT19;
+    columns[3].type = Column::Type::DECIMAL_POINT;
+    columns[9].type = Column::Type::DEGREES;
+    break;
 
-  Create(parent, rc, style, 9);
+  case CoordinateFormat::DDMM_MMM:
+    Create(parent, rc, style, 11);
+    columns[0].type = Column::Type::EAST_WEST;
+    columns[1].type = Column::Type::DIGIT19;
+    columns[3].type = Column::Type::DEGREES;
+    columns[4].type = Column::Type::DIGIT6;
+    columns[6].type = Column::Type::DECIMAL_POINT;
+    columns[10].type = Column::Type::APOSTROPHE;
+    break;
 
-  columns[0].type = Column::Type::EAST_WEST;
-  columns[1].type = Column::Type::DIGIT19;
-  columns[3].type = Column::Type::DEGREES;
-  columns[4].type = Column::Type::DIGIT6;
-  columns[6].type = Column::Type::APOSTROPHE;
-  columns[7].type = Column::Type::DIGIT6;
+  case CoordinateFormat::DDMMSS_S:
+    Create(parent, rc, style, 12);
+    columns[0].type = Column::Type::EAST_WEST;
+    columns[1].type = Column::Type::DIGIT19;
+    columns[3].type = Column::Type::DEGREES;
+    columns[4].type = Column::Type::DIGIT6;
+    columns[6].type = Column::Type::APOSTROPHE;
+    columns[7].type = Column::Type::DIGIT6;
+    columns[9].type = Column::Type::DECIMAL_POINT;
+    columns[11].type = Column::Type::QUOTE;
+    break;
+
+  case CoordinateFormat::DDMMSS:
+  case CoordinateFormat::UTM: /// \todo support UTM format
+    Create(parent, rc, style, 10);
+    columns[0].type = Column::Type::EAST_WEST;
+    columns[1].type = Column::Type::DIGIT19;
+    columns[3].type = Column::Type::DEGREES;
+    columns[4].type = Column::Type::DIGIT6;
+    columns[6].type = Column::Type::APOSTROPHE;
+    columns[7].type = Column::Type::DIGIT6;
+    columns[9].type = Column::Type::QUOTE;
+    break;
+  }
 
   cursor = 0;
 
@@ -175,14 +242,14 @@ DigitEntry::CreateTime(ContainerWindow &parent, const PixelRect &rc,
 void
 DigitEntry::CalculateLayout()
 {
-  const UPixelScalar control_height = Layout::GetMaximumControlHeight();
-  const UPixelScalar padding = Layout::GetTextPadding();
+  const unsigned control_height = Layout::GetMaximumControlHeight();
+  const unsigned padding = Layout::GetTextPadding();
 
-  const UPixelScalar min_value_height = control_height * 3 / 2;
+  const unsigned min_value_height = control_height * 3 / 2;
 
-  PixelSize digit_size = look.text_font->TextSize(_T("8"));
+  PixelSize digit_size = look.text_font.TextSize(_T("8"));
   digit_size.cy += 2 * padding;
-  if (digit_size.cy < (PixelScalar)min_value_height)
+  if (digit_size.cy < (int)min_value_height)
     digit_size.cy = min_value_height;
 
   top = control_height;
@@ -192,9 +259,9 @@ DigitEntry::CalculateLayout()
   for (unsigned i = 0; i < length; ++i) {
     Column &digit = columns[i];
 
-    PixelScalar value_width = digit.GetWidth() * digit_size.cx;
+    unsigned value_width = digit.GetWidth() * digit_size.cx;
     value_width += 2 * padding;
-    if (value_width < (PixelScalar)control_height)
+    if (value_width < control_height)
       value_width = control_height;
 
     digit.left = last_right;
@@ -208,9 +275,12 @@ DigitEntry::CalculateLayout()
     last_right = 0;
     for (unsigned i = 0; i < length; ++i) {
       Column &digit = columns[i];
-      PixelScalar value_width = digit.right - digit.left;
+
+      unsigned old_width = digit.right - digit.left;
+      unsigned new_width = std::max(old_width - width_adjust, padding);
+
       digit.left = last_right;
-      last_right = digit.right = digit.left + value_width - width_adjust;
+      last_right = digit.right = digit.left + new_width;
     }
   }
 }
@@ -316,7 +386,7 @@ DigitEntry::SetValue(unsigned value)
 }
 
 void
-DigitEntry::SetValue(fixed value)
+DigitEntry::SetValue(double value)
 {
   // XXX implement
   SetValue((int)value);
@@ -383,14 +453,14 @@ DigitEntry::GetPositiveInteger() const
   return value;
 }
 
-fixed
+double
 DigitEntry::GetPositiveFractional() const
 {
   const int dp = FindDecimalPoint();
   if (dp < 0)
-    return fixed(0);
+    return 0;
 
-  fixed value = fixed(0);
+  double value = 0;
   unsigned factor = 10;
 
   for (unsigned i = dp + 1; i < length; ++i) {
@@ -399,7 +469,7 @@ DigitEntry::GetPositiveFractional() const
       continue;
 
     assert(c.value < 10);
-    value += fixed(c.value) / factor;
+    value += double(c.value) / factor;
     factor *= 10;
   }
 
@@ -423,99 +493,238 @@ DigitEntry::GetTimeValue() const
 }
 
 void
-DigitEntry::SetLatitude(Angle value)
+DigitEntry::SetDigits(double degrees, CoordinateFormat format, bool isLatitude)
 {
-  // TODO: support all CoordinateFormats
+  // Calculate half the last digit so that we round to the nearest
+  double roundingAdjustment = 0;
+  switch (format) {
+  case CoordinateFormat::DD_DDDDD:
+    roundingAdjustment = 0.5 * (1.0 / 100000);
+    break;
 
-  value = value.AsDelta();
+  case CoordinateFormat::DDMM_MMM:
+    roundingAdjustment = 0.5 * ( (1.0/60) / 1000);
+    break;
 
-  assert(length == 9);
-  assert(columns[0].type == Column::Type::NORTH_SOUTH);
-  assert(columns[1].type == Column::Type::DIGIT);
-  assert(columns[2].type == Column::Type::DIGIT);
-  assert(columns[4].type == Column::Type::DIGIT6);
-  assert(columns[5].type == Column::Type::DIGIT);
-  assert(columns[7].type == Column::Type::DIGIT6);
-  assert(columns[8].type == Column::Type::DIGIT);
+  case CoordinateFormat::DDMMSS_S:
+    roundingAdjustment = 0.5 * ( (1.0/3600) / 10);
+    break;
 
-  columns[0].value = negative(value.Native());
+  case CoordinateFormat::DDMMSS:
+    roundingAdjustment = 0.5 * ( (1.0/3600) / 1);
+    break;
 
-  const fixed degrees = fabs(value.Degrees());
-  const unsigned i_degrees = std::min(unsigned(degrees), 90u);
-  const unsigned full_seconds = unsigned(degrees * 3600u) % 3600u;
-  const unsigned minutes = std::min(full_seconds / 60u, 59u);
-  const unsigned seconds = full_seconds % 60u;
+  default:
+  case CoordinateFormat::UTM:
+    /// \todo support UTM format
+    break;
+  }
 
+  // Apply adjustment so we show rounding rather than truncation
+  degrees += roundingAdjustment;
+
+  // Handle whole degrees
+  const unsigned i_degrees = std::min(unsigned(degrees), isLatitude ? 90u : 180u);
   columns[1].value = i_degrees / 10;
   columns[2].value = i_degrees % 10;
 
-  columns[4].value = minutes / 10;
-  columns[5].value = minutes % 10;
+  // Set columns according to specified format
+  // Work out to an more decimal places than required for rounding
+  /// \todo support UTM format
+  switch (format) {
+  case CoordinateFormat::DD_DDDDD: {
+    // Check format is xxx.99999°
+    assert(length == 10);
+    assert(columns[4].type == Column::Type::DIGIT);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[6].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT);
+    assert(columns[8].type == Column::Type::DIGIT);
+    // Set fractional degree columns
+    unsigned remainder = unsigned(degrees * 1000000u) % 1000000u;
+    columns[4].value = remainder / 100000u;  remainder %= 100000u;
+    columns[5].value = remainder / 10000u;   remainder %= 10000u;
+    columns[6].value = remainder / 1000u;    remainder %= 1000u;
+    columns[7].value = remainder / 100u;     remainder %= 100u;
+    columns[8].value = remainder / 10u;
+    break;
+  }
 
-  columns[7].value = seconds / 10;
-  columns[8].value = seconds % 10;
+  case CoordinateFormat::DDMM_MMM: {
+    // Check format is xxx°59.999"
+    assert(length == 11);
+    assert(columns[4].type == Column::Type::DIGIT6);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT);
+    assert(columns[8].type == Column::Type::DIGIT);
+    assert(columns[9].type == Column::Type::DIGIT);
+    // Set minute columns
+    unsigned remainder = unsigned(degrees * 600000u) % 600000u;
+    columns[4].value = remainder / 100000u; remainder %= 100000u;
+    columns[5].value = remainder / 10000u;  remainder %= 10000u;
+    columns[7].value = remainder / 1000u;   remainder %= 1000u;
+    columns[8].value = remainder / 100u;    remainder %= 100u;
+    columns[9].value = remainder / 10u;
+    break;
+  }
+
+  case CoordinateFormat::DDMMSS_S: {
+    // Check format is xxx°59'59.9"
+    assert(length == 12);
+    assert(columns[4].type == Column::Type::DIGIT6);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT6);
+    assert(columns[8].type == Column::Type::DIGIT);
+    assert(columns[10].type == Column::Type::DIGIT);
+    // Set minute and second columns
+    const unsigned full_hunseconds = unsigned(degrees * 360000u) % 360000u;
+    const unsigned minutes = std::min(full_hunseconds / 6000u, 59u);
+    columns[4].value = minutes / 10;
+    columns[5].value = minutes % 10;
+    unsigned remainder = full_hunseconds % 6000u;
+    columns[7].value = remainder / 1000;  remainder %= 1000;
+    columns[8].value = remainder / 100;   remainder %= 100;
+    columns[10].value = remainder / 10;   remainder %= 10;
+    break;
+  }
+
+  case CoordinateFormat::UTM: /// \todo support UTM format
+  case CoordinateFormat::DDMMSS: {
+    // Check format is xxx°59'59"
+    assert(length == 10);
+    assert(columns[4].type == Column::Type::DIGIT6);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT6);
+    assert(columns[8].type == Column::Type::DIGIT);
+    // Set minute and second columns
+    const unsigned full_hunseconds = unsigned(degrees * 360000u) % 360000u;
+    const unsigned minutes = std::min(full_hunseconds / 6000u, 59u);
+    columns[4].value = minutes / 10;
+    columns[5].value = minutes % 10;
+    unsigned remainder = full_hunseconds % 6000u;
+    columns[7].value = remainder / 1000;  remainder %= 1000;
+    columns[8].value = remainder / 100;   remainder %= 100;
+    break;
+  }
+  }
+}
+
+void
+DigitEntry::SetLatitude(Angle value, CoordinateFormat format)
+{
+  // Latitude in floating point degrees
+  value = value.AsDelta();
+  const auto degrees = fabs(value.Degrees());
+
+  // Check the first three columns
+  assert(columns[0].type == Column::Type::NORTH_SOUTH);
+  assert(columns[1].type == Column::Type::DIGIT);
+  assert(columns[2].type == Column::Type::DIGIT);
+  columns[0].value = value.IsNegative();
+
+  // Set up and check the remaining digits
+  SetDigits(degrees, format, true);
 
   Invalidate();
 }
 
-
 void
-DigitEntry::SetLongitude(Angle value)
+DigitEntry::SetLongitude(Angle value, CoordinateFormat format)
 {
-  // TODO: support all CoordinateFormats
-
+  // Longitude in floating point degrees
   value = value.AsDelta();
+  const auto degrees = fabs(value.Degrees());
 
-  assert(length == 9);
+  // Check the first three columns here
   assert(columns[0].type == Column::Type::EAST_WEST);
   assert(columns[1].type == Column::Type::DIGIT19);
   assert(columns[2].type == Column::Type::DIGIT);
-  assert(columns[4].type == Column::Type::DIGIT6);
-  assert(columns[5].type == Column::Type::DIGIT);
-  assert(columns[7].type == Column::Type::DIGIT6);
-  assert(columns[8].type == Column::Type::DIGIT);
+  columns[0].value = value.IsNegative();
 
-  columns[0].value = negative(value.Native());
-
-  const fixed degrees = fabs(value.Degrees());
-  const unsigned i_degrees = std::min(unsigned(degrees), 180u);
-  const unsigned full_seconds = unsigned(degrees * 3600u) % 3600u;
-  const unsigned minutes = std::min(full_seconds / 60u, 59u);
-  const unsigned seconds = full_seconds % 60u;
-
-  columns[1].value = i_degrees / 10;
-  columns[2].value = i_degrees % 10;
-
-  columns[4].value = minutes / 10;
-  columns[5].value = minutes % 10;
-
-  columns[7].value = seconds / 10;
-  columns[8].value = seconds % 10;
+  // Set up and check the remaining digits
+  SetDigits(degrees, format, false);
 
   Invalidate();
 }
 
 Angle
-DigitEntry::GetGeoAngle() const
+DigitEntry::GetGeoAngle(CoordinateFormat format) const
 {
-  // TODO: support all CoordinateFormats
 
   if (!valid)
     return Angle::FullCircle();
 
+  // The first three columns are common to all formats
+  // N99... and E*9...
   assert(columns[0].type == Column::Type::NORTH_SOUTH ||
          columns[0].type == Column::Type::EAST_WEST);
   assert(columns[1].type == Column::Type::DIGIT ||
          columns[1].type == Column::Type::DIGIT19);
   assert(columns[2].type == Column::Type::DIGIT);
-  assert(columns[4].type == Column::Type::DIGIT6);
-  assert(columns[5].type == Column::Type::DIGIT);
-  assert(columns[7].type == Column::Type::DIGIT6);
-  assert(columns[8].type == Column::Type::DIGIT);
+  auto degrees = columns[1].value * 10 + columns[2].value;
 
-  fixed degrees = fixed(columns[1].value * 10 + columns[2].value)
-    + (columns[4].value * 10 + columns[5].value) * fixed(1 / 60.)
-    + (columns[7].value * 10 + columns[8].value) * fixed(1 / 3600.);
+  // Read columns according to specified format
+  /// \todo support UTM format
+  switch (format) {
+  case CoordinateFormat::DD_DDDDD:
+    // Check format is E*9.99999°
+    assert(length == 10);
+    assert(columns[4].type == Column::Type::DIGIT);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[6].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT);
+    assert(columns[8].type == Column::Type::DIGIT);
+    // Read fractional degree columns
+    degrees += (columns[4].value * 10000 +
+                columns[5].value * 1000 +
+                columns[6].value * 100 +
+                columns[7].value * 10  +
+                columns[8].value        ) / 100000.;
+    break;
+
+  case CoordinateFormat::DDMM_MMM:
+    // Check format is E*9°59.999"
+    assert(length == 11);
+    assert(columns[4].type == Column::Type::DIGIT6);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT);
+    assert(columns[8].type == Column::Type::DIGIT);
+    assert(columns[9].type == Column::Type::DIGIT);
+    // Read minute columns
+    degrees += (columns[4].value * 10 + columns[5].value) / 60.
+      +  (columns[7].value * 100 +
+          columns[8].value * 10  +
+          columns[9].value        ) / 60000.;
+    break;
+
+  case CoordinateFormat::DDMMSS_S:
+    // Check format is E*9°59'59.9"
+    assert(length == 12);
+    assert(columns[4].type == Column::Type::DIGIT6);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT6);
+    assert(columns[8].type == Column::Type::DIGIT);
+    assert(columns[10].type == Column::Type::DIGIT);
+    // Read minute and decimal second columns
+    degrees += (columns[4].value * 10 + columns[5].value) / 60.
+      +  (columns[7].value * 10 + columns[8].value) / 3600.
+      +  (columns[10].value                       ) / 36000.;
+    break;
+
+  case CoordinateFormat::UTM: /// \todo support UTM format
+  case CoordinateFormat::DDMMSS:
+    // Check format is E*9°59'59"
+    assert(length == 10);
+    assert(columns[4].type == Column::Type::DIGIT6);
+    assert(columns[5].type == Column::Type::DIGIT);
+    assert(columns[7].type == Column::Type::DIGIT6);
+    assert(columns[8].type == Column::Type::DIGIT);
+    // Read minute and second columns
+    degrees += (columns[4].value * 10 + columns[5].value) / 60.
+      +  (columns[7].value * 10 + columns[8].value) / 3600.;
+    break;
+  }
+
   if (columns[0].IsNegative())
     degrees = -degrees;
 
@@ -523,23 +732,25 @@ DigitEntry::GetGeoAngle() const
 }
 
 Angle
-DigitEntry::GetLatitude() const
+DigitEntry::GetLatitude(CoordinateFormat format) const
 {
-  // TODO: support all CoordinateFormats
+  /// \todo support UTM format
 
   assert(columns[0].type == Column::Type::NORTH_SOUTH);
   assert(columns[1].type == Column::Type::DIGIT);
 
-  return GetGeoAngle();
+  return GetGeoAngle(format);
 }
 
 Angle
-DigitEntry::GetLongitude() const
+DigitEntry::GetLongitude(CoordinateFormat format) const
 {
+  /// \todo support UTM format
+
   assert(columns[0].type == Column::Type::EAST_WEST);
   assert(columns[1].type == Column::Type::DIGIT19);
 
-  return GetGeoAngle();
+  return GetGeoAngle(format);
 }
 
 void
@@ -618,36 +829,36 @@ DigitEntry::GetUnsignedValue() const
   return GetPositiveInteger();
 }
 
-fixed
-DigitEntry::GetFixedValue() const
+double
+DigitEntry::GetDoubleValue() const
 {
-  fixed value = fixed(GetPositiveInteger()) + GetPositiveFractional();
+  double value = GetPositiveInteger() + GetPositiveFractional();
   return IsNegative() ? -value : value;
 }
 
 Angle
 DigitEntry::GetAngleValue() const
 {
-  return Angle::Degrees(GetFixedValue());
+  return Angle::Degrees(GetDoubleValue());
 }
 
 bool
-DigitEntry::OnMouseDown(PixelScalar x, PixelScalar y)
+DigitEntry::OnMouseDown(PixelPoint p)
 {
-  int i = FindColumnAt(x);
+  int i = FindColumnAt(p.x);
   if (i >= 0 && columns[i].IsEditable()) {
     SetCursor(i);
     SetFocus();
 
-    if (y < int(top))
+    if (p.y < int(top))
       IncrementColumn(i);
-    else if (unsigned(y) > bottom)
+    else if (unsigned(p.y) > bottom)
       DecrementColumn(i);
 
     return true;
   }
 
-  return PaintWindow::OnMouseDown(x, y);
+  return PaintWindow::OnMouseDown(p);
 }
 
 bool
@@ -733,10 +944,10 @@ DigitEntry::OnPaint(Canvas &canvas)
   if (HaveClipping())
     canvas.Clear(look.background_color);
 
-  canvas.Select(*look.text_font);
+  canvas.Select(look.text_font);
   canvas.SetBackgroundOpaque();
 
-  const unsigned text_height = look.text_font->GetHeight();
+  const unsigned text_height = look.text_font.GetHeight();
   const int y = (top + bottom - text_height) / 2;
 
   PixelRect rc;
@@ -813,6 +1024,10 @@ DigitEntry::OnPaint(Canvas &canvas)
 
     case Column::Type::APOSTROPHE:
       text = _T("'");
+      break;
+
+    case Column::Type::QUOTE:
+      text = _T("\"");
       break;
 
     case Column::Type::UNIT:

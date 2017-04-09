@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Max Kellermann <max@duempel.org>
+ * Copyright (C) 2014 Max Kellermann <max.kellermann@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,9 +33,15 @@
 #include <stdint.h>
 
 #ifdef WIN32
-#include <windef.h>
-/* those are WIN32 macros - undefine */
+#include <windows.h>
+#endif
+
+/* TRUE and FALSE are macros on some platforms (at least on Win32, iOS and
+ * macOS) - undefine */
+#ifdef TRUE
 #undef TRUE
+#endif
+#ifdef FALSE
 #undef FALSE
 #endif
 

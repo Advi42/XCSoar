@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,13 +26,13 @@ Copyright_License {
 #include "Widget/CreateWindowWidget.hpp"
 #include "Widget/ArrowPagerWidget.hpp"
 #include "Widget/LargeTextWidget.hpp"
-#include "Look/StandardFonts.hpp"
+#include "Look/FontDescription.hpp"
 #include "Look/DialogLook.hpp"
+#include "Look/Colors.hpp"
 #include "Screen/Canvas.hpp"
 #include "Screen/Layout.hpp"
 #include "Screen/Bitmap.hpp"
 #include "Screen/Font.hpp"
-#include "Screen/Key.h"
 #include "Version.hpp"
 #include "Inflate.hpp"
 #include "Util/ConvertString.hpp"
@@ -51,7 +51,7 @@ LogoPageWindow::OnPaint(Canvas &canvas)
 {
   const PixelRect rc = GetClientRect();
 
-  const unsigned width = rc.right - rc.left;
+  const unsigned width = rc.GetWidth();
   int x = rc.left + Layout::FastScale(10);
   int y = rc.top + Layout::FastScale(10);
 
@@ -67,7 +67,7 @@ LogoPageWindow::OnPaint(Canvas &canvas)
   y += title_size.cy + Layout::FastScale(20);
 
   Font font;
-  font.Load(GetStandardFontFace(), Layout::FastScale(16));
+  font.Load(FontDescription(Layout::FontScale(16)));
   canvas.Select(font);
   canvas.SetTextColor(COLOR_BLACK);
   canvas.SetBackgroundTransparent();
@@ -102,25 +102,24 @@ CreateLogoPage(ContainerWindow &parent, const PixelRect &rc,
   return window;
 }
 
-/* workaround note: we would prefer to use the "_size" symbol here,
-   but it turns out that Android 4 relocates these symbols for some
-   reason, therefore we use "end-start" instead */
+extern "C"
+{
+  extern const uint8_t COPYING_gz[];
+  extern const size_t COPYING_gz_size;
 
-extern const uint8_t license_start[] asm("_binary_COPYING_gz_start");
-extern const uint8_t license_end[] asm("_binary_COPYING_gz_end");
-
-extern const uint8_t authors_start[] asm("_binary_AUTHORS_gz_start");
-extern const uint8_t authors_end[] asm("_binary_AUTHORS_gz_end");
+  extern const uint8_t AUTHORS_gz[];
+  extern const size_t AUTHORS_gz_size;
+}
 
 void
 dlgCreditsShowModal(SingleWindow &parent)
 {
   const DialogLook &look = UIGlobals::GetDialogLook();
 
-  char *authors = InflateToString(authors_start, authors_end - authors_start);
+  char *authors = InflateToString(AUTHORS_gz, AUTHORS_gz_size);
   const UTF8ToWideConverter authors2(authors);
 
-  char *license = InflateToString(license_start, license_end - license_start);
+  char *license = InflateToString(COPYING_gz, COPYING_gz_size);
   const UTF8ToWideConverter license2(license);
 
   WidgetDialog dialog(look);

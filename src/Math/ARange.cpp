@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,15 +23,26 @@ Copyright_License {
 
 #include "ARange.hpp"
 
-void
+bool
 AngleRange::Extend(Angle value)
 {
-  // @TODO: this code is not safe against wraparound!
+  const Angle length = GetLength();
 
-  if (value < start)
+  /* check if value is nearer to start or to end, and extend that
+     side */
+
+  Angle start_delta = (start - value).AsBearing();
+  if (start_delta + length >= Angle::FullCircle())
+    /* it's inside, no change required */
+    return false;
+
+  Angle end_delta = (value - end).AsBearing();
+  if (start_delta < end_delta)
     start = value;
-  else if (value > end)
+  else
     end = value;
+
+  return true;
 }
 
 bool
@@ -41,12 +52,14 @@ AngleRange:: IntersectWith(const AngleRange &other) {
   if (IsInside(other.start)) {
     start = other.start;
     result = true;
-  }
+  } else if (other.IsInside(start))
+    result = true;
 
   if (IsInside(other.end)) {
     end = other.end;
     result = true;
-  }
+  } else if (other.IsInside(end))
+    result = true;
 
   return result;
 }

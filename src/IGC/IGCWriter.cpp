@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,84 +23,63 @@ Copyright_License {
 
 #include "IGC/IGCWriter.hpp"
 #include "IGCString.hpp"
+#include "Generator.hpp"
 #include "NMEA/Info.hpp"
 #include "Version.hpp"
+#include "OS/Path.hpp"
 
 #include <assert.h>
 
-static char *
-FormatIGCLocation(char *buffer, const GeoPoint &location)
-{
-  char latitude_suffix = negative(location.latitude.Native())
-    ? 'S' : 'N';
-  unsigned latitude =
-    (unsigned)uround(fabs(location.latitude.Degrees() * 60000));
-
-  char longitude_suffix = negative(location.longitude.Native())
-    ? 'W' : 'E';
-  unsigned longitude =
-    (unsigned)uround(fabs(location.longitude.Degrees() * 60000));
-
-  sprintf(buffer, "%02u%05u%c%03u%05u%c",
-          latitude / 60000, latitude % 60000, latitude_suffix,
-          longitude / 60000, longitude % 60000, longitude_suffix);
-
-  return buffer + strlen(buffer);
-}
-
-IGCWriter::IGCWriter(const TCHAR *path)
-  :file(path)
+IGCWriter::IGCWriter(Path path)
+  :file(path,
+        /* we use CREATE_VISIBLE here so the user can recover partial
+           IGC files after a crash/battery failure/etc. */
+        FileOutputStream::Mode::CREATE_VISIBLE),
+   buffered(file)
 {
   fix.Clear();
 
   grecord.Initialize();
 }
 
-bool
+void
 IGCWriter::CommitLine(char *line)
 {
-  if (!file.WriteLine(line))
-    return false;
+  buffered.Write(line);
+  buffered.Write('\n');
 
   grecord.AppendRecordToBuffer(line);
-  return true;
 }
 
-bool
+void
 IGCWriter::WriteLine(const char *line)
 {
   assert(strchr(line, '\r') == NULL);
   assert(strchr(line, '\n') == NULL);
 
   char *const dest = BeginLine();
-  if (dest == nullptr)
-    return false;
-
   char *const end = dest + MAX_IGC_BUFF - 1;
 
   char *p = CopyIGCString(dest, end, line);
   *p = '\0';
 
-  return CommitLine(dest);
+  CommitLine(dest);
 }
 
-bool
+void
 IGCWriter::WriteLine(const char *a, const TCHAR *b)
 {
   size_t a_length = strlen(a);
   assert(a_length < MAX_IGC_BUFF);
 
   char *const dest = BeginLine();
-  if (dest == nullptr)
-    return false;
-
   char *const end = dest + MAX_IGC_BUFF - 1, *p = dest;
 
-  p = std::copy(a, a + a_length, p);
+  p = std::copy_n(a, a_length, p);
   p = CopyIGCString(p, end, b);
   *p = '\0';
 
-  return CommitLine(dest);
+  CommitLine(dest);
 }
 
 void
@@ -158,25 +137,11 @@ void
 IGCWriter::StartDeclaration(const BrokenDateTime &date_time,
                             const int number_of_turnpoints)
 {
-  assert(date_time.IsPlausible());
-
-  // IGC GNSS specification 3.6.1
   char buffer[64];
-  sprintf(buffer, "C%02u%02u%02u%02u%02u%02u0000000000%02d",
-          // DD  MM  YY  HH  MM  SS  DD  MM  YY IIII TT
-          date_time.day,
-          date_time.month,
-          date_time.year % 100,
-          date_time.hour,
-          date_time.minute,
-          date_time.second,
-          number_of_turnpoints - 2);
-
+  FormatIGCTaskTimestamp(buffer, date_time, number_of_turnpoints);
   WriteLine(buffer);
 
-  // takeoff line
-  // IGC GNSS specification 3.6.3
-  WriteLine("C0000000N00000000ETAKEOFF");
+  WriteLine(IGCMakeTaskTakeoff());
 }
 
 void
@@ -184,19 +149,14 @@ IGCWriter::EndDeclaration()
 {
   // TODO bug: this is causing problems with some analysis software
   // maybe it's because the date and location fields are bogus
-  WriteLine("C0000000N00000000ELANDING");
+  WriteLine(IGCMakeTaskLanding());
 }
 
 void
 IGCWriter::AddDeclaration(const GeoPoint &location, const TCHAR *id)
 {
   char c_record[64];
-
-  char *p = c_record;
-  *p++ = 'C';
-  p = FormatIGCLocation(p, location);
-  CopyASCIIUpper(p, id);
-
+  FormatIGCTaskTurnPoint(c_record, location, id);
   WriteLine(c_record);
 }
 
@@ -312,8 +272,6 @@ IGCWriter::LogFRecord(const BrokenTime &time, const int *satellite_ids)
 void
 IGCWriter::Sign()
 {
-  assert(file.IsOpen());
-
   grecord.FinalizeBuffer();
-  grecord.WriteTo(file);
+  grecord.WriteTo(buffered);
 }

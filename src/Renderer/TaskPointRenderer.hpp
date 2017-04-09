@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@ class OZRenderer;
 class TaskPoint;
 class OrderedTaskPoint;
 class AATPoint;
-class TaskProjection;
+class FlatProjection;
 struct TaskLook;
 
 class TaskPointRenderer
@@ -52,7 +52,7 @@ private:
   const WindowProjection &m_proj;
   MapCanvas map_canvas;
   const TaskLook &task_look;
-  const TaskProjection &task_projection;
+  const FlatProjection &flat_projection;
 
   const bool draw_bearing;
   TargetVisibility target_visibility;
@@ -81,7 +81,7 @@ public:
   TaskPointRenderer(Canvas &_canvas,
                     const WindowProjection &_projection,
                     const TaskLook &task_look,
-                    const TaskProjection &_task_projection,
+                    const FlatProjection &_flat_projection,
                     OZRenderer &_ozv,
                     bool _draw_bearing,
                     TargetVisibility _target_visibility,

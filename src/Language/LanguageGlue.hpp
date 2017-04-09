@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -44,11 +44,13 @@ CloseLanguageFile();
 
 #define HAVE_BUILTIN_LANGUAGES
 
+#include <stddef.h>
 #include <tchar.h>
 
 struct BuiltinLanguage {
   unsigned language;
-  const void *begin, *size;
+  const void * const begin;
+  const size_t size;
   const TCHAR *resource;
   const TCHAR *name;
 };

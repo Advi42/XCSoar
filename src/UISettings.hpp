@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,14 +24,13 @@ Copyright_License {
 #ifndef XCSOAR_UI_SETTINGS_HPP
 #define XCSOAR_UI_SETTINGS_HPP
 
-#include "Units/Settings.hpp"
+#include "FormatSettings.hpp"
 #include "MapSettings.hpp"
 #include "InfoBoxes/InfoBoxSettings.hpp"
 #include "Gauge/VarioSettings.hpp"
 #include "Gauge/TrafficSettings.hpp"
 #include "PageSettings.hpp"
 #include "Dialogs/DialogSettings.hpp"
-#include "Geo/CoordinateFormat.hpp"
 #include "DisplaySettings.hpp"
 #include "Audio/Settings.hpp"
 
@@ -48,12 +47,19 @@ struct UISettings {
   /** timeout in quarter seconds of menu button */
   unsigned menu_timeout;
 
-#ifndef GNAV
-  bool custom_fonts;
-#endif
+  unsigned scale;
+
+  /** Override OS dpi settings */
+  unsigned custom_dpi;
 
   /** Show ThermalAssistant if circling */
   bool enable_thermal_assistant_gauge;
+
+  /** Enable warning dialog */
+  bool enable_airspace_warning_dialog;
+
+  /** Show Menubutton */
+  bool show_menu_button;
 
   enum class PopupMessagePosition : uint8_t {
     CENTER,
@@ -67,9 +73,7 @@ struct UISettings {
     ON,
   } haptic_feedback;
 
-  CoordinateFormat coordinate_format;
-
-  UnitSetting units;
+  FormatSettings format;
   MapSettings map;
   InfoBoxSettings info_boxes;
   VarioSettings vario;
@@ -79,6 +83,10 @@ struct UISettings {
   SoundSettings sound;
 
   void SetDefaults();
+
+  unsigned GetPercentScale() const {
+    return scale;
+  }
 };
 
 static_assert(std::is_trivial<UISettings>::value, "type is not trivial");

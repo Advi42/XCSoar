@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@ void
 WaypointLook::Initialise(const WaypointRendererSettings &settings,
                          const Font &_font, const Font &_bold_font)
 {
+
   small_icon.LoadResource(IDB_SMALL, IDB_SMALL_HD);
   turn_point_icon.LoadResource(IDB_TURNPOINT, IDB_TURNPOINT_HD);
   task_turn_point_icon.LoadResource(IDB_TASKTURNPOINT, IDB_TASKTURNPOINT_HD);
@@ -40,15 +41,25 @@ WaypointLook::Initialise(const WaypointRendererSettings &settings,
   power_plant_icon.LoadResource(IDB_POWER_PLANT, IDB_POWER_PLANT_HD);
   obstacle_icon.LoadResource(IDB_OBSTACLE, IDB_OBSTACLE_HD);
   thermal_hotspot_icon.LoadResource(IDB_THERMAL_HOTSPOT, IDB_THERMAL_HOTSPOT_HD);
+  marker_icon.LoadResource(IDB_MARK, IDB_MARK_HD);
 
-  reachable_brush.Set(COLOR_GREEN);
-  terrain_unreachable_brush.Set(LightColor(COLOR_RED));
-  unreachable_brush.Set(COLOR_RED);
-  white_brush.Set(COLOR_WHITE);
-  light_gray_brush.Set(COLOR_LIGHT_GRAY);
-  magenta_brush.Set(COLOR_MAGENTA);
-  orange_brush.Set(COLOR_ORANGE);
+  reachable_brush.Create(COLOR_GREEN);
+  terrain_unreachable_brush.Create(LightColor(COLOR_RED));
+  unreachable_brush.Create(COLOR_RED);
+  white_brush.Create(COLOR_WHITE);
+  light_gray_brush.Create(COLOR_LIGHT_GRAY);
+  magenta_brush.Create(COLOR_MAGENTA);
+  orange_brush.Create(COLOR_ORANGE);
 
+  Reinitialise(settings);
+
+  font = &_font;
+  bold_font = &_bold_font;
+}
+
+void
+WaypointLook::Reinitialise(const WaypointRendererSettings &settings)
+{
   switch (settings.landable_style) {
   case WaypointRendererSettings::LandableStyle::PURPLE_CIRCLE:
     airport_reachable_icon.LoadResource(IDB_REACHABLE, IDB_REACHABLE_HD);
@@ -61,35 +72,32 @@ WaypointLook::Initialise(const WaypointRendererSettings &settings,
 
   case WaypointRendererSettings::LandableStyle::BW:
     airport_reachable_icon.LoadResource(IDB_AIRPORT_REACHABLE,
-                                    IDB_AIRPORT_REACHABLE_HD);
+                                        IDB_AIRPORT_REACHABLE_HD);
     airport_marginal_icon.LoadResource(IDB_AIRPORT_MARGINAL,
-                                   IDB_AIRPORT_MARGINAL_HD);
+                                       IDB_AIRPORT_MARGINAL_HD);
     airport_unreachable_icon.LoadResource(IDB_AIRPORT_UNREACHABLE,
-                                      IDB_AIRPORT_UNREACHABLE_HD);
+                                          IDB_AIRPORT_UNREACHABLE_HD);
     field_reachable_icon.LoadResource(IDB_OUTFIELD_REACHABLE,
-                                  IDB_OUTFIELD_REACHABLE_HD);
+                                      IDB_OUTFIELD_REACHABLE_HD);
     field_marginal_icon.LoadResource(IDB_OUTFIELD_MARGINAL,
-                                 IDB_OUTFIELD_MARGINAL_HD);
+                                     IDB_OUTFIELD_MARGINAL_HD);
     field_unreachable_icon.LoadResource(IDB_OUTFIELD_UNREACHABLE,
-                                    IDB_OUTFIELD_UNREACHABLE_HD);
+                                        IDB_OUTFIELD_UNREACHABLE_HD);
     break;
 
   case WaypointRendererSettings::LandableStyle::TRAFFIC_LIGHTS:
     airport_reachable_icon.LoadResource(IDB_AIRPORT_REACHABLE,
-                                    IDB_AIRPORT_REACHABLE_HD);
+                                        IDB_AIRPORT_REACHABLE_HD);
     airport_marginal_icon.LoadResource(IDB_AIRPORT_MARGINAL2,
-                                   IDB_AIRPORT_MARGINAL2_HD);
+                                       IDB_AIRPORT_MARGINAL2_HD);
     airport_unreachable_icon.LoadResource(IDB_AIRPORT_UNREACHABLE2,
-                                      IDB_AIRPORT_UNREACHABLE2_HD);
+                                          IDB_AIRPORT_UNREACHABLE2_HD);
     field_reachable_icon.LoadResource(IDB_OUTFIELD_REACHABLE,
-                                  IDB_OUTFIELD_REACHABLE_HD);
+                                      IDB_OUTFIELD_REACHABLE_HD);
     field_marginal_icon.LoadResource(IDB_OUTFIELD_MARGINAL2,
-                                 IDB_OUTFIELD_MARGINAL2_HD);
+                                     IDB_OUTFIELD_MARGINAL2_HD);
     field_unreachable_icon.LoadResource(IDB_OUTFIELD_UNREACHABLE2,
-                                    IDB_OUTFIELD_UNREACHABLE2_HD);
+                                        IDB_OUTFIELD_UNREACHABLE2_HD);
     break;
   }
-
-  font = &_font;
-  bold_font = &_bold_font;
 }

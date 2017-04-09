@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,8 +32,8 @@ GPSState::Reset()
   fix_quality_available.Clear();
   real = false;
   simulator = false;
-#ifdef ANDROID
-  android_internal_gps = false;
+#if defined(ANDROID) || defined(__APPLE__)
+  nonexpiring_internal_gps = false;
 #endif
   satellites_used_available.Clear();
   satellite_ids_available.Clear();
@@ -41,25 +41,25 @@ GPSState::Reset()
 }
 
 void
-GPSState::Expire(fixed now)
+GPSState::Expire(double now)
 {
-  if (fix_quality_available.Expire(now, fixed(5)))
+  if (fix_quality_available.Expire(now, 5))
     fix_quality = FixQuality::NO_FIX;
 
-  satellites_used_available.Expire(now, fixed(5));
-  satellite_ids_available.Expire(now, fixed(60));
+  satellites_used_available.Expire(now, 5);
+  satellite_ids_available.Expire(now, 60);
 }
 
 void
 NMEAInfo::UpdateClock()
 {
-  clock = fixed(MonotonicClockMS()) / 1000;
+  clock = MonotonicClockFloat();
 }
 
 BrokenDateTime
-NMEAInfo::GetDateTimeAt(fixed other_time) const
+NMEAInfo::GetDateTimeAt(double other_time) const
 {
-  if (negative(other_time))
+  if (other_time < 0)
     return BrokenDateTime::Invalid();
 
   if (!time_available || !date_time_utc.IsDatePlausible())
@@ -70,9 +70,9 @@ NMEAInfo::GetDateTimeAt(fixed other_time) const
 }
 
 void
-NMEAInfo::ProvideTime(fixed _time)
+NMEAInfo::ProvideTime(double _time)
 {
-  assert(!negative(_time));
+  assert(_time >= 0);
 
   time = _time;
   time_available.Update(clock);
@@ -96,7 +96,7 @@ NMEAInfo::ProvideDate(const BrokenDate &date)
 }
 
 void
-NMEAInfo::ProvideTrueAirspeedWithAltitude(fixed tas, fixed altitude)
+NMEAInfo::ProvideTrueAirspeedWithAltitude(double tas, double altitude)
 {
   true_airspeed = tas;
   indicated_airspeed = true_airspeed / AirDensityRatio(altitude);
@@ -105,7 +105,7 @@ NMEAInfo::ProvideTrueAirspeedWithAltitude(fixed tas, fixed altitude)
 }
 
 void
-NMEAInfo::ProvideIndicatedAirspeedWithAltitude(fixed ias, fixed altitude)
+NMEAInfo::ProvideIndicatedAirspeedWithAltitude(double ias, double altitude)
 {
   indicated_airspeed = ias;
   true_airspeed = indicated_airspeed * AirDensityRatio(altitude);
@@ -114,7 +114,7 @@ NMEAInfo::ProvideIndicatedAirspeedWithAltitude(fixed ias, fixed altitude)
 }
 
 void
-NMEAInfo::ProvideTrueAirspeed(fixed tas)
+NMEAInfo::ProvideTrueAirspeed(double tas)
 {
   auto any_altitude = GetAnyAltitude();
 
@@ -126,7 +126,7 @@ NMEAInfo::ProvideTrueAirspeed(fixed tas)
 }
 
 void
-NMEAInfo::ProvideIndicatedAirspeed(fixed ias)
+NMEAInfo::ProvideIndicatedAirspeed(double ias)
 {
   auto any_altitude = GetAnyAltitude();
 
@@ -153,9 +153,13 @@ NMEAInfo::Reset()
   track = Angle::Zero();
   track_available.Clear();
 
+  heading_available.Clear();
+
+  variation_available.Clear();
+
   ground_speed_available.Clear();
   airspeed_available.Clear();
-  ground_speed = true_airspeed = indicated_airspeed = fixed(0);
+  ground_speed = true_airspeed = indicated_airspeed = 0;
   airspeed_real = false;
 
   gps_altitude_available.Clear();
@@ -166,13 +170,13 @@ NMEAInfo::Reset()
   sensor_calibration_available.Clear();
 
   baro_altitude_available.Clear();
-  baro_altitude = fixed(0);
+  baro_altitude = 0;
 
   pressure_altitude_available.Clear();
-  pressure_altitude = fixed(0);
+  pressure_altitude = 0;
 
   time_available.Clear();
-  time = fixed(0);
+  time = 0;
 
   date_time_utc = BrokenDateTime::Invalid();
 
@@ -211,47 +215,47 @@ NMEAInfo::ExpireWallClock()
 
   UpdateClock();
 
-#ifdef ANDROID
-  if (gps.android_internal_gps)
-    /* the Android internal GPS does not expire */
+#if defined(ANDROID) || defined(__APPLE__)
+  if (gps.nonexpiring_internal_gps)
+    /* the internal GPS does not expire */
     return;
 #endif
 
-  alive.Expire(clock, fixed(10));
+  alive.Expire(clock, 10);
   if (!alive) {
     time_available.Clear();
     gps.Reset();
     flarm.Clear();
   } else {
-    time_available.Expire(clock, fixed(10));
+    time_available.Expire(clock, 10);
   }
 }
 
 void
 NMEAInfo::Expire()
 {
-  location_available.Expire(clock, fixed(10));
-  track_available.Expire(clock, fixed(10));
-  ground_speed_available.Expire(clock, fixed(10));
+  location_available.Expire(clock, 10);
+  track_available.Expire(clock, 10);
+  ground_speed_available.Expire(clock, 10);
 
-  if (airspeed_available.Expire(clock, fixed(30)))
+  if (airspeed_available.Expire(clock, 30))
     airspeed_real = false;
 
-  gps_altitude_available.Expire(clock, fixed(30));
-  static_pressure_available.Expire(clock, fixed(30));
-  dyn_pressure_available.Expire(clock, fixed(30));
-  pitot_pressure_available.Expire(clock, fixed(30));
-  sensor_calibration_available.Expire(clock, fixed(3600));
-  baro_altitude_available.Expire(clock, fixed(30));
-  pressure_altitude_available.Expire(clock, fixed(30));
-  noncomp_vario_available.Expire(clock, fixed(5));
-  total_energy_vario_available.Expire(clock, fixed(5));
-  netto_vario_available.Expire(clock, fixed(5));
+  gps_altitude_available.Expire(clock, 30);
+  static_pressure_available.Expire(clock, 30);
+  dyn_pressure_available.Expire(clock, 30);
+  pitot_pressure_available.Expire(clock, 30);
+  sensor_calibration_available.Expire(clock, 3600);
+  baro_altitude_available.Expire(clock, 30);
+  pressure_altitude_available.Expire(clock, 30);
+  noncomp_vario_available.Expire(clock, 5);
+  total_energy_vario_available.Expire(clock, 5);
+  netto_vario_available.Expire(clock, 5);
   settings.Expire(clock);
-  external_wind_available.Expire(clock, fixed(600));
-  engine_noise_level_available.Expire(clock, fixed(30));
-  voltage_available.Expire(clock, fixed(300));
-  battery_level_available.Expire(clock, fixed(300));
+  external_wind_available.Expire(clock, 600);
+  engine_noise_level_available.Expire(clock, 30);
+  voltage_available.Expire(clock, 300);
+  battery_level_available.Expire(clock, 300);
   flarm.Expire(clock);
   gps.Expire(clock);
   attitude.Expire(clock);
@@ -339,6 +343,16 @@ NMEAInfo::Complement(const NMEAInfo &add)
   if (!temperature_available && add.temperature_available) {
     temperature = add.temperature;
     temperature_available = add.temperature_available;
+  }
+
+  if (!heading_available && add.heading_available) {
+    heading = add.heading;
+    heading_available = add.heading_available;
+  }
+
+   if (!variation_available && add.variation_available) {
+    variation = add.variation;
+    variation_available = add.variation_available;
   }
 
   if (!humidity_available && add.humidity_available) {

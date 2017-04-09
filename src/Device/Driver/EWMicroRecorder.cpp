@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@ Copyright_License {
 #include "Units/System.hpp"
 #include "Time/TimeoutClock.hpp"
 #include "Operation/Operation.hpp"
-#include "Util/StaticString.hpp"
+#include "Util/StaticString.hxx"
 
 #include <assert.h>
 #include <stdio.h>
@@ -53,15 +53,16 @@ public:
     :port(_port) {}
 
 public:
-  virtual bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
-  virtual bool Declare(const Declaration &declaration, const Waypoint *home,
-                       OperationEnvironment &env) override;
+  /* virtual methods from class Device */
+  bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
+  bool Declare(const Declaration &declaration, const Waypoint *home,
+               OperationEnvironment &env) override;
 };
 
 static bool
-ReadAltitude(NMEAInputLine &line, fixed &value_r)
+ReadAltitude(NMEAInputLine &line, double &value_r)
 {
-  fixed value;
+  double value;
   bool available = line.ReadChecked(value);
   char unit = line.ReadFirstChar();
   if (!available)
@@ -85,7 +86,7 @@ EWMicroRecorderDevice::ParseNMEA(const char *String, NMEAInfo &info)
   line.Read(type, 16);
 
   if (StringIsEqual(type, "$PGRMZ")) {
-    fixed value;
+    double value;
 
     /* The normal Garmin $PGRMZ line contains the "true" barometric
        altitude above MSL (corrected with QNH), but EWMicroRecorder
@@ -113,20 +114,15 @@ TryConnect(Port &port, char *user_data, size_t max_user_data,
   TimeoutClock timeout(8000);
 
   while (true) {
-    int remaining = timeout.GetRemainingSigned();
-    if (remaining < 0)
-      return false;
-
-    if (port.WaitRead(env, remaining) != Port::WaitResult::READY)
-      return false;
-
-    int nbytes = port.Read(user_data + user_size, max_user_data - user_size);
-    if (nbytes < 0)
+    const size_t nbytes = port.WaitAndRead(user_data + user_size,
+                                           max_user_data - user_size,
+                                           env, timeout);
+    if (nbytes == 0)
       return false;
 
     if (user_size == 0) {
       const char *minus = (const char *)memchr(user_data, '-', nbytes);
-      if (minus == NULL)
+      if (minus == nullptr)
         continue;
 
       user_size = user_data + nbytes - minus;
@@ -135,7 +131,7 @@ TryConnect(Port &port, char *user_data, size_t max_user_data,
       user_size += nbytes;
 
     char *end = (char *)memchr(user_data, '\x13', user_size);
-    if (end != NULL) {
+    if (end != nullptr) {
       *end = 0;
       port.Write('\x16');
       return true;
@@ -289,7 +285,7 @@ DeclareInner(Port &port, const Declaration &declaration,
     return false;
 
   char *p = strstr(user_data, "USER DETAILS");
-  if (p != NULL)
+  if (p != nullptr)
     *p = 0;
 
   port.Write('\x18');         // start to upload file

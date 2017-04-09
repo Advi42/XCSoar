@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,11 +29,12 @@ Copyright_License {
 #include "Look/DialogLook.hpp"
 #include "Screen/Canvas.hpp"
 #include "Screen/Layout.hpp"
+#include "Renderer/TwoTextRowsRenderer.hpp"
 #include "Language/Language.hpp"
 #include "Form/ActionListener.hpp"
 #include "Widget/ListWidget.hpp"
 #include "WPASupplicant.hpp"
-#include "OS/SocketAddress.hpp"
+#include "Net/IPv4Address.hxx"
 
 class WifiListWidget final
   : public ListWidget, ActionListener, Timer {
@@ -53,10 +54,12 @@ class WifiListWidget final
     bool old_visible, old_configured;
   };
 
-  WndButton *connect_button;
+  Button *connect_button;
 
   WifiStatus status;
   TrivialArray<NetworkInfo, 64> networks;
+
+  TwoTextRowsRenderer row_renderer;
 
   WPASupplicant wpa_supplicant;
 
@@ -72,13 +75,10 @@ public:
   virtual void Prepare(ContainerWindow &parent,
                        const PixelRect &rc) override {
     const DialogLook &look = UIGlobals::GetDialogLook();
-    const unsigned row_height =
-      std::max(Layout::GetMaximumControlHeight(),
-               unsigned(Layout::GetTextPadding()) * 3
-               + look.text_font->GetHeight()
-               + look.small_font->GetHeight());
 
-    CreateList(parent, look, rc, row_height);
+    CreateList(parent, look, rc,
+               row_renderer.CalculateLayout(look.text_font,
+                                            look.small_font));
     UpdateList();
     Timer::Schedule(1000);
   }
@@ -89,16 +89,16 @@ public:
   }
 
   /* virtual methods from class ListItemRenderer */
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned idx) override;
+  void OnPaintItem(Canvas &canvas, const PixelRect rc,
+                   unsigned idx) override;
 
   /* virtual methods from class ListCursorHandler */
-  virtual void OnCursorMoved(unsigned index) {
+  void OnCursorMoved(unsigned index) override {
     UpdateButtons();
   }
 
   /* virtual methods from class Timer */
-  virtual void OnTimer() {
+  void OnTimer() override {
     UpdateList();
   }
 
@@ -144,10 +144,10 @@ WifiListWidget::UpdateButtons()
     const auto &info = networks[cursor];
 
     if (info.id >= 0) {
-      connect_button->SetText(_("Remove"));
+      connect_button->SetCaption(_("Remove"));
       connect_button->SetEnabled(true);
     } else if (info.signal_level >= 0) {
-      connect_button->SetText(_("Connect"));
+      connect_button->SetCaption(_("Connect"));
       connect_button->SetEnabled(true);
     }
   } else {
@@ -159,24 +159,16 @@ void
 WifiListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
                             unsigned idx)
 {
-  const DialogLook &look = UIGlobals::GetDialogLook();
   const auto &info = networks[idx];
-  const unsigned padding = Layout::GetTextPadding();
-
-  const unsigned x1 = rc.left + padding;
-  const unsigned y1 = rc.top + padding;
-  const unsigned y2 = y1 + look.text_font->GetHeight() + padding;
 
   static char wifi_security[][20] = {
     "WPA",
-    "WEP"
+    "WEP",
+    "Open",
   };
 
-  canvas.Select(*look.text_font);
-  canvas.DrawText(x1, y1, info.ssid);
-
-  canvas.Select(*look.small_font);
-  canvas.DrawText(x1, y2, info.bssid);
+  row_renderer.DrawFirstRow(canvas, rc, info.ssid);
+  row_renderer.DrawSecondRow(canvas, rc, info.bssid);
 
   const TCHAR *state = nullptr;
   StaticString<40> state_buffer;
@@ -186,10 +178,10 @@ WifiListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
     state = _("Connected");
 
     /* look up ip address for eth0 */
-    SocketAddress addr = SocketAddress::GetDeviceAddress("eth0");
+    const auto addr = IPv4Address::GetDeviceAddress("eth0");
     if (addr.IsDefined()) { /* valid address? */
       StaticString<40> addr_str;
-      if (addr.ToString(addr_str.buffer(), addr_str.MAX_SIZE) != nullptr) {
+      if (addr.ToString(addr_str.buffer(), addr_str.capacity()) != nullptr) {
         state_buffer.Format(_T("%s (%s)"), state, addr_str.c_str());
         state = state_buffer;
       }
@@ -202,16 +194,13 @@ WifiListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
   else if (info.signal_level >= 0)
     state = _("Visible");
 
-  if (state != nullptr) {
-    unsigned width = canvas.CalcTextWidth(state);
-    canvas.DrawText(rc.right - padding - width, y1, state);
-  }
+  if (state != nullptr)
+    row_renderer.DrawRightFirstRow(canvas, rc, state);
 
   if (info.signal_level >= 0) {
     StaticString<20> text;
     text.UnsafeFormat(_T("%s %u"), wifi_security[info.security], info.signal_level);
-    unsigned width = canvas.CalcTextWidth(text);
-    canvas.DrawText(rc.right - padding - width, y2, text);
+    row_renderer.DrawRightSecondRow(canvas, rc, text);
   }
 }
 
@@ -259,13 +248,13 @@ WifiConnect(enum WifiSecurity security, WPASupplicant &wpa_supplicant, const cha
     if (!success)
       return false;
 
-    if (security == WEP_SECURITY) {
-
-      success = wpa_supplicant.SetNetworkID(id, "auth_alg", "OPEN\tSHARED");
-      if (!success)
-        return false;
-
-    }
+    success = wpa_supplicant.SetNetworkID(id, "auth_alg", "OPEN\tSHARED");
+    if (!success)
+      return false;
+  } else if (security == OPEN_SECURITY){
+    success = wpa_supplicant.SetNetworkID(id, "key_mgmt", "NONE");
+        if (!success)
+          return false;
   } else
     return false;
 
@@ -294,7 +283,9 @@ WifiListWidget::Connect()
 
     StaticString<32> passphrase;
     passphrase.clear();
-    if (!TextEntryDialog(passphrase, caption, false))
+    if (info.security == OPEN_SECURITY)
+      passphrase.clear();
+    else if (!TextEntryDialog(passphrase, caption, false))
       return;
 
     if (!WifiConnect(info.security, wpa_supplicant, info.ssid, passphrase))

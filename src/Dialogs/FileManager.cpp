@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,33 +26,34 @@ Copyright_License {
 #include "Message.hpp"
 #include "UIGlobals.hpp"
 #include "Look/DialogLook.hpp"
+#include "Renderer/TextRowRenderer.hpp"
+#include "Renderer/TwoTextRowsRenderer.hpp"
 #include "Form/List.hpp"
 #include "Widget/ListWidget.hpp"
 #include "Screen/Canvas.hpp"
-#include "Screen/Layout.hpp"
 #include "Language/Language.hpp"
 #include "LocalPath.hpp"
 #include "OS/FileUtil.hpp"
-#include "OS/PathName.hpp"
+#include "OS/Path.hpp"
 #include "IO/FileLineReader.hpp"
 #include "Formatter/ByteSizeFormatter.hpp"
 #include "Formatter/TimeFormatter.hpp"
 #include "Time/BrokenDateTime.hpp"
-#include "Net/Features.hpp"
+#include "Net/HTTP/Features.hpp"
 #include "Util/ConvertString.hpp"
 #include "Util/Macros.hpp"
 #include "Repository/FileRepository.hpp"
 #include "Repository/Parser.hpp"
 
 #ifdef ANDROID
-#include "Android/NativeView.hpp"
 #include "Android/Main.hpp"
 #endif
 
 #ifdef HAVE_DOWNLOAD_MANAGER
+#include "Repository/Glue.hpp"
 #include "ListPicker.hpp"
 #include "Form/Button.hpp"
-#include "Net/DownloadManager.hpp"
+#include "Net/HTTP/DownloadManager.hpp"
 #include "Event/Notify.hpp"
 #include "Thread/Mutex.hpp"
 #include "Event/Timer.hpp"
@@ -63,19 +64,15 @@ Copyright_License {
 #endif
 
 #include <assert.h>
-#include <windef.h> /* for MAX_PATH */
 
-#define REPOSITORY_URI "http://download.xcsoar.org/repository"
-
-static bool
-LocalPath(TCHAR *buffer, const AvailableFile &file)
+static AllocatedPath
+LocalPath(const AvailableFile &file)
 {
-  ACPToWideConverter base(file.GetName());
+  const UTF8ToWideConverter base(file.GetName());
   if (!base.IsValid())
-    return false;
+    return nullptr;
 
-  ::LocalPath(buffer, base);
-  return true;
+  return LocalPath(base);
 }
 
 #ifdef HAVE_DOWNLOAD_MANAGER
@@ -92,9 +89,9 @@ gcc_pure
 static const AvailableFile *
 FindRemoteFile(const FileRepository &repository, const TCHAR *name)
 {
-  WideToACPConverter name2(name);
+  const WideToUTF8Converter name2(name);
   if (!name2.IsValid())
-    return NULL;
+    return nullptr;
 
   return FindRemoteFile(repository, name2);
 }
@@ -104,7 +101,7 @@ gcc_pure
 static bool
 CanDownload(const FileRepository &repository, const TCHAR *name)
 {
-  return FindRemoteFile(repository, name) != NULL;
+  return FindRemoteFile(repository, name) != nullptr;
 }
 
 #endif
@@ -138,11 +135,10 @@ class ManagedFileListWidget
              bool _failed) {
       name = _name;
 
-      TCHAR path[MAX_PATH];
-      LocalPath(path, name);
+      const auto path = LocalPath(name);
 
       if (File::Exists(path)) {
-        FormatByteSize(size.buffer(), size.MAX_SIZE,
+        FormatByteSize(size.buffer(), size.capacity(),
                        File::GetSize(path));
 #ifdef HAVE_POSIX
         FormatISO8601(last_modified.buffer(),
@@ -156,7 +152,7 @@ class ManagedFileListWidget
         last_modified.clear();
       }
 
-      downloading = _download_status != NULL;
+      downloading = _download_status != nullptr;
       if (downloading)
         download_status = *_download_status;
 
@@ -164,10 +160,10 @@ class ManagedFileListWidget
     }
   };
 
-  unsigned font_height;
+  TwoTextRowsRenderer row_renderer;
 
 #ifdef HAVE_DOWNLOAD_MANAGER
-  WndButton *download_button, *add_button, *cancel_button;
+  Button *download_button, *add_button, *cancel_button;
 #endif
 
   FileRepository repository;
@@ -288,9 +284,9 @@ public:
   virtual void OnTimer() override;
 
   /* virtual methods from class Net::DownloadListener */
-  virtual void OnDownloadAdded(const TCHAR *path_relative,
+  virtual void OnDownloadAdded(Path path_relative,
                                int64_t size, int64_t position) override;
-  virtual void OnDownloadComplete(const TCHAR *path_relative,
+  virtual void OnDownloadComplete(Path path_relative,
                                   bool success) override;
 
   /* virtual methods from class Notify */
@@ -302,12 +298,11 @@ void
 ManagedFileListWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
   const DialogLook &look = UIGlobals::GetDialogLook();
-  const unsigned margin = Layout::GetTextPadding();
-  font_height = look.list.font->GetHeight();
 
-  UPixelScalar row_height = std::max(3u * margin + 2u * font_height,
-                                     Layout::GetMaximumControlHeight());
-  CreateList(parent, look, rc, row_height);
+  CreateList(parent, look, rc,
+             row_renderer.CalculateLayout(*look.list.font_bold,
+                                          look.small_font));
+
   LoadRepositoryFile();
   RefreshList();
   UpdateButtons();
@@ -317,7 +312,7 @@ ManagedFileListWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
     Net::DownloadManager::AddListener(*this);
     Net::DownloadManager::Enumerate(*this);
 
-    Net::DownloadManager::Enqueue(REPOSITORY_URI, _T("repository"));
+    EnqueueRepositoryDownload();
   }
 #endif
 }
@@ -349,7 +344,7 @@ ManagedFileListWidget::FindItem(const TCHAR *name) const
 
 void
 ManagedFileListWidget::LoadRepositoryFile()
-{
+try {
 #ifdef HAVE_DOWNLOAD_MANAGER
   mutex.Lock();
   repository_modified = false;
@@ -359,13 +354,10 @@ ManagedFileListWidget::LoadRepositoryFile()
 
   repository.Clear();
 
-  TCHAR path[MAX_PATH];
-  LocalPath(path, _T("repository"));
+  const auto path = LocalPath(_T("repository"));
   FileLineReaderA reader(path);
-  if (reader.error())
-    return;
-
   ParseFileRepository(repository, reader);
+} catch (const std::runtime_error &e) {
 }
 
 void
@@ -379,12 +371,17 @@ ManagedFileListWidget::RefreshList()
     DownloadStatus download_status;
     const bool is_downloading = IsDownloading(remote_file, download_status);
 
-    TCHAR path[MAX_PATH];
-    if (LocalPath(path, remote_file) &&
+    const auto path = LocalPath(remote_file);
+    if (!path.IsNull() &&
         (is_downloading || File::Exists(path))) {
       download_active |= is_downloading;
-      items.append().Set(BaseName(path),
-                         is_downloading ? &download_status : NULL,
+
+      const Path base = path.GetBase();
+      if (base.IsNull())
+        continue;
+
+      items.append().Set(base.c_str(),
+                         is_downloading ? &download_status : nullptr,
                          HasFailed(remote_file));
     }
   }
@@ -431,9 +428,10 @@ ManagedFileListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
 {
   const FileItem &file = items[i];
 
-  const UPixelScalar margin = Layout::GetTextPadding();
+  canvas.Select(row_renderer.GetFirstFont());
+  row_renderer.DrawFirstRow(canvas, rc, file.name.c_str());
 
-  canvas.DrawText(rc.left + margin, rc.top + margin, file.name.c_str());
+  canvas.Select(row_renderer.GetSecondFont());
 
   if (file.downloading) {
     StaticString<64> text;
@@ -449,19 +447,15 @@ ManagedFileListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
       text.Format(_T("%s (%s)"), _("Downloading"), size);
     }
 
-    UPixelScalar width = canvas.CalcTextWidth(text);
-    canvas.DrawText(rc.right - width - margin, rc.top + margin, text);
+    row_renderer.DrawRightFirstRow(canvas, rc, text);
   } else if (file.failed) {
     const TCHAR *text = _("Error");
-    UPixelScalar width = canvas.CalcTextWidth(text);
-    canvas.DrawText(rc.right - width - margin, rc.top + margin, text);
+    row_renderer.DrawRightFirstRow(canvas, rc, text);
   }
 
-  canvas.DrawText(rc.left + margin, rc.top + 2 * margin + font_height,
-                  file.size.c_str());
+  row_renderer.DrawRightSecondRow(canvas, rc, file.last_modified.c_str());
 
-  canvas.DrawText((rc.left + rc.right) / 2, rc.top + 2 * margin + font_height,
-                  file.last_modified.c_str());
+  row_renderer.DrawSecondRow(canvas, rc, file.size.c_str());
 }
 
 void
@@ -484,34 +478,47 @@ ManagedFileListWidget::Download()
 
   const FileItem &item = items[current];
   const AvailableFile *remote_file_p = FindRemoteFile(repository, item.name);
-  if (remote_file_p == NULL)
+  if (remote_file_p == nullptr)
     return;
 
   const AvailableFile &remote_file = *remote_file_p;
-  ACPToWideConverter base(remote_file.GetName());
+  const UTF8ToWideConverter base(remote_file.GetName());
   if (!base.IsValid())
     return;
 
-  Net::DownloadManager::Enqueue(remote_file.uri.c_str(), base);
+  Net::DownloadManager::Enqueue(remote_file.uri.c_str(), Path(base));
 #endif
 }
 
 #ifdef HAVE_DOWNLOAD_MANAGER
 
-static const std::vector<AvailableFile> *add_list;
+class AddFileListItemRenderer final : public ListItemRenderer {
+  const std::vector<AvailableFile> &list;
 
-static void
-OnPaintAddItem(Canvas &canvas, const PixelRect rc, unsigned i)
+  TextRowRenderer row_renderer;
+
+public:
+  explicit AddFileListItemRenderer(const std::vector<AvailableFile> &_list)
+    :list(_list) {}
+
+  unsigned CalculateLayout(const DialogLook &look) {
+    return row_renderer.CalculateLayout(*look.list.font);
+  }
+
+  void OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned i) override;
+};
+
+void
+AddFileListItemRenderer::OnPaintItem(Canvas &canvas, const PixelRect rc,
+                                     unsigned i)
 {
-  assert(add_list != NULL);
-  assert(i < add_list->size());
+  assert(i < list.size());
 
-  const AvailableFile &file = (*add_list)[i];
+  const AvailableFile &file = list[i];
 
-  ACPToWideConverter name(file.GetName());
+  const UTF8ToWideConverter name(file.GetName());
   if (name.IsValid())
-    canvas.DrawText(rc.left + Layout::GetTextPadding(),
-                    rc.top + Layout::GetTextPadding(), name);
+    row_renderer.DrawTextRow(canvas, rc, name);
 }
 
 #endif
@@ -523,14 +530,12 @@ ManagedFileListWidget::Add()
   assert(Net::DownloadManager::IsAvailable());
 
   std::vector<AvailableFile> list;
-  for (auto i = repository.begin(), end = repository.end(); i != end; ++i) {
-    const AvailableFile &remote_file = *i;
-
+  for (const auto &remote_file : repository) {
     if (IsDownloading(remote_file.GetName()))
       /* already downloading this file */
       continue;
 
-    ACPToWideConverter name(remote_file.GetName());
+    const UTF8ToWideConverter name(remote_file.GetName());
     if (!name.IsValid())
       continue;
 
@@ -541,24 +546,22 @@ ManagedFileListWidget::Add()
   if (list.empty())
     return;
 
-  add_list = &list;
-
-  FunctionListItemRenderer item_renderer(OnPaintAddItem);
+  AddFileListItemRenderer item_renderer(list);
   int i = ListPicker(_("Select a file"),
-                     list.size(), 0, Layout::FastScale(18),
+                     list.size(), 0,
+                     item_renderer.CalculateLayout(UIGlobals::GetDialogLook()),
                      item_renderer);
-  add_list = NULL;
   if (i < 0)
     return;
 
   assert((unsigned)i < list.size());
 
   const AvailableFile &remote_file = list[i];
-  ACPToWideConverter base(remote_file.GetName());
+  const UTF8ToWideConverter base(remote_file.GetName());
   if (!base.IsValid())
     return;
 
-  Net::DownloadManager::Enqueue(remote_file.GetURI(), base);
+  Net::DownloadManager::Enqueue(remote_file.GetURI(), Path(base));
 #endif
 }
 
@@ -575,7 +578,7 @@ ManagedFileListWidget::Cancel()
   assert(current < items.size());
 
   const FileItem &item = items[current];
-  Net::DownloadManager::Cancel(item.name);
+  Net::DownloadManager::Cancel(Path(item.name));
 #endif
 }
 
@@ -615,14 +618,14 @@ ManagedFileListWidget::OnTimer()
 }
 
 void
-ManagedFileListWidget::OnDownloadAdded(const TCHAR *path_relative,
+ManagedFileListWidget::OnDownloadAdded(Path path_relative,
                                        int64_t size, int64_t position)
 {
-  const TCHAR *name = BaseName(path_relative);
-  if (name == NULL)
+  const auto name = path_relative.GetBase();
+  if (name == nullptr)
     return;
 
-  WideToACPConverter name2(name);
+  const WideToUTF8Converter name2(name.c_str());
   if (!name2.IsValid())
     return;
 
@@ -637,14 +640,14 @@ ManagedFileListWidget::OnDownloadAdded(const TCHAR *path_relative,
 }
 
 void
-ManagedFileListWidget::OnDownloadComplete(const TCHAR *path_relative,
+ManagedFileListWidget::OnDownloadComplete(Path path_relative,
                                           bool success)
 {
-  const TCHAR *name = BaseName(path_relative);
-  if (name == NULL)
+  const auto name = path_relative.GetBase();
+  if (name == nullptr)
     return;
 
-  WideToACPConverter name2(name);
+  const WideToUTF8Converter name2(name.c_str());
   if (!name2.IsValid())
     return;
 
@@ -696,6 +699,8 @@ ShowFileManager2()
   dialog.AddButton(_("Close"), mrOK);
   widget.CreateButtons(dialog);
 
+  dialog.EnableCursorSelection();
+
   dialog.ShowModal();
   dialog.StealWidget();
 }
@@ -715,7 +720,7 @@ ShowFileManager()
   const TCHAR *message =
     _("The file manager is not available on this device.");
 #ifdef ANDROID
-  if (native_view->GetAPILevel() < 9)
+  if (android_api_level < 9)
     message = _("The file manager requires Android 2.3.");
 #endif
 

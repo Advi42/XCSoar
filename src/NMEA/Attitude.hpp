@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,14 +29,15 @@ Copyright_License {
 
 struct AttitudeState
 {
-  bool bank_angle_available;
-  bool pitch_angle_available;
-
   /** Estimated bank angle */
   Angle bank_angle;
+  Validity bank_angle_available;
+  bool bank_angle_computed;
 
   /** Estimated pitch angle */
   Angle pitch_angle;
+  Validity pitch_angle_available;
+  bool pitch_angle_computed;
 
   /** Estimated heading */
   Angle heading;
@@ -44,10 +45,20 @@ struct AttitudeState
   bool heading_computed;
 
   void Reset() {
-    bank_angle_available = false;
-    pitch_angle_available = false;
+    bank_angle_available.Clear();
+    bank_angle_computed = false;
+    pitch_angle_available.Clear();
+    pitch_angle_computed = false;
     heading_available.Clear();
     heading_computed = false;
+  }
+
+  bool IsBankAngleUseable() const {
+    return bank_angle_available || bank_angle_computed;
+  }
+
+  bool IsPitchAngleUseable() const {
+    return pitch_angle_available || pitch_angle_computed;
   }
 
   bool IsHeadingUseable() const {
@@ -60,7 +71,7 @@ struct AttitudeState
    */
   void Complement(const AttitudeState &add);
 
-  void Expire(fixed now);
+  void Expire(double now);
 };
 
 #endif

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,6 +23,8 @@ Copyright_License {
 
 #include "WaypointUploader.hpp"
 #include "Engine/Waypoint/Waypoints.hpp"
+#include "Waypoint/WaypointReader.hpp"
+#include "Waypoint/Factory.hpp"
 #include "Operation/Operation.hpp"
 #include "Language/Language.hpp"
 #include "Device/Driver/CAI302/Internal.hpp"
@@ -33,7 +35,9 @@ CAI302WaypointUploader::Run(OperationEnvironment &env)
   Waypoints waypoints;
 
   env.SetText(_("Loading Waypoints..."));
-  if (!reader.Parse(waypoints, env)) {
+
+  if (!ReadWaypointFile(path, waypoints, WaypointFactory(WaypointOrigin::NONE),
+                        env)) {
     env.SetErrorMessage(_("Failed to load file."));
     return;
   }
@@ -60,14 +64,13 @@ CAI302WaypointUploader::Run(OperationEnvironment &env)
   }
 
   unsigned id = 1;
-  for (auto i = waypoints.begin(), end = waypoints.end();
-       i != end; ++i, ++id) {
+  for (const auto &i : waypoints) {
     if (env.IsCancelled())
       break;
 
     env.SetProgressPosition(id);
 
-    if (!device.WriteNavpoint(id, *i, env)) {
+    if (!device.WriteNavpoint(id++, *i, env)) {
       if (!env.IsCancelled())
         env.SetErrorMessage(_("Failed to write waypoint."));
       break;

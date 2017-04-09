@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,6 +23,7 @@ Copyright_License {
 
 #include "AirspaceConfigPanel.hpp"
 #include "ConfigPanel.hpp"
+#include "Form/ActionListener.hpp"
 #include "Form/DataField/Enum.hpp"
 #include "Form/DataField/Boolean.hpp"
 #include "Form/DataField/Listener.hpp"
@@ -35,16 +36,15 @@ Copyright_License {
 #include "Interface.hpp"
 #include "UIGlobals.hpp"
 #include "UtilsSettings.hpp"
-
-#ifdef USE_GDI
-#include "Screen/GDI/AlphaBlend.hpp"
-#endif
+#include "Screen/Features.hpp"
 
 enum ControlIndex {
   AirspaceDisplay,
+  AirspaceLabelSelection,
   ClipAltitude,
   AltWarningMargin,
   AirspaceWarnings,
+  WarningDialog,
   WarningTime,
   RepetitiveSound,
   AcknowledgeTime,
@@ -78,8 +78,22 @@ static constexpr StaticEnumChoice as_fill_mode_list[] = {
   { 0 }
 };
 
+static constexpr StaticEnumChoice as_label_selection_list[] = {
+  { (unsigned)AirspaceRendererSettings::LabelSelection::NONE, N_("None"),
+    N_("No labels will be displayed.") },
+  { (unsigned)AirspaceRendererSettings::LabelSelection::ALL, N_("All"),
+    N_("All labels will be displayed.") },
+  { 0 }
+};
+
 class AirspaceConfigPanel final
-  : public RowFormWidget, DataFieldListener {
+  : public RowFormWidget, DataFieldListener, ActionListener {
+
+  enum Button {
+    COLOURS,
+    FILTER,
+  };
+
 public:
   AirspaceConfigPanel()
     :RowFormWidget(UIGlobals::GetDialogLook()) {}
@@ -96,19 +110,20 @@ public:
 private:
   /* methods from DataFieldListener */
   virtual void OnModified(DataField &df) override;
+
+  /* methods from ActionListener */
+  void OnAction(int id) override {
+    switch (id) {
+    case COLOURS:
+      dlgAirspaceShowModal(true);
+      break;
+
+    case FILTER:
+      dlgAirspaceShowModal(false);
+      break;
+    }
+  }
 };
-
-static void
-OnAirspaceColoursClicked()
-{
-  dlgAirspaceShowModal(true);
-}
-
-static void
-OnAirspaceModeClicked()
-{
-  dlgAirspaceShowModal(false);
-}
 
 void
 AirspaceConfigPanel::ShowDisplayControls(AirspaceDisplayMode mode)
@@ -124,6 +139,7 @@ AirspaceConfigPanel::ShowDisplayControls(AirspaceDisplayMode mode)
 void
 AirspaceConfigPanel::ShowWarningControls(bool visible)
 {
+  SetRowVisible(WarningDialog, visible);
   SetRowVisible(WarningTime, visible);
   SetRowVisible(RepetitiveSound, visible);
   SetRowVisible(AcknowledgeTime, visible);
@@ -132,10 +148,8 @@ AirspaceConfigPanel::ShowWarningControls(bool visible)
 void
 AirspaceConfigPanel::Show(const PixelRect &rc)
 {
-  ConfigPanel::BorrowExtraButton(1, _("Colours"),
-                                 OnAirspaceColoursClicked);
-  ConfigPanel::BorrowExtraButton(2, _("Filter"),
-                                 OnAirspaceModeClicked);
+  ConfigPanel::BorrowExtraButton(1, _("Colours"), *this, COLOURS);
+  ConfigPanel::BorrowExtraButton(2, _("Filter"), *this, FILTER);
   RowFormWidget::Show(rc);
 }
 
@@ -167,6 +181,8 @@ AirspaceConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
     CommonInterface::GetComputerSettings().airspace;
   const AirspaceRendererSettings &renderer =
     CommonInterface::GetMapSettings().airspace;
+  const UISettings &ui_settings =
+    CommonInterface::GetUISettings();
 
   RowFormWidget::Prepare(parent, rc);
 
@@ -174,16 +190,28 @@ AirspaceConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
           _("Controls filtering of airspace for display and warnings.  The airspace filter button also allows filtering of display and warnings independently for each airspace class."),
           as_display_list, (unsigned)renderer.altitude_mode, this);
 
+  AddEnum(_("Label visibility"),
+          _("Determines what labels are displayed."),
+          as_label_selection_list, (unsigned)renderer.label_selection);
+  SetExpertRow(AirspaceLabelSelection);
+
   AddFloat(_("Clip altitude"),
            _("For clip airspace mode, this is the altitude below which airspace is displayed."),
-           _T("%.0f %s"), _T("%.0f"), fixed(0), fixed(20000), fixed(100), false, UnitGroup::ALTITUDE, fixed(renderer.clip_altitude));
+           _T("%.0f %s"), _T("%.0f"), 0, 20000, 100, false,
+           UnitGroup::ALTITUDE, renderer.clip_altitude);
 
   AddFloat(_("Margin"),
            _("For auto and all below airspace mode, this is the altitude above/below which airspace is included."),
-           _T("%.0f %s"), _T("%.0f"), fixed(0), fixed(10000), fixed(100), false, UnitGroup::ALTITUDE, fixed(computer.warnings.altitude_warning_margin));
+           _T("%.0f %s"), _T("%.0f"), 0, 10000, 100, false,
+           UnitGroup::ALTITUDE, computer.warnings.altitude_warning_margin);
 
   AddBoolean(_("Warnings"), _("Enable/disable all airspace warnings."),
              computer.enable_warnings, this);
+
+  AddBoolean(_("Warnings dialog"),
+             _("Enable/disable displaying airspaces warnings dialog."),
+             ui_settings.enable_airspace_warning_dialog, this);
+  SetExpertRow(WarningDialog);
 
   AddTime(_("Warning time"),
           _("This is the time before an airspace incursion is estimated at which the system will warn the pilot."),
@@ -211,11 +239,9 @@ AirspaceConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
   SetExpertRow(AirspaceFillMode);
 
 #if defined(HAVE_HATCHED_BRUSH) && defined(HAVE_ALPHA_BLEND)
-  if (AlphaBlendAvailable()) {
-    AddBoolean(_("Airspace transparency"), _("If enabled, then airspaces are filled transparently."),
-               renderer.transparency);
-    SetExpertRow(AirspaceTransparency);
-  }
+  AddBoolean(_("Airspace transparency"), _("If enabled, then airspaces are filled transparently."),
+             renderer.transparency);
+  SetExpertRow(AirspaceTransparency);
 #endif
 
   ShowDisplayControls(renderer.altitude_mode); // TODO make this work the first time
@@ -232,14 +258,20 @@ AirspaceConfigPanel::Save(bool &_changed)
     CommonInterface::SetComputerSettings().airspace;
   AirspaceRendererSettings &renderer =
     CommonInterface::SetMapSettings().airspace;
+  UISettings &ui_settings = CommonInterface::SetUISettings();
 
   changed |= SaveValueEnum(AirspaceDisplay, ProfileKeys::AltMode, renderer.altitude_mode);
+
+  changed |= SaveValueEnum(AirspaceLabelSelection, ProfileKeys::AirspaceLabelSelection, renderer.label_selection);
 
   changed |= SaveValue(ClipAltitude, UnitGroup::ALTITUDE, ProfileKeys::ClipAlt, renderer.clip_altitude);
 
   changed |= SaveValue(AltWarningMargin, UnitGroup::ALTITUDE, ProfileKeys::AltMargin, computer.warnings.altitude_warning_margin);
 
   changed |= SaveValue(AirspaceWarnings, ProfileKeys::AirspaceWarning, computer.enable_warnings);
+
+  changed |= SaveValue(WarningDialog, ProfileKeys::AirspaceWarningDialog,
+                       ui_settings.enable_airspace_warning_dialog);
 
   if (SaveValue(WarningTime, ProfileKeys::WarningTime, computer.warnings.warning_time)) {
     changed = true;
@@ -260,9 +292,8 @@ AirspaceConfigPanel::Save(bool &_changed)
   changed |= SaveValueEnum(AirspaceFillMode, ProfileKeys::AirspaceFillMode, renderer.fill_mode);
 
 #if defined(HAVE_HATCHED_BRUSH) && defined(HAVE_ALPHA_BLEND)
-  if (AlphaBlendAvailable())
-    changed |= SaveValue(AirspaceTransparency, ProfileKeys::AirspaceTransparency,
-                         renderer.transparency);
+  changed |= SaveValue(AirspaceTransparency, ProfileKeys::AirspaceTransparency,
+                       renderer.transparency);
 #endif
 
   _changed |= changed;

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,9 +24,7 @@ Copyright_License {
 #include "NOAADownloader.hpp"
 #include "METAR.hpp"
 #include "TAF.hpp"
-#include "Net/Session.hpp"
-#include "Net/ToBuffer.hpp"
-#include "OS/PathName.hpp"
+#include "Net/HTTP/ToBuffer.hpp"
 #include "Util/StringUtil.hpp"
 #include "Job/Runner.hpp"
 
@@ -142,7 +140,7 @@ NOAADownloader::ParseDecodedDateTime(const char *buffer, BrokenDateTime &dest)
 
 bool
 NOAADownloader::DownloadMETAR(const char *code, METAR &metar,
-                              JobRunner &runner)
+                              Net::Session &session, JobRunner &runner)
 {
 #ifndef NDEBUG
   assert(strlen(code) == 4);
@@ -152,19 +150,15 @@ NOAADownloader::DownloadMETAR(const char *code, METAR &metar,
 #endif
 
   // Build file url
-  char url[256] = "http://weather.noaa.gov/pub/data/observations/metar/decoded/";
-  strcat(url, code);
-  strcat(url, ".TXT");
-
-  // Open download session
-  Net::Session session;
-  if (session.Error())
-    return false;
+  char url[256];
+  snprintf(url, sizeof(url),
+           "http://tgftp.nws.noaa.gov/data/observations/metar/decoded/%s.TXT",
+           code);
 
   // Request the file
   char buffer[4096];
   Net::DownloadToBufferJob job(session, url, buffer, sizeof(buffer) - 1);
-  if (!runner.Run(job) || job.GetLength() < 0)
+  if (!runner.Run(job))
     return false;
 
   buffer[job.GetLength()] = 0;
@@ -206,6 +200,9 @@ NOAADownloader::DownloadMETAR(const char *code, METAR &metar,
   if (*p == 0 || !ParseDecodedDateTime(p, metar.last_update))
     return false;
 
+  if (BrokenDateTime::NowUTC() - metar.last_update > 24*60*60)
+    return false;
+
   // Search for line feed followed by "ob:"
   char *ob = strstr(p, "\nob:");
   if (ob == NULL)
@@ -229,15 +226,15 @@ NOAADownloader::DownloadMETAR(const char *code, METAR &metar,
   metar.decoded.SetASCII(buffer);
 
   // Trim the content strings
-  TrimRight(metar.content.buffer());
-  TrimRight(metar.decoded.buffer());
+  StripRight(metar.content.buffer());
+  StripRight(metar.decoded.buffer());
 
   return true;
 }
 
 bool
 NOAADownloader::DownloadTAF(const char *code, TAF &taf,
-                            JobRunner &runner)
+                            Net::Session &session, JobRunner &runner)
 {
 #ifndef NDEBUG
   assert(strlen(code) == 4);
@@ -247,19 +244,15 @@ NOAADownloader::DownloadTAF(const char *code, TAF &taf,
 #endif
 
   // Build file url
-  char url[256] = "http://weather.noaa.gov/pub/data/forecasts/taf/stations/";
-  strcat(url, code);
-  strcat(url, ".TXT");
-
-  // Open download session
-  Net::Session session;
-  if (session.Error())
-    return false;
+  char url[256];
+  snprintf(url, sizeof(url),
+           "http://tgftp.nws.noaa.gov/data/forecasts/taf/stations/%s.TXT",
+           code);
 
   // Request the file
   char buffer[4096];
   Net::DownloadToBufferJob job(session, url, buffer, sizeof(buffer) - 1);
-  if (!runner.Run(job) || job.GetLength() < 0)
+  if (!runner.Run(job))
     return false;
 
   buffer[job.GetLength()] = 0;
@@ -281,6 +274,9 @@ NOAADownloader::DownloadTAF(const char *code, TAF &taf,
   if (p == buffer)
     return false;
 
+  if (BrokenDateTime::NowUTC() - taf.last_update > 2*24*60*60)
+    return false;
+
   // Skip characters until line feed or string end
   while (*p != '\n' && *p != 0)
     p++;
@@ -298,7 +294,7 @@ NOAADownloader::DownloadTAF(const char *code, TAF &taf,
   taf.content.SetASCII(p);
 
   // Trim the content string
-  TrimRight(taf.content.buffer());
+  StripRight(taf.content.buffer());
 
   return true;
 }

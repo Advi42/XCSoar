@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ Copyright_License {
 #include "CRC16.hpp"
 #include "Device/Port/Port.hpp"
 #include "Time/TimeoutClock.hpp"
-#include "Operation/Operation.hpp"
 
 gcc_pure
 static const uint8_t *
@@ -40,7 +39,7 @@ bool
 FLARM::SendEscaped(Port &port, const void *buffer, size_t length,
                    OperationEnvironment &env, unsigned timeout_ms)
 {
-  assert(buffer != NULL);
+  assert(buffer != nullptr);
   assert(length > 0);
 
   const TimeoutClock timeout(timeout_ms);
@@ -84,17 +83,14 @@ FLARM::SendEscaped(Port &port, const void *buffer, size_t length,
 
 static uint8_t *
 ReceiveSomeUnescape(Port &port, uint8_t *buffer, size_t length,
-                    OperationEnvironment &env, const TimeoutClock &timeout)
+                    OperationEnvironment &env, const TimeoutClock timeout)
 {
   /* read "length" bytes from the port, optimistically assuming that
      there are no escaped bytes */
 
-  if (port.WaitRead(env, timeout.GetRemainingOrZero()) != Port::WaitResult::READY)
-    return NULL;
-
-  int nbytes = port.Read(buffer, length);
-  if (nbytes <= 0)
-    return NULL;
+  size_t nbytes = port.WaitAndRead(buffer, length, env, timeout);
+  if (nbytes == 0)
+    return nullptr;
 
   /* unescape in-place */
 
@@ -107,7 +103,7 @@ ReceiveSomeUnescape(Port &port, uint8_t *buffer, size_t length,
       if (src == end) {
         /* at the end of the buffer; need to read one more byte */
         if (port.WaitRead(env, timeout.GetRemainingOrZero()) != Port::WaitResult::READY)
-          return NULL;
+          return nullptr;
 
         ch = port.GetChar();
       } else
@@ -119,7 +115,7 @@ ReceiveSomeUnescape(Port &port, uint8_t *buffer, size_t length,
         *buffer++ = FLARM::ESCAPE;
       else
         /* unknown escape */
-        return NULL;
+        return nullptr;
     } else
       /* "harmless" byte */
       *buffer++ = *src++;
@@ -135,7 +131,7 @@ bool
 FLARM::ReceiveEscaped(Port &port, void *buffer, size_t length,
                       OperationEnvironment &env, unsigned timeout_ms)
 {
-  assert(buffer != NULL);
+  assert(buffer != nullptr);
   assert(length > 0);
 
   const TimeoutClock timeout(timeout_ms);
@@ -144,7 +140,7 @@ FLARM::ReceiveEscaped(Port &port, void *buffer, size_t length,
   uint8_t *p = (uint8_t *)buffer, *end = p + length;
   while (p < end) {
     p = ReceiveSomeUnescape(port, p, end - p, env, timeout);
-    if (p == NULL)
+    if (p == nullptr)
       return false;
   }
 
@@ -167,14 +163,15 @@ FLARM::FrameHeader
 FLARM::PrepareFrameHeader(unsigned sequence_number, MessageType message_type,
                           const void *data, size_t length)
 {
-  assert((data != NULL && length > 0) || (data == NULL && length == 0));
+  assert((data != nullptr && length > 0) ||
+         (data == nullptr && length == 0));
 
   FrameHeader header;
-  header.SetLength(8 + length);
+  header.length = 8 + length;
   header.version = 0;
-  header.SetSequenceNumber(sequence_number++);
+  header.sequence_number = sequence_number++;
   header.type = (uint8_t)message_type;
-  header.SetCRC(CalculateCRC(header, data, length));
+  header.crc = CalculateCRC(header, data, length);
   return header;
 }
 
@@ -219,7 +216,7 @@ FlarmDevice::WaitForACKOrNACK(uint16_t sequence_number,
       continue;
 
     // Read and check length of the FrameHeader
-    length = header.GetLength();
+    length = header.length;
     if (length <= sizeof(header))
       continue;
 
@@ -233,7 +230,7 @@ FlarmDevice::WaitForACKOrNACK(uint16_t sequence_number,
       continue;
 
     // Verify CRC
-    if (header.GetCRC() != FLARM::CalculateCRC(header, data.begin(), length))
+    if (header.crc != FLARM::CalculateCRC(header, data.begin(), length))
       continue;
 
     // Check message type
@@ -280,7 +277,7 @@ FlarmDevice::BinaryPing(OperationEnvironment &env, unsigned timeout_ms)
   // Send request and wait for positive answer
   return SendStartByte() &&
     SendFrameHeader(header, env, timeout.GetRemainingOrZero()) &&
-    WaitForACK(header.GetSequenceNumber(), env, timeout.GetRemainingOrZero());
+    WaitForACK(header.sequence_number, env, timeout.GetRemainingOrZero());
 }
 
 bool

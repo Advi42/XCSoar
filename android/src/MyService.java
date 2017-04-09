@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -69,7 +69,7 @@ public class MyService extends Service {
   private void onStart() {
     /* add an icon to the notification area while XCSoar runs, to
        remind the user that we're sucking his battery empty */
-    Notification notification = new Notification(R.drawable.icon, null,
+    Notification notification = new Notification(R.drawable.notification_icon, null,
                                                  System.currentTimeMillis());
     Intent intent2 = new Intent(this, mainActivityClass);
     PendingIntent contentIntent =

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,6 +22,7 @@ Copyright_License {
 */
 
 #include "Screen/PaintWindow.hpp"
+#include "PaintCanvas.hpp"
 
 bool
 PaintWindow::register_class(HINSTANCE hInstance)
@@ -40,4 +41,15 @@ PaintWindow::register_class(HINSTANCE hInstance)
   wc.lpszClassName = TEXT("PaintWindow");
 
   return RegisterClass(&wc) != 0;
+}
+
+LRESULT
+PaintWindow::OnMessage(HWND _hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  if (message == WM_PAINT) {
+    PaintCanvas canvas(*this);
+    OnPaint(canvas, canvas.get_dirty());
+    return 0;
+  } else
+    return Window::OnMessage(_hWnd, message, wParam, lParam);
 }

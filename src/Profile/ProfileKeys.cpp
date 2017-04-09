@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,10 +25,15 @@ Copyright_License {
 
 namespace ProfileKeys {
 
+const char UIScale[] = "UIScale";
+const char CustomDPI[] = "CustomDPI";
+const char Password[] = "Password";
 const char AirspaceWarning[] = "AirspaceWarn";
+const char AirspaceWarningDialog[] = "AirspaceWarnDialog";
 const char AirspaceBlackOutline[] = "AirspaceBlackOutline";
 const char AirspaceTransparency[] = "AirspaceTransparency";
 const char AirspaceFillMode[] = "AirspaceFillMode";
+const char AirspaceLabelSelection[] = "AirspaceLabelSelection";
 const char AltMargin[] = "AltMargin";
 const char AltMode[] = "AltitudeMode";
 const char AltitudeUnitsValue[] = "AltitudeUnit";
@@ -58,6 +63,8 @@ const char HomeWaypoint[] = "HomeWaypoint";
 const char HomeLocation[] = "HomeLocation";
 const char LiftUnitsValue[] = "LiftUnit";
 const char PressureUnitsValue[] = "Pressure";
+const char WingLoadingUnitValue[] = "WingLoadingUnit";
+const char MassUnitValue[] = "MassUnit";
 const char LatLonUnits[] = "LatLonUnits";
 const char PolarID[] = "Polar";
 const char Polar[] = "PolarInformation";
@@ -85,7 +92,6 @@ const char WaypointFile[] = "WPFile"; // pL
 const char AdditionalWaypointFile[] = "AdditionalWPFile"; // pL
 const char WatchedWaypointFile[] = "WatchedWPFile"; // pL
 const char LanguageFile[] = "LanguageFile"; // pL
-const char StatusFile[] = "StatusFile"; // pL
 const char InputFile[] = "InputFile"; // pL
 const char PilotName[] = "PilotName";
 const char AircraftType[] = "AircraftType";
@@ -101,7 +107,6 @@ const char SoundModes[] = "SoundModes";
 const char NettoSpeed[] = "NettoSpeed";
 const char AccelerometerZero[] = "AccelerometerZero";
 
-const char AutoBlank[] = "AutoBlank";
 const char AverEffTime[] = "AverEffTime";
 const char VarioGauge[] = "VarioGauge";
 
@@ -124,8 +129,7 @@ const char AppDialogStyle[] = "AppDialogStyle";
 const char AppInfoBoxColors[] = "AppInfoBoxColors";
 const char TeamcodeRefWaypoint[] = "TeamcodeRefWaypoint";
 const char AppInfoBoxBorder[] = "AppInfoBoxBorder";
-
-const char AppInfoBoxModel[] = "AppInfoBoxModel"; // VENTA-ADDON MODEL CONFIG
+const char ShowMenuButton[] = "ShowMenuButton";
 
 const char AppAveNeedle[] = "AppAveNeedle";
 
@@ -145,15 +149,6 @@ const char EnableTAGauge[] = "EnableTAGauge";
 const char EnableThermalProfile[] = "EnableThermalProfile";
 const char GliderScreenPosition[] = "GliderScreenPosition";
 const char SetSystemTimeFromGPS[] = "SetSystemTimeFromGPS";
-
-const char VoiceClimbRate[] = "VoiceClimbRate";
-const char VoiceTerrain[] = "VoiceTerrain";
-const char VoiceWaypointDistance[] = "VoiceWaypointDistance";
-const char VoiceTaskAltitudeDifference[] = "VoiceTaskAltitudeDifference";
-const char VoiceMacCready[] = "VoiceMacCready";
-const char VoiceNewWaypoint[] = "VoiceNewWaypoint";
-const char VoiceInSector[] = "VoiceInSector";
-const char VoiceAirspace[] = "VoiceAirspace";
 
 const char FinishMinHeight[] = "FinishMinHeight";
 const char FinishHeightRef[] = "FinishHeightRef";
@@ -202,7 +197,6 @@ const char EnableFlightLogger[] = "EnableFlightLogger";
 const char EnableNMEALogger[] = "EnableNMEALogger";
 const char MapFile[] = "MapFile"; // pL
 const char BallastSecsToEmpty[] = "BallastSecsToEmpty";
-const char UseCustomFonts[] = "UseCustomFonts";
 const char DialogFont[] = "DialogFont";
 const char FontInfoWindowFont[] = "InfoWindowFont";
 const char FontTitleWindowFont[] = "TitleWindowFont";
@@ -242,14 +236,27 @@ const char FlarmLocation[] = "FlarmLocation";
 
 const char TrackingInterval[] = "TrackingInterval";
 const char TrackingVehicleType[] = "TrackingVehicleType";
+const char TrackingVehicleName[] = "TrackingVehicleName";
 const char SkyLinesTrackingEnabled[] = "SkyLinesTrackingEnabled";
+const char SkyLinesRoaming[] = "SkyLinesRoaming";
 const char SkyLinesTrackingInterval[] = "SkyLinesTrackingInterval";
 const char SkyLinesTrafficEnabled[] = "SkyLinesTrafficEnabled";
+const char SkyLinesNearTrafficEnabled[] = "SkyLinesNearTrafficEnabled";
 const char SkyLinesTrackingKey[] = "SkyLinesTrackingKey";
+
+const char CloudEnabled[] = "CloudEnabled";
+const char CloudShowThermals[] = "CloudShowThermals";
+const char CloudKey[] = "CloudKey";
+
 const char LiveTrack24Enabled[] = "LiveTrack24Enabled";
 const char LiveTrack24Server[] = "LiveTrack24Server";
 const char LiveTrack24Username[] = "LiveTrack24Username";
 const char LiveTrack24Password[] = "LiveTrack24Password";
+
+const char PCMetUsername[] = "PCMetUsername";
+const char PCMetPassword[] = "PCMetPassword";
+const char PCMetFtpUsername[] = "PCMetFtpUsername";
+const char PCMetFtpPassword[] = "PCMetFtpPassword";
 
 const char EnableLocationMapItem[] = "EnableLocationMapItem";
 const char EnableArrivalAltitudeMapItem[] = "EnableArrivalAltitudeMapItem";
@@ -264,5 +271,9 @@ const char VarioDeadBandMin[] = "VarioDeadBandMin";
 const char VarioDeadBandMax[] = "VarioDeadBandMax";
 
 const char PagesDistinctZoom[] = "PagesDistinctZoom";
+
+const char WaveAssistant[] = "WaveAssistant";
+
+const char MasterAudioVolume[] = "MasterAudioVolume";
 
 }

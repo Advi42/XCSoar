@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,6 +22,7 @@ Copyright_License {
 */
 
 #include "Waypoint/WaypointReader.hpp"
+#include "Waypoint/Factory.hpp"
 #include "Waypoint/Waypoints.hpp"
 #include "Engine/Waypoint/WaypointVisitor.hpp"
 #include "OS/Args.hpp"
@@ -32,7 +33,8 @@ Copyright_License {
 
 class DumpVisitor : public WaypointVisitor {
 public:
-  void Visit(const Waypoint &wp) {
+  void Visit(const WaypointPtr &p) override {
+    const auto &wp = *p;
     _ftprintf(stdout, _T("%s, %f, %f, %.0fm\n"), wp.name.c_str(),
               (double)wp.location.latitude.Degrees(),
               (double)wp.location.longitude.Degrees(),
@@ -43,20 +45,16 @@ public:
 int main(int argc, char **argv)
 {
   Args args(argc, argv, "PATH\n");
-  const tstring path = args.ExpectNextT();
+  const auto path = args.ExpectNextPath();
   args.ExpectEnd();
 
   Waypoints way_points;
 
-  WaypointReader parser(path.c_str(), 0);
-  if (parser.Error()) {
-    fprintf(stderr, "WayPointParser::SetFile() has failed\n");
-    return EXIT_FAILURE;
-  }
-
   NullOperationEnvironment operation;
-  if (!parser.Parse(way_points, operation)) {
-    fprintf(stderr, "WayPointParser::Parse() has failed\n");
+  if (!ReadWaypointFile(path, way_points,
+                        WaypointFactory(WaypointOrigin::NONE),
+                        operation)) {
+    fprintf(stderr, "ReadWaypointFile() has failed\n");
     return EXIT_FAILURE;
   }
 

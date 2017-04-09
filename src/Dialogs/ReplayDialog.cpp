@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,7 +22,7 @@ Copyright_License {
 */
 
 #include "ReplayDialog.hpp"
-#include "Dialogs/Message.hpp"
+#include "Dialogs/Error.hpp"
 #include "Dialogs/WidgetDialog.hpp"
 #include "Widget/RowFormWidget.hpp"
 #include "Form/ActionListener.hpp"
@@ -30,7 +30,7 @@ Copyright_License {
 #include "UIGlobals.hpp"
 #include "Components.hpp"
 #include "Replay/Replay.hpp"
-#include "Form/DataField/FileReader.hpp"
+#include "Form/DataField/File.hpp"
 #include "Form/DataField/Float.hpp"
 #include "Language/Language.hpp"
 
@@ -79,20 +79,18 @@ void
 ReplayControlWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
   auto *file =
-    AddFileReader(_("File"),
-                  _("Name of file to replay.  Can be an IGC file (.igc), a raw NMEA log file (.nmea), or if blank, runs the demo."),
-                  nullptr,
-                  _T("*.nmea\0*.igc\0"),
-                  true);
-  ((DataFieldFileReader *)file->GetDataField())->Lookup(replay->GetFilename());
+    AddFile(_("File"),
+            _("Name of file to replay.  Can be an IGC file (.igc), a raw NMEA log file (.nmea), or if blank, runs the demo."),
+            nullptr,
+            _T("*.nmea\0*.igc\0"),
+            true);
+  ((FileDataField *)file->GetDataField())->Lookup(Path(replay->GetFilename()));
   file->RefreshDisplay();
 
   AddFloat(_("Rate"),
            _("Time acceleration of replay. Set to 0 for pause, 1 for normal real-time replay."),
            _T("%.0f x"), _T("%.0f"),
-           fixed(0), fixed(10), fixed(1), false,
-           replay->GetTimeScale(),
-           this);
+           0, 10, 1, false, replay->GetTimeScale(), this);
 }
 
 inline void
@@ -104,12 +102,14 @@ ReplayControlWidget::OnStopClicked()
 inline void
 ReplayControlWidget::OnStartClicked()
 {
-  const DataFieldFileReader &df = (const DataFieldFileReader &)
-    GetDataField(FILE);
-  const TCHAR *path = df.GetPathFile();
-  if (!replay->Start(path))
-    ShowMessageBox(_("Could not open IGC file!"),
-                   _("Replay"), MB_OK | MB_ICONINFORMATION);
+  const auto &df = (const FileDataField &)GetDataField(FILE);
+  const Path path = df.GetPathFile();
+
+  try {
+    replay->Start(path);
+  } catch (const std::runtime_error &e) {
+    ShowError(e, _("Replay"));
+  }
 }
 
 void
@@ -133,7 +133,7 @@ ReplayControlWidget::OnAction(int id)
 inline void
 ReplayControlWidget::OnFastForwardClicked()
 {
-  replay->FastForward(fixed(10 * 60));
+  replay->FastForward(10 * 60);
 }
 
 void

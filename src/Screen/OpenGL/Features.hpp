@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -33,15 +33,11 @@ Copyright_License {
 #ifdef ANDROID
 
 /**
- * The EGL API is available.  May require a runtime check
- * (OpenGL::egl).
- */
-#define HAVE_DYNAMIC_EGL
-
-/**
  * The OES_draw_texture extension is available.
  */
+#ifndef HAVE_GLES2
 #define HAVE_OES_DRAW_TEXTURE
+#endif
 
 #endif
 
@@ -49,15 +45,15 @@ Copyright_License {
 #define HAVE_OES_MAPBUFFER
 #endif
 
-#ifdef HAVE_MALI
+#if defined(HAVE_MALI) || defined(WIN32) || (defined(HAVE_GLES) && (defined(MESA_KMS) || defined(USE_X11)))
 #define HAVE_DYNAMIC_MAPBUFFER
 #endif
 
-#if defined(USE_VIDEOCORE) || defined(HAVE_MALI)
+#if defined(USE_VIDEOCORE) || defined(HAVE_MALI) || defined(MESA_KMS)
 #define DRAW_MOUSE_CURSOR
 #endif
 
-#ifdef USE_EGL
+#if defined(ENABLE_OPENGL) && !defined(ANDROID) && !defined(TARGET_OS_IPHONE)
 /**
  * Support display rotation via glRotatef()?
  */

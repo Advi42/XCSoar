@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -31,6 +31,14 @@ QuestionWidget::QuestionWidget(const TCHAR *_message,
   :SolidWidget(new ButtonPanelWidget(new TextWidget(),
                                      ButtonPanelWidget::Alignment::BOTTOM)),
    message(_message), listener(_listener) {}
+
+void
+QuestionWidget::SetMessage(const TCHAR *_message)
+{
+  auto &bpw = (ButtonPanelWidget &)GetWidget();
+  auto &tw = (TextWidget &)bpw.GetWidget();
+  tw.SetText(_message);
+}
 
 void
 QuestionWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)

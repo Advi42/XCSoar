@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,12 +22,9 @@ Copyright_License {
 */
 
 #include "Task/TaskFileXCSoar.hpp"
-#include "Deserialiser.hpp"
-#include "XML/DataNodeXML.hpp"
-#include "Engine/Task/Ordered/OrderedTask.hpp"
-#include "Util/StringUtil.hpp"
+#include "LoadFile.hpp"
+#include "OS/Path.hpp"
 
-#include <memory>
 #include <assert.h>
 
 OrderedTask* 
@@ -36,22 +33,5 @@ TaskFileXCSoar::GetTask(const TaskBehaviour &task_behaviour,
 {
   assert(index == 0);
 
-  // Load root node
-  std::unique_ptr<DataNode> root(DataNodeXML::Load(path));
-  if (!root)
-    return NULL;
-
-  // Check if root node is a <Task> node
-  if (!StringIsEqual(root->GetName(), _T("Task")))
-    return NULL;
-
-  // Create a blank task
-  OrderedTask *task = new OrderedTask(task_behaviour);
-
-  // Read the task from the XML file
-  Deserialiser des(*root, waypoints);
-  des.Deserialise(*task);
-
-  // Return the parsed task
-  return task;
+  return LoadTask(path, task_behaviour, waypoints);
 }

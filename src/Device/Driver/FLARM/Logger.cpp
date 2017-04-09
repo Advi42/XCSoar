@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -18,13 +18,14 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-  }
+}
 */
 
 #include "Device.hpp"
-#include "Device/Driver.hpp"
-#include "IO/BinaryWriter.hpp"
-#include "OS/FileUtil.hpp"
+#include "Device/RecordedFlight.hpp"
+#include "IO/FileOutputStream.hxx"
+#include "IO/BufferedOutputStream.hxx"
+#include "OS/Path.hpp"
 #include "Operation/Operation.hpp"
 
 #include <cstdlib>
@@ -133,7 +134,7 @@ ParseRecordInfo(char *record_info, RecordedFlightInfo &flight)
 
   // Search for first separator
   char *p = strchr(record_info, '|');
-  if (p == NULL)
+  if (p == nullptr)
     return false;
 
   // Replace separator by \0
@@ -151,7 +152,7 @@ ParseRecordInfo(char *record_info, RecordedFlightInfo &flight)
 
     // Search for second separator
     p = strchr(record_info, '|');
-    if (p == NULL)
+    if (p == nullptr)
       return false;
 
     // Replace separator by \0
@@ -176,7 +177,7 @@ ParseRecordInfo(char *record_info, RecordedFlightInfo &flight)
 
   // Search for next separator
   p = strchr(record_info, '|');
-  if (p == NULL)
+  if (p == nullptr)
     return false;
 
   // Replace separator by \0
@@ -200,7 +201,7 @@ ParseRecordInfo(char *record_info, RecordedFlightInfo &flight)
 
   // Search for next separator
   p = strchr(record_info, '|');
-  if (p == NULL)
+  if (p == nullptr)
     return false;
 
   // Replace separator by \0
@@ -242,7 +243,7 @@ FlarmDevice::ReadFlightInfo(RecordedFlightInfo &flight,
   AllocatedArray<uint8_t> data;
   uint16_t length;
   uint8_t ack_result =
-    WaitForACKOrNACK(header.GetSequenceNumber(), data, length, env, 1000);
+    WaitForACKOrNACK(header.sequence_number, data, length, env, 1000);
 
   // If neither ACK nor NACK was received
   if (ack_result != FLARM::MT_ACK || length <= 2)
@@ -267,7 +268,7 @@ FlarmDevice::SelectFlight(uint8_t record_number, OperationEnvironment &env)
     return FLARM::MT_ERROR;
 
   // Wait for an answer
-  return WaitForACKOrNACK(header.GetSequenceNumber(), env, 1000);
+  return WaitForACKOrNACK(header.sequence_number, env, 1000);
 }
 
 bool
@@ -301,10 +302,12 @@ FlarmDevice::ReadFlightList(RecordedFlightList &flight_list,
 }
 
 bool
-FlarmDevice::DownloadFlight(const TCHAR *path, OperationEnvironment &env)
+FlarmDevice::DownloadFlight(Path path, OperationEnvironment &env)
 {
-  BinaryWriter writer(path);
-  if (writer.HasError() || env.IsCancelled())
+  FileOutputStream fos(path);
+  BufferedOutputStream os(fos);
+
+  if (env.IsCancelled())
     return false;
 
   env.SetProgressRange(100);
@@ -321,7 +324,7 @@ FlarmDevice::DownloadFlight(const TCHAR *path, OperationEnvironment &env)
     // Wait for an answer and save the payload for further processing
     AllocatedArray<uint8_t> data;
     uint16_t length;
-    bool ack = WaitForACKOrNACK(header.GetSequenceNumber(), data,
+    bool ack = WaitForACKOrNACK(header.sequence_number, data,
                                 length, env, 10000) == FLARM::MT_ACK;
 
     // If no ACK was received
@@ -341,11 +344,14 @@ FlarmDevice::DownloadFlight(const TCHAR *path, OperationEnvironment &env)
 
     // Read IGC data
     const char *igc_data = (const char *)data.begin() + 3;
-    writer.Write(igc_data, sizeof(igc_data[0]), length);
+    os.Write(igc_data, length);
 
     if (is_last_packet)
       break;
   }
+
+  os.Flush();
+  fos.Commit();
 
   return true;
 }
@@ -353,7 +359,7 @@ FlarmDevice::DownloadFlight(const TCHAR *path, OperationEnvironment &env)
 
 bool
 FlarmDevice::DownloadFlight(const RecordedFlightInfo &flight,
-                            const TCHAR *path, OperationEnvironment &env)
+                            Path path, OperationEnvironment &env)
 {
   if (!BinaryMode(env))
     return false;
@@ -364,11 +370,15 @@ FlarmDevice::DownloadFlight(const RecordedFlightInfo &flight,
   if (ack_result != FLARM::MT_ACK || env.IsCancelled())
     return false;
 
-  if (DownloadFlight(path, env))
-    return true;
+  try {
+    if (DownloadFlight(path, env))
+      return true;
+  } catch (...) {
+    mode = Mode::UNKNOWN;
+    throw;
+  }
 
   mode = Mode::UNKNOWN;
-  File::Delete(path);
 
   return false;
 }

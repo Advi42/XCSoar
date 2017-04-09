@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,8 +26,9 @@
 #include "Geo/Flat/TaskProjection.hpp"
 #include "Task/AbstractTask.hpp"
 #include "SmartTaskAdvance.hpp"
+#include "Waypoint/Ptr.hpp"
 #include "Util/DereferenceIterator.hpp"
-#include "Util/StaticString.hpp"
+#include "Util/StaticString.hxx"
 
 #include <assert.h>
 #include <vector>
@@ -40,10 +41,9 @@ class FinishPoint;
 class AbstractTaskFactory;
 class TaskDijkstraMin;
 class TaskDijkstraMax;
-struct Waypoint;
 class Waypoints;
 class AATPoint;
-class FlatBoundingBox;
+struct FlatBoundingBox;
 class GeoBounds;
 struct TaskSummary;
 struct TaskFactoryConstraints;
@@ -99,7 +99,7 @@ public:
    *
    * @return Initialised object
    */
-  OrderedTask(const TaskBehaviour &tb);
+  explicit OrderedTask(const TaskBehaviour &tb);
   ~OrderedTask();
 
   /**
@@ -311,7 +311,7 @@ public:
    * @param waypoint
    * @return true if succeeded
    */
-  bool RelocateOptionalStart(const unsigned position, const Waypoint& waypoint);
+  bool RelocateOptionalStart(const unsigned position, WaypointPtr &&waypoint);
 
   /**
    * Relocate a task point to a new location
@@ -321,7 +321,7 @@ public:
    *
    * @return True on success
    */
-  bool Relocate(const unsigned position, const Waypoint& waypoint);
+  bool Relocate(const unsigned position, WaypointPtr &&waypoint);
 
  /**
   * returns pointer to AATPoint accessed via TPIndex if exist
@@ -375,13 +375,6 @@ public:
    * data during task construction.
    */
   void UpdateGeometry();
-
-  /**
-   * Convert a GeoBounds into a flat bounding box projected
-   * according to the task projection.
-   */
-  gcc_pure
-  FlatBoundingBox GetBoundingBox(const GeoBounds &bounds) const;
 
   /**
    * Update summary task statistics (progress along path)
@@ -440,14 +433,14 @@ private:
   bool RunDijsktraMin(const GeoPoint &location);
 
 
-  fixed ScanDistanceMin(const GeoPoint &ref, bool full);
+  double ScanDistanceMin(const GeoPoint &ref, bool full);
 
   /**
    * @return true if a solution was found (and applied)
    */
   bool RunDijsktraMax();
 
-  fixed ScanDistanceMax();
+  double ScanDistanceMax();
 
   /**
    * Optimise target ranges (for adjustable tasks) to produce an estimated
@@ -458,9 +451,9 @@ private:
    *
    * @return Target range parameter (0-1)
    */
-  fixed CalcMinTarget(const AircraftState &state_now,
-                      const GlidePolar &glide_polar,
-                      const fixed t_target);
+  double CalcMinTarget(const AircraftState &state_now,
+                       const GlidePolar &glide_polar,
+                       const double t_target);
 
   /**
    * Sets previous/next taskpoint pointers for task point at specified
@@ -637,7 +630,7 @@ public:
    * @return Radius (m) from center to edge of task
    */
   gcc_pure
-  fixed GetTaskRadius() const;
+  double GetTaskRadius() const;
 
   /**
    * returns the index of the highest intermediate TP that has been entered.
@@ -663,67 +656,68 @@ public:
 
 public:
   /* virtual methods from class TaskInterface */
-  virtual unsigned TaskSize() const override {
+  unsigned TaskSize() const override {
     return task_points.size();
   }
 
-  virtual void SetActiveTaskPoint(unsigned desired) override;
-  virtual TaskWaypoint *GetActiveTaskPoint() const override;
-  virtual bool IsValidTaskPoint(const int index_offset=0) const override;
-  virtual bool UpdateIdle(const AircraftState& state_now,
-                          const GlidePolar &glide_polar) override;
+  void SetActiveTaskPoint(unsigned desired) override;
+  TaskWaypoint *GetActiveTaskPoint() const override;
+  bool IsValidTaskPoint(const int index_offset=0) const override;
+  bool UpdateIdle(const AircraftState& state_now,
+                  const GlidePolar &glide_polar) override;
 
   /* virtual methods from class AbstractTask */
-  virtual void Reset() override;
-  virtual bool TaskStarted(bool soft=false) const override;
-  virtual bool CheckTask() const override;
+  void Reset() override;
+  bool TaskStarted(bool soft=false) const override;
+  bool CheckTask() const override;
 
 protected:
   /* virtual methods from class AbstractTask */
-  virtual bool UpdateSample(const AircraftState &state_now,
+  bool UpdateSample(const AircraftState &state_now,
+                    const GlidePolar &glide_polar,
+                    const bool full_update) override;
+  bool CheckTransitions(const AircraftState &state_now,
+                        const AircraftState &state_last) override;
+  bool CalcBestMC(const AircraftState &state_now,
+                  const GlidePolar &glide_polar,
+                  double &best) const override;
+  double CalcRequiredGlide(const AircraftState &state_now,
+                           const GlidePolar &glide_polar) const override;
+  bool CalcCruiseEfficiency(const AircraftState &state_now,
                             const GlidePolar &glide_polar,
-                            const bool full_update) override;
-  virtual bool CheckTransitions(const AircraftState &state_now,
-                                const AircraftState &state_last) override;
-  virtual bool CalcBestMC(const AircraftState &state_now,
-                          const GlidePolar &glide_polar,
-                          fixed& best) const override;
-  virtual fixed CalcRequiredGlide(const AircraftState &state_now,
-                                  const GlidePolar &glide_polar) const override;
-  virtual bool CalcCruiseEfficiency(const AircraftState &state_now,
-                                    const GlidePolar &glide_polar,
-                                    fixed &value) const override;
-  virtual bool CalcEffectiveMC(const AircraftState &state_now,
-                               const GlidePolar &glide_polar,
-                               fixed &value) const override;
-  virtual fixed CalcGradient(const AircraftState &state_now) const override;
-  virtual fixed ScanTotalStartTime() override;
-  virtual fixed ScanLegStartTime() override;
-  virtual fixed ScanDistanceNominal() override;
-  virtual fixed ScanDistancePlanned() override;
-  virtual fixed ScanDistanceRemaining(const GeoPoint &ref) override;
-  virtual fixed ScanDistanceScored(const GeoPoint &ref) override;
-  virtual fixed ScanDistanceTravelled(const GeoPoint &ref) override;
-  virtual void ScanDistanceMinMax(const GeoPoint &ref, bool full,
-                                  fixed *dmin, fixed *dmax) override;
-  virtual void GlideSolutionRemaining(const AircraftState &state_now,
-                                      const GlidePolar &polar,
-                                      GlideResult &total, GlideResult &leg) override;
-  virtual void GlideSolutionTravelled(const AircraftState &state_now,
-                                      const GlidePolar &glide_polar,
-                                      GlideResult &total, GlideResult &leg) override;
-  virtual void GlideSolutionPlanned(const AircraftState &state_now,
-                                    const GlidePolar &glide_polar,
-                                    GlideResult &total,
-                                    GlideResult &leg,
-                                    DistanceStat &total_remaining_effective,
-                                    DistanceStat &leg_remaining_effective,
-                                    const GlideResult &solution_remaining_total,
-                                    const GlideResult &solution_remaining_leg) override;
+                            double &value) const override;
+  bool CalcEffectiveMC(const AircraftState &state_now,
+                       const GlidePolar &glide_polar,
+                       double &value) const override;
+  double CalcGradient(const AircraftState &state_now) const override;
+  double ScanTotalStartTime() override;
+  double ScanLegStartTime() override;
+  double ScanDistanceNominal() override;
+  double ScanDistancePlanned() override;
+  double ScanDistanceRemaining(const GeoPoint &ref) override;
+  double ScanDistanceScored(const GeoPoint &ref) override;
+  double ScanDistanceTravelled(const GeoPoint &ref) override;
+  void ScanDistanceMinMax(const GeoPoint &ref, bool full,
+                          double *dmin, double *dmax) override;
+  void GlideSolutionRemaining(const AircraftState &state_now,
+                              const GlidePolar &polar,
+                              GlideResult &total, GlideResult &leg) override;
+  void GlideSolutionTravelled(const AircraftState &state_now,
+                              const GlidePolar &glide_polar,
+                              GlideResult &total, GlideResult &leg) override;
+  void GlideSolutionPlanned(const AircraftState &state_now,
+                            const GlidePolar &glide_polar,
+                            GlideResult &total,
+                            GlideResult &leg,
+                            DistanceStat &total_remaining_effective,
+                            DistanceStat &leg_remaining_effective,
+                            const GlideResult &solution_remaining_total,
+                            const GlideResult &solution_remaining_leg) override;
 protected:
-  virtual bool IsScored() const override;
+  bool IsScored() const override;
+
 public:
-  virtual void AcceptTaskPointVisitor(TaskPointConstVisitor &visitor) const override;
+  void AcceptTaskPointVisitor(TaskPointConstVisitor &visitor) const override;
 };
 
 #endif //ORDEREDTASK_H

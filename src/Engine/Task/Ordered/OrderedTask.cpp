@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,7 +22,6 @@
 
 #include "OrderedTask.hpp"
 #include "Task/TaskEvents.hpp"
-#include "TaskAdvance.hpp"
 #include "Points/OrderedTaskPoint.hpp"
 #include "Points/StartPoint.hpp"
 #include "Points/FinishPoint.hpp"
@@ -66,12 +65,12 @@ constexpr bool subtract_start_finish_cylinder_radius = true;
  * return -1.
  */
 gcc_pure
-static fixed
+static double
 GetCylinderRadiusOrMinusOne(const ObservationZone &oz)
 {
   return oz.GetShape() == ObservationZone::Shape::CYLINDER
     ? ((const CylinderZone &)oz).GetRadius()
-    : fixed(-1);
+    : -1;
 }
 
 /**
@@ -79,7 +78,7 @@ GetCylinderRadiusOrMinusOne(const ObservationZone &oz)
  * return -1.
  */
 gcc_pure
-static fixed
+static double
 GetCylinderRadiusOrMinusOne(const ObservationZoneClient &p)
 {
   return GetCylinderRadiusOrMinusOne(p.GetObservationZone());
@@ -134,10 +133,10 @@ OrderedTask::SetTaskBehaviour(const TaskBehaviour &tb)
 
 static void
 UpdateObservationZones(OrderedTask::OrderedTaskPointVector &points,
-                       const TaskProjection &task_projection)
+                       const FlatProjection &projection)
 {
   for (auto i : points)
-    i->UpdateOZ(task_projection);
+    i->UpdateOZ(projection);
 }
 
 void
@@ -156,22 +155,24 @@ OrderedTask::UpdateGeometry()
 {
   UpdateStatsGeometry();
 
-  if (!HasStart() || !task_points[0])
+  if (task_points.empty())
     return;
 
-  taskpoint_start->ScanActive(*task_points[active_task_point]);
+  auto &first = *task_points.front();
+
+  first.ScanActive(*task_points[active_task_point]);
 
   // scan location of task points
-  task_projection.Reset(task_points[0]->GetLocation());
+  GeoBounds bounds(first.GetLocation());
   for (const auto *tp : task_points)
-    tp->ScanProjection(task_projection);
+    tp->ScanBounds(bounds);
 
   // ... and optional start points
   for (const OrderedTaskPoint *tp : optional_start_points)
-    tp->ScanProjection(task_projection);
+    tp->ScanBounds(bounds);
 
   // projection can now be determined
-  task_projection.Update();
+  task_projection = TaskProjection(bounds);
 
   // update OZ's for items that depend on next-point geometry
   UpdateObservationZones(task_points, task_projection);
@@ -187,7 +188,7 @@ OrderedTask::UpdateGeometry()
 
   // update stats so data can be used during task construction
   /// @todo this should only be done if not flying! (currently done with has_entered)
-  if (!taskpoint_start->HasEntered()) {
+  if (!task_points.front()->HasEntered()) {
     UpdateStatsDistances(GeoPoint::Invalid(), true);
     if (HasFinish()) {
       /// @todo: call AbstractTask::update stats methods with fake state
@@ -200,22 +201,22 @@ OrderedTask::UpdateGeometry()
 
 // TIMES
 
-fixed
+double
 OrderedTask::ScanTotalStartTime()
 {
-  if (taskpoint_start)
-    return taskpoint_start->GetEnteredState().time;
+  if (task_points.empty())
+    return -1;
 
-  return fixed(-1);
+  return task_points.front()->GetEnteredState().time;
 }
 
-fixed
+double
 OrderedTask::ScanLegStartTime()
 {
-  if (active_task_point)
+  if (active_task_point > 0)
     return task_points[active_task_point-1]->GetEnteredState().time;
 
-  return fixed(-1);
+  return -1;
 }
 
 // DISTANCES
@@ -248,7 +249,7 @@ OrderedTask::RunDijsktraMin(const GeoPoint &location)
   return true;
 }
 
-inline fixed
+inline double
 OrderedTask::ScanDistanceMin(const GeoPoint &location, bool full)
 {
   if (!full && location.IsValid() && last_min_location.IsValid() &&
@@ -276,7 +277,7 @@ OrderedTask::ScanDistanceMin(const GeoPoint &location, bool full)
     last_min_location = location;
   }
 
-  return taskpoint_start->ScanDistanceMin();
+  return task_points.front()->ScanDistanceMin();
 }
 
 inline bool
@@ -301,24 +302,21 @@ OrderedTask::RunDijsktraMax()
     dijkstra_max->SetBoundary(i, boundary);
   }
 
-  fixed start_radius(-1), finish_radius(-1);
+  double start_radius(-1), finish_radius(-1);
   if (subtract_start_finish_cylinder_radius) {
     /* to subtract the start/finish cylinder radius, we use only the
        nominal points (i.e. the cylinder's center), and later replace
        it with a point on the cylinder boundary */
 
-    if (taskpoint_start != nullptr) {
-      start_radius = GetCylinderRadiusOrMinusOne(*taskpoint_start);
-      if (positive(start_radius))
-        dijkstra.SetBoundary(0, task_points[0]->GetNominalPoints());
-    }
+    const auto &start = *task_points.front();
+    start_radius = GetCylinderRadiusOrMinusOne(start);
+    if (start_radius > 0)
+      dijkstra.SetBoundary(0, start.GetNominalPoints());
 
-    if (taskpoint_finish != nullptr) {
-      finish_radius = GetCylinderRadiusOrMinusOne(*taskpoint_finish);
-      if (positive(finish_radius))
-        dijkstra.SetBoundary(task_size - 1,
-                             task_points[task_size - 1]->GetNominalPoints());
-    }
+    const auto &finish = *task_points.back();
+    finish_radius = GetCylinderRadiusOrMinusOne(finish);
+    if (finish_radius > 0)
+      dijkstra.SetBoundary(task_size - 1, finish.GetNominalPoints());
   }
 
   if (!dijkstra_max->DistanceMax())
@@ -327,19 +325,19 @@ OrderedTask::RunDijsktraMax()
   for (unsigned i = 0; i != task_size; ++i) {
     SearchPoint solution = dijkstra.GetSolution(i);
 
-    if (i == 0 && positive(start_radius)) {
+    if (i == 0 && start_radius > 0) {
       /* subtract start cylinder radius by finding the intersection
          with the cylinder boundary */
-      const GeoPoint &current = taskpoint_start->GetLocation();
+      const GeoPoint &current = task_points.front()->GetLocation();
       const GeoPoint &neighbour = dijkstra.GetSolution(i + 1).GetLocation();
       GeoPoint gp = current.IntermediatePoint(neighbour, start_radius);
       solution = SearchPoint(gp, task_projection);
     }
 
-    if (i == task_size - 1 && positive(finish_radius)) {
+    if (i == task_size - 1 && finish_radius > 0) {
       /* subtract finish cylinder radius by finding the intersection
          with the cylinder boundary */
-      const GeoPoint &current = taskpoint_finish->GetLocation();
+      const GeoPoint &current = task_points.back()->GetLocation();
       const GeoPoint &neighbour = dijkstra.GetSolution(i - 1).GetLocation();
       GeoPoint gp = current.IntermediatePoint(neighbour, finish_radius);
       solution = SearchPoint(gp, task_projection);
@@ -353,89 +351,80 @@ OrderedTask::RunDijsktraMax()
   return true;
 }
 
-inline fixed
+inline double
 OrderedTask::ScanDistanceMax()
 {
   if (task_points.empty()) // nothing to do!
-    return fixed(0);
+    return 0;
 
   assert(active_task_point < task_points.size());
 
   RunDijsktraMax();
 
-  return taskpoint_start->ScanDistanceMax();
+  return task_points.front()->ScanDistanceMax();
 }
 
 void
 OrderedTask::ScanDistanceMinMax(const GeoPoint &location, bool force,
-                                fixed *dmin, fixed *dmax)
+                                double *dmin, double *dmax)
 {
-  if (!taskpoint_start)
-    return;
-
   if (force)
     *dmax = ScanDistanceMax();
 
   *dmin = ScanDistanceMin(location, force);
 }
 
-fixed
+double
 OrderedTask::ScanDistanceNominal()
 {
-  if (taskpoint_start == nullptr)
-    return fixed(0);
+  if (task_points.empty())
+    return 0;
 
-  fixed d = taskpoint_start->ScanDistanceNominal();
+  const auto &start = *task_points.front();
+  auto d = start.ScanDistanceNominal();
 
-  if (subtract_start_finish_cylinder_radius) {
-    fixed radius = GetCylinderRadiusOrMinusOne(*taskpoint_start);
-    if (positive(radius) && radius < d)
-      d -= radius;
+  auto radius = GetCylinderRadiusOrMinusOne(start);
+  if (radius > 0 && radius < d)
+    d -= radius;
 
-    if (taskpoint_finish != nullptr) {
-      radius = GetCylinderRadiusOrMinusOne(*taskpoint_finish);
-      if (positive(radius) && radius < d)
-        d -= radius;
-    }
-  }
+  const auto &finish = *task_points.back();
+  radius = GetCylinderRadiusOrMinusOne(finish);
+  if (radius > 0 && radius < d)
+    d -= radius;
 
   return d;
 }
 
-fixed
+double
 OrderedTask::ScanDistanceScored(const GeoPoint &location)
 {
-  if (taskpoint_start)
-    return taskpoint_start->ScanDistanceScored(location);
-
-  return fixed(0);
+  return task_points.empty()
+    ? 0
+    : task_points.front()->ScanDistanceScored(location);
 }
 
-fixed
+double
 OrderedTask::ScanDistanceRemaining(const GeoPoint &location)
 {
-  if (taskpoint_start)
-    return taskpoint_start->ScanDistanceRemaining(location);
-
-  return fixed(0);
+  return task_points.empty()
+    ? 0
+    : task_points.front()->ScanDistanceRemaining(location);
 }
 
-fixed
+double
 OrderedTask::ScanDistanceTravelled(const GeoPoint &location)
 {
-  if (taskpoint_start)
-    return taskpoint_start->ScanDistanceTravelled(location);
-
-  return fixed(0);
+  return task_points.empty()
+    ? 0
+    : task_points.front()->ScanDistanceTravelled(location);
 }
 
-fixed
+double
 OrderedTask::ScanDistancePlanned()
 {
-  if (taskpoint_start)
-    return taskpoint_start->ScanDistancePlanned();
-
-  return fixed(0);
+  return task_points.empty()
+    ? 0
+    : task_points.front()->ScanDistancePlanned();
 }
 
 unsigned
@@ -538,7 +527,8 @@ OrderedTask::CheckTransitions(const AircraftState &state,
     const AircraftState start_state = taskpoint_start->GetEnteredState();
     stats.start.SetStarted(start_state);
 
-    taskpoint_finish->set_fai_finish_height(start_state.altitude - fixed(1000));
+    if (taskpoint_finish != nullptr)
+      taskpoint_finish->SetFaiFinishHeight(start_state.altitude - 1000);
   }
 
   if (task_events != nullptr) {
@@ -632,10 +622,10 @@ OrderedTask::UpdateIdle(const AircraftState &state,
   bool retval = AbstractTask::UpdateIdle(state, glide_polar);
 
   if (HasStart() && task_behaviour.optimise_targets_range &&
-      positive(GetOrderedTaskSettings().aat_min_time)) {
+      GetOrderedTaskSettings().aat_min_time > 0) {
 
     CalcMinTarget(state, glide_polar,
-                  GetOrderedTaskSettings().aat_min_time + fixed(task_behaviour.optimise_targets_margin));
+                  GetOrderedTaskSettings().aat_min_time + task_behaviour.optimise_targets_margin);
 
     if (task_behaviour.optimise_targets_bearing &&
         task_points[active_task_point]->GetType() == TaskPointType::AAT) {
@@ -644,7 +634,7 @@ OrderedTask::UpdateIdle(const AircraftState &state,
       TaskOptTarget tot(task_points, active_task_point, state,
                         task_behaviour.glide, glide_polar,
                         *ap, task_projection, taskpoint_start);
-      tot.search(fixed(0.5));
+      tot.search(0.5);
     }
     retval = true;
   }
@@ -654,8 +644,8 @@ OrderedTask::UpdateIdle(const AircraftState &state,
 
 bool
 OrderedTask::UpdateSample(const AircraftState &state,
-                          const GlidePolar &glide_polar,
-                          const bool full_update)
+                          gcc_unused const GlidePolar &glide_polar,
+                          gcc_unused const bool full_update)
 {
   assert(state.location.IsValid());
 
@@ -672,10 +662,6 @@ OrderedTask::SetNeighbours(unsigned position)
 {
   OrderedTaskPoint* prev = nullptr;
   OrderedTaskPoint* next = nullptr;
-
-  if (!task_points[position])
-    // nothing to do if this is deleted
-    return;
 
   if (position >= task_points.size())
     // nothing to do
@@ -707,16 +693,14 @@ OrderedTask::GetAATTaskPoint(unsigned TPindex) const
  if (TPindex > task_points.size() - 1) {
    return nullptr;
  }
- if (task_points[TPindex]) {
-    if (task_points[TPindex]->GetType() == TaskPointType::AAT)
-      return (AATPoint*) task_points[TPindex];
-    else
-      return (AATPoint*)nullptr;
- }
- return nullptr;
+
+ if (task_points[TPindex]->GetType() == TaskPointType::AAT)
+   return (AATPoint *)task_points[TPindex];
+ else
+   return (AATPoint *)nullptr;
 }
 
-bool
+inline bool
 OrderedTask::ScanStartFinish()
 {
   /// @todo also check there are not more than one start/finish point
@@ -726,13 +710,13 @@ OrderedTask::ScanStartFinish()
     return false;
   }
 
-  taskpoint_start = task_points[0]->GetType() == TaskPointType::START
-    ? (StartPoint *)task_points[0]
+  taskpoint_start = task_points.front()->GetType() == TaskPointType::START
+    ? (StartPoint *)task_points.front()
     : nullptr;
 
   taskpoint_finish = task_points.size() > 1 &&
-    task_points[task_points.size() - 1]->GetType() == TaskPointType::FINISH
-    ? (FinishPoint *)task_points[task_points.size() - 1]
+    task_points.back()->GetType() == TaskPointType::FINISH
+    ? (FinishPoint *)task_points.back()
     : nullptr;
 
   return HasStart() && HasFinish();
@@ -790,22 +774,23 @@ OrderedTask::RemoveOptionalStart(const unsigned position)
 bool
 OrderedTask::Append(const OrderedTaskPoint &new_tp)
 {
-  if (/* is the new_tp allowed in this context? */
-      (!task_points.empty() && !new_tp.IsPredecessorAllowed()) ||
-      /* can a tp be appended after the last one? */
-      (task_points.size() >= 1 &&
-       !task_points[task_points.size() - 1]->IsSuccessorAllowed()))
+  if (!task_points.empty() &&
+      (/* is the new_tp allowed in this context? */
+       !new_tp.IsPredecessorAllowed() ||
+       /* can a tp be appended after the last one? */
+       !task_points.back()->IsSuccessorAllowed()))
     return false;
 
+  const unsigned i = task_points.size();
   task_points.push_back(new_tp.Clone(task_behaviour, ordered_settings));
-  if (task_points.size() > 1)
-    SetNeighbours(task_points.size() - 2);
+  if (i > 0)
+    SetNeighbours(i - 1);
   else {
     // give it a value when we have one tp so it is not uninitialised
     last_min_location = new_tp.GetLocation();
   }
 
-  SetNeighbours(task_points.size() - 1);
+  SetNeighbours(i);
   return true;
 }
 
@@ -930,7 +915,7 @@ OrderedTask::GlideSolutionRemaining(const AircraftState &aircraft,
                                     GlideResult &total,
                                     GlideResult &leg)
 {
-  if (!aircraft.location.IsValid()) {
+  if (!aircraft.location.IsValid() || task_points.empty()) {
     total.Reset();
     leg.Reset();
     return;
@@ -949,7 +934,7 @@ OrderedTask::GlideSolutionTravelled(const AircraftState &aircraft,
                                     GlideResult &total,
                                     GlideResult &leg)
 {
-  if (!aircraft.location.IsValid()) {
+  if (!aircraft.location.IsValid() || task_points.empty()) {
     total.Reset();
     leg.Reset();
     return;
@@ -971,6 +956,14 @@ OrderedTask::GlideSolutionPlanned(const AircraftState &aircraft,
                                   const GlideResult &solution_remaining_total,
                                   const GlideResult &solution_remaining_leg)
 {
+  if (task_points.empty()) {
+    total.Reset();
+    leg.Reset();
+    total_remaining_effective.Reset();
+    leg_remaining_effective.Reset();
+    return;
+  }
+
   TaskMacCreadyTotal tm(task_points.cbegin(), task_points.cend(),
                         active_task_point,
                         task_behaviour.glide, glide_polar);
@@ -990,19 +983,19 @@ OrderedTask::GlideSolutionPlanned(const AircraftState &aircraft,
 
 // Auxiliary glide functions
 
-fixed
+double
 OrderedTask::CalcRequiredGlide(const AircraftState &aircraft,
                                const GlidePolar &glide_polar) const
 {
   TaskGlideRequired bgr(task_points, active_task_point, aircraft,
                         task_behaviour.glide, glide_polar);
-  return bgr.search(fixed(0));
+  return bgr.search(0);
 }
 
 bool
 OrderedTask::CalcBestMC(const AircraftState &aircraft,
                         const GlidePolar &glide_polar,
-                        fixed &best) const
+                        double &best) const
 {
   // note setting of lower limit on mc
   TaskBestMc bmc(task_points, active_task_point, aircraft,
@@ -1014,32 +1007,31 @@ OrderedTask::CalcBestMC(const AircraftState &aircraft,
 bool
 OrderedTask::AllowIncrementalBoundaryStats(const AircraftState &aircraft) const
 {
-  if (!active_task_point)
+  if (active_task_point == 0)
+    /* disabled for the start point */
     return false;
-  assert(task_points[active_task_point]);
 
   if (task_points[active_task_point]->IsBoundaryScored())
     return true;
 
-  bool in_sector = task_points[active_task_point]->IsInSector(aircraft);
-  if (active_task_point>0) {
-    in_sector |= task_points[active_task_point-1]->IsInSector(aircraft);
-  }
+  bool in_sector = task_points[active_task_point]->IsInSector(aircraft) ||
+    task_points[active_task_point-1]->IsInSector(aircraft);
+
   return !in_sector;
 }
 
 bool
 OrderedTask::CalcCruiseEfficiency(const AircraftState &aircraft,
                                   const GlidePolar &glide_polar,
-                                  fixed &val) const
+                                  double &val) const
 {
   if (AllowIncrementalBoundaryStats(aircraft)) {
     TaskCruiseEfficiency bce(task_points, active_task_point, aircraft,
                              task_behaviour.glide, glide_polar);
-    val = bce.search(fixed(1));
+    val = bce.search(1);
     return true;
   } else {
-    val = fixed(1);
+    val = 1;
     return false;
   }
 }
@@ -1047,7 +1039,7 @@ OrderedTask::CalcCruiseEfficiency(const AircraftState &aircraft,
 bool
 OrderedTask::CalcEffectiveMC(const AircraftState &aircraft,
                              const GlidePolar &glide_polar,
-                             fixed &val) const
+                             double &val) const
 {
   if (AllowIncrementalBoundaryStats(aircraft)) {
     TaskEffectiveMacCready bce(task_points, active_task_point, aircraft,
@@ -1061,43 +1053,42 @@ OrderedTask::CalcEffectiveMC(const AircraftState &aircraft,
 }
 
 
-inline fixed
+inline double
 OrderedTask::CalcMinTarget(const AircraftState &aircraft,
                            const GlidePolar &glide_polar,
-                           const fixed t_target)
+                           const double t_target)
 {
   if (stats.has_targets) {
     // only perform scan if modification is possible
-    const fixed t_rem = std::max(fixed(0),
-                                 t_target - stats.total.time_elapsed);
+    const auto t_rem = fdim(t_target, stats.total.time_elapsed);
 
     TaskMinTarget bmt(task_points, active_task_point, aircraft,
                       task_behaviour.glide, glide_polar,
                       t_rem, taskpoint_start);
-    fixed p = bmt.search(fixed(0));
+    auto p = bmt.search(0);
     return p;
   }
 
-  return fixed(0);
+  return 0;
 }
 
-fixed
+double
 OrderedTask::CalcGradient(const AircraftState &state) const
 {
   if (task_points.empty())
-    return fixed(0);
+    return 0;
 
   // Iterate through remaining turnpoints
-  fixed distance = fixed(0);
+  double distance = 0;
   for (const OrderedTaskPoint *tp : task_points)
     // Sum up the leg distances
     distance += tp->GetVectorRemaining(state.location).distance;
 
-  if (!positive(distance))
-    return fixed(0);
+  if (distance <= 0)
+    return 0;
 
   // Calculate gradient to the last turnpoint of the remaining task
-  return (state.altitude - task_points[task_points.size() - 1]->GetElevation()) / distance;
+  return (state.altitude - task_points.back()->GetElevation()) / distance;
 }
 
 static void
@@ -1240,19 +1231,17 @@ OrderedTask::HasTargets() const
 GeoPoint
 OrderedTask::GetTaskCenter() const
 {
-  if (!HasStart() || !task_points[0])
-    return GeoPoint::Invalid();
-
-  return task_projection.GetCenter();
+  return task_points.empty()
+    ? GeoPoint::Invalid()
+    : task_projection.GetCenter();
 }
 
-fixed
+double
 OrderedTask::GetTaskRadius() const
 {
-  if (!HasStart() || !task_points[0])
-    return fixed(0);
-
-  return task_projection.ApproxRadius();
+  return task_points.empty()
+    ? 0
+    : task_projection.ApproxRadius();
 }
 
 OrderedTask*
@@ -1285,11 +1274,10 @@ OrderedTask::CheckDuplicateWaypoints(Waypoints& waypoints,
 {
   for (auto begin = points.cbegin(), end = points.cend(), i = begin;
        i != end; ++i) {
-    const Waypoint &wp =
-      waypoints.CheckExistsOrAppend((*i)->GetWaypoint());
+    auto wp = waypoints.CheckExistsOrAppend((*i)->GetWaypointPtr());
 
     const OrderedTaskPoint *new_tp =
-      (*i)->Clone(task_behaviour, ordered_settings, &wp);
+      (*i)->Clone(task_behaviour, ordered_settings, std::move(wp));
     if (is_task)
       Replace(*new_tp, std::distance(begin, i));
     else
@@ -1365,28 +1353,29 @@ OrderedTask::Commit(const OrderedTask& that)
 }
 
 bool
-OrderedTask::RelocateOptionalStart(const unsigned position, const Waypoint& waypoint)
+OrderedTask::RelocateOptionalStart(const unsigned position,
+                                   WaypointPtr &&waypoint)
 {
   if (position >= optional_start_points.size())
     return false;
 
   OrderedTaskPoint *new_tp =
     optional_start_points[position]->Clone(task_behaviour, ordered_settings,
-                                           &waypoint);
+                                           std::move(waypoint));
   delete optional_start_points[position];
   optional_start_points[position]= new_tp;
   return true;
 }
 
 bool
-OrderedTask::Relocate(const unsigned position, const Waypoint& waypoint)
+OrderedTask::Relocate(const unsigned position, WaypointPtr &&waypoint)
 {
   if (position >= TaskSize())
     return false;
 
   OrderedTaskPoint *new_tp = task_points[position]->Clone(task_behaviour,
-                                                  ordered_settings,
-                                                  &waypoint);
+                                                          ordered_settings,
+                                                          std::move(waypoint));
   bool success = Replace(*new_tp, position);
   delete new_tp;
   return success;
@@ -1440,7 +1429,7 @@ OrderedTask::IsScored() const
 }
 
 std::vector<TaskFactoryType>
-OrderedTask::GetFactoryTypes(bool all) const
+OrderedTask::GetFactoryTypes(gcc_unused bool all) const
 {
   /// @todo: check transform types if all=false
   std::vector<TaskFactoryType> f_list;
@@ -1464,6 +1453,7 @@ OrderedTask::RemoveAllPoints()
 
   optional_start_points.clear();
 
+  active_task_point = 0;
   taskpoint_start = nullptr;
   taskpoint_finish = nullptr;
   force_full_update = true;
@@ -1479,28 +1469,6 @@ OrderedTask::Clear()
   Reset();
   ordered_settings = task_behaviour.ordered_defaults;
   active_factory->UpdateOrderedTaskSettings(ordered_settings);
-}
-
-FlatBoundingBox
-OrderedTask::GetBoundingBox(const GeoBounds &bounds) const
-{
-  if (!TaskSize()) {
-    // undefined!
-    return FlatBoundingBox(FlatGeoPoint(0,0),FlatGeoPoint(0,0));
-  }
-
-  FlatGeoPoint ll = task_projection.ProjectInteger(bounds.GetSouthWest());
-  FlatGeoPoint lr = task_projection.ProjectInteger(bounds.GetSouthEast());
-  FlatGeoPoint ul = task_projection.ProjectInteger(bounds.GetNorthWest());
-  FlatGeoPoint ur = task_projection.ProjectInteger(bounds.GetNorthEast());
-  FlatGeoPoint fmin(std::min(ll.longitude, ul.longitude),
-                    std::min(ll.latitude, lr.latitude));
-  FlatGeoPoint fmax(std::max(lr.longitude, ur.longitude),
-                    std::max(ul.latitude, ur.latitude));
-  // note +/- 1 to ensure rounding keeps bb valid
-  fmin.longitude -= 1; fmin.latitude -= 1;
-  fmax.longitude += 1; fmax.latitude += 1;
-  return FlatBoundingBox (fmin, fmax);
 }
 
 void
@@ -1520,9 +1488,9 @@ OrderedTask::SelectOptionalStart(unsigned pos)
   assert(pos< optional_start_points.size());
 
   // put task start onto end
-  optional_start_points.push_back(task_points[0]);
+  optional_start_points.push_back(task_points.front());
   // set task start from top optional item
-  task_points[0] = optional_start_points[pos];
+  task_points.front() = optional_start_points[pos];
   // remove top optional item from list
   optional_start_points.erase(optional_start_points.begin()+pos);
 

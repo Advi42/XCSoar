@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,10 +29,10 @@
 #include <assert.h>
 
 StartPoint::StartPoint(ObservationZonePoint *_oz,
-                       const Waypoint &wp,
+                       WaypointPtr &&wp,
                        const TaskBehaviour &tb,
                        const StartConstraints &_constraints)
-  :OrderedTaskPoint(TaskPointType::START, _oz, wp, false),
+  :OrderedTaskPoint(TaskPointType::START, _oz, std::move(wp), false),
    safety_height(tb.safety_height_arrival),
    margins(tb.start_margins),
    constraints(_constraints)
@@ -46,7 +46,7 @@ StartPoint::SetTaskBehaviour(const TaskBehaviour &tb)
   margins = tb.start_margins;
 }
 
-fixed
+double
 StartPoint::GetElevation() const
 {
   return GetBaseElevation() + safety_height;
@@ -68,22 +68,10 @@ StartPoint::SetNeighbours(OrderedTaskPoint *_prev, OrderedTaskPoint *_next)
 }
 
 
-bool
-StartPoint::UpdateSampleNear(const AircraftState& state,
-                             const TaskProjection &projection)
-{
-  /* TODO:
-  if (IsInSector(state) && !constraints.CheckSpeed(state, margins))
-    TO_BE_IMPLEMENTED;
-  */
-
-  return OrderedTaskPoint::UpdateSampleNear(state, projection);
-}
-
 void
 StartPoint::find_best_start(const AircraftState &state,
                             const OrderedTaskPoint &next,
-                            const TaskProjection &projection)
+                            const FlatProjection &projection)
 {
   /* check which boundary point results in the smallest distance to
      fly */
@@ -98,10 +86,10 @@ StartPoint::find_best_start(const AircraftState &state,
   const GeoPoint &next_location = next.GetLocationRemaining();
 
   GeoPoint best_location = *i;
-  fixed best_distance = ::DoubleDistance(state.location, *i, next_location);
+  auto best_distance = ::DoubleDistance(state.location, *i, next_location);
 
   for (++i; i != end; ++i) {
-    fixed distance = ::DoubleDistance(state.location, *i, next_location);
+    auto distance = ::DoubleDistance(state.location, *i, next_location);
     if (distance < best_distance) {
       best_location = *i;
       best_distance = distance;
@@ -115,7 +103,8 @@ bool
 StartPoint::IsInSector(const AircraftState &state) const
 {
   return OrderedTaskPoint::IsInSector(state) &&
-    constraints.CheckHeight(state, margins, GetBaseElevation());
+    // TODO: not using margins?
+    constraints.CheckHeight(state, GetBaseElevation());
 }
 
 bool
@@ -130,10 +119,16 @@ StartPoint::CheckExitTransition(const AircraftState &ref_now,
     /* the start gate was already closed when we left the OZ */
     return false;
 
+  if (!constraints.CheckSpeed(ref_now.ground_speed, &margins) ||
+      !constraints.CheckSpeed(ref_last.ground_speed, &margins))
+    /* flying too fast */
+    return false;
+
+  // TODO: not using margins?
   const bool now_in_height =
-    constraints.CheckHeight(ref_now, margins, GetBaseElevation());
+    constraints.CheckHeight(ref_now, GetBaseElevation());
   const bool last_in_height =
-    constraints.CheckHeight(ref_last, margins, GetBaseElevation());
+    constraints.CheckHeight(ref_last, GetBaseElevation());
 
   if (now_in_height && last_in_height) {
     // both within height limit, so use normal location checks

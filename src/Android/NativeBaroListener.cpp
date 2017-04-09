@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ Copyright_License {
 #include "BaroListener.hpp"
 #include "Atmosphere/Temperature.hpp"
 #include "Atmosphere/Pressure.hpp"
-#include "Java/Class.hpp"
+#include "Java/Class.hxx"
 #include "org_xcsoar_NativeBaroListener.h"
 
 #include <stddef.h>
@@ -45,7 +45,7 @@ Java_org_xcsoar_NativeBaroListener_onBaroValues(JNIEnv *env, jobject obj,
     return;
 
   BaroListener &listener = *(BaroListener *)(void *)ptr;
-  listener.onBaroValues(sensor, AtmosphericPressure::Pascal(fixed(pressure)));
+  listener.onBaroValues(sensor, AtmosphericPressure::Pascal(pressure));
 }
 
 JNIEXPORT void JNICALL
@@ -77,7 +77,7 @@ NativeBaroListener::Deinitialise(JNIEnv *env)
 jobject
 NativeBaroListener::Create(JNIEnv *env, BaroListener &listener)
 {
-  assert(cls != NULL);
+  assert(cls != nullptr);
 
   return env->NewObject(cls, ctor, (jlong)&listener);
 }

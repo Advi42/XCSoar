@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,8 +23,9 @@ Copyright_License {
 
 #include "Blackboard/DeviceBlackboard.hpp"
 #include "Protection.hpp"
-#include "Device/All.hpp"
+#include "Device/MultipleDevices.hpp"
 #include "Simulator.hpp"
+#include "RadioFrequency.hpp"
 
 #include <algorithm>
 
@@ -32,6 +33,7 @@ Copyright_License {
  * Initializes the DeviceBlackboard
  */
 DeviceBlackboard::DeviceBlackboard()
+  :devices(nullptr)
 {
   // Clear the gps_info and calculated_info
   gps_info.Reset();
@@ -40,7 +42,7 @@ DeviceBlackboard::DeviceBlackboard()
   // Set GPS assumed time to system time
   gps_info.UpdateClock();
   gps_info.date_time_utc = BrokenDateTime::NowUTC();
-  gps_info.time = fixed(gps_info.date_time_utc.GetSecondOfDay());
+  gps_info.time = gps_info.date_time_utc.GetSecondOfDay();
 
   std::fill_n(per_device_data, unsigned(NUMDEV), gps_info);
 
@@ -60,7 +62,7 @@ DeviceBlackboard::DeviceBlackboard()
  * @param alt New altitude
  */
 void
-DeviceBlackboard::SetStartupLocation(const GeoPoint &loc, const fixed alt)
+DeviceBlackboard::SetStartupLocation(const GeoPoint &loc, const double alt)
 {
   ScopeLock protect(mutex);
 
@@ -125,7 +127,7 @@ DeviceBlackboard::SetSimulatorLocation(const GeoPoint &location)
  * @param val New speed
  */
 void
-DeviceBlackboard::SetSpeed(fixed val)
+DeviceBlackboard::SetSpeed(double val)
 {
   ScopeLock protect(mutex);
   NMEAInfo &basic = simulator_data;
@@ -159,7 +161,7 @@ DeviceBlackboard::SetTrack(Angle val)
  * @param val New altitude
  */
 void
-DeviceBlackboard::SetAltitude(fixed val)
+DeviceBlackboard::SetAltitude(double val)
 {
   ScopeLock protect(mutex);
   NMEAInfo &basic = simulator_data;
@@ -257,26 +259,48 @@ DeviceBlackboard::Merge()
 }
 
 void
-DeviceBlackboard::SetBallast(fixed fraction, fixed overload,
+DeviceBlackboard::SetBallast(double fraction, double overload,
                              OperationEnvironment &env)
 {
-  AllDevicesPutBallast(fraction, overload, env);
+  if (devices != nullptr)
+    devices->PutBallast(fraction, overload, env);
 }
 
 void
-DeviceBlackboard::SetBugs(fixed bugs, OperationEnvironment &env)
+DeviceBlackboard::SetBugs(double bugs, OperationEnvironment &env)
 {
-  AllDevicesPutBugs(bugs, env);
+  if (devices != nullptr)
+    devices->PutBugs(bugs, env);
 }
 
 void
 DeviceBlackboard::SetQNH(AtmosphericPressure qnh, OperationEnvironment &env)
 {
-  AllDevicesPutQNH(qnh, env);
+  if (devices != nullptr)
+    devices->PutQNH(qnh, env);
 }
 
 void
-DeviceBlackboard::SetMC(fixed mc, OperationEnvironment &env)
+DeviceBlackboard::SetMC(double mc, OperationEnvironment &env)
 {
-  AllDevicesPutMacCready(mc, env);
+  if (devices != nullptr)
+    devices->PutMacCready(mc, env);
+}
+
+void
+DeviceBlackboard::SetActiveFrequency(RadioFrequency frequency,
+                                     const TCHAR *name,
+                                     OperationEnvironment &env)
+{
+  if (devices != nullptr)
+    devices->PutActiveFrequency(frequency, name, env);
+}
+
+void
+DeviceBlackboard::SetStandbyFrequency(RadioFrequency frequency,
+                                      const TCHAR *name,
+                                      OperationEnvironment &env)
+{
+  if (devices != nullptr)
+    devices->PutStandbyFrequency(frequency, name, env);
 }

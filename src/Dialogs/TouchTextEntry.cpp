@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,15 +26,16 @@ Copyright_License {
 #include "Form/Form.hpp"
 #include "Form/Button.hpp"
 #include "Form/Edit.hpp"
+#include "Form/LambdaActionListener.hpp"
 #include "Widget/KeyboardWidget.hpp"
 #include "Screen/Layout.hpp"
-#include "Screen/Key.h"
-#include "Util/StringUtil.hpp"
+#include "Event/KeyCode.hpp"
 #include "UIGlobals.hpp"
 #include "Language/Language.hpp"
+#include "Util/StringCompare.hxx"
+#include "Util/TruncateString.hpp"
 
 #include <algorithm>
-#include <assert.h>
 
 static WndProperty *editor;
 static KeyboardWidget *kb = NULL;
@@ -151,44 +152,44 @@ TouchTextEntry(TCHAR *text, size_t width,
   ContainerWindow &client_area = form.GetClientAreaWindow();
   const PixelRect rc = client_area.GetClientRect();
 
-  const PixelScalar client_height = rc.bottom - rc.top;
+  const int client_height = rc.GetHeight();
 
-  const PixelScalar padding = Layout::Scale(2);
-  const PixelScalar backspace_width = Layout::Scale(36);
-  const PixelScalar backspace_left = rc.right - padding - backspace_width;
-  const PixelScalar editor_height = Layout::Scale(22);
-  const PixelScalar editor_bottom = padding + editor_height;
-  const PixelScalar button_height = Layout::Scale(40);
+  const int padding = Layout::Scale(2);
+  const int backspace_width = Layout::Scale(36);
+  const int backspace_left = rc.right - padding - backspace_width;
+  const int editor_height = Layout::Scale(22);
+  const int editor_bottom = padding + editor_height;
+  const int button_height = Layout::Scale(40);
   constexpr unsigned keyboard_rows = 5;
-  const PixelScalar keyboard_top = editor_bottom + padding;
-  const PixelScalar keyboard_height = keyboard_rows * button_height;
-  const PixelScalar keyboard_bottom = keyboard_top + keyboard_height;
+  const int keyboard_top = editor_bottom + padding;
+  const int keyboard_height = keyboard_rows * button_height;
+  const int keyboard_bottom = keyboard_top + keyboard_height;
 
   const bool vertical = client_height >= keyboard_bottom + button_height;
 
-  const PixelScalar button_top = vertical
+  const int button_top = vertical
     ? rc.bottom - button_height
     : keyboard_bottom - button_height;
-  const PixelScalar button_bottom = vertical
+  const int button_bottom = vertical
     ? rc.bottom
     : keyboard_bottom;
 
-  const PixelScalar ok_left = vertical ? 0 : padding;
-  const PixelScalar ok_right = vertical
+  const int ok_left = vertical ? 0 : padding;
+  const int ok_right = vertical
     ? rc.right / 3
     : ok_left + Layout::Scale(80);
 
-  const PixelScalar cancel_left = vertical
+  const int cancel_left = vertical
     ? ok_right
     : Layout::Scale(175);
-  const PixelScalar cancel_right = vertical
+  const int cancel_right = vertical
     ? rc.right * 2 / 3
     : cancel_left + Layout::Scale(60);
 
-  const PixelScalar clear_left = vertical
+  const int clear_left = vertical
     ? cancel_right
     : Layout::Scale(235);
-  const PixelScalar clear_right = vertical
+  const int clear_right = vertical
     ? rc.right
     : clear_left + Layout::Scale(50);
 
@@ -198,22 +199,25 @@ TouchTextEntry(TCHAR *text, size_t width,
   _editor.SetReadOnly();
   editor = &_editor;
 
-  ButtonWindowStyle button_style;
+  WindowStyle button_style;
   button_style.TabStop();
 
-  WndButton ok_button(client_area, look.button, _("OK"),
-                      { ok_left, button_top, ok_right, button_bottom },
-                      button_style, form, mrOK);
+  Button ok_button(client_area, look.button, _("OK"),
+                   { ok_left, button_top, ok_right, button_bottom },
+                   button_style, form, mrOK);
 
-  WndButton cancel_button(client_area, look.button, _("Cancel"),
-                          { cancel_left, button_top,
-                              cancel_right, button_bottom },
-                          button_style, form, mrCancel);
+  Button cancel_button(client_area, look.button, _("Cancel"),
+                       { cancel_left, button_top,
+                           cancel_right, button_bottom },
+                       button_style, form, mrCancel);
 
-  WndButton clear_button(client_area, look.button, _("Clear"),
-                         { clear_left, button_top,
-                             clear_right, button_bottom },
-                         button_style, ClearText);
+  auto clear_listener = MakeLambdaActionListener([](unsigned id){
+      ClearText();
+    });
+  Button clear_button(client_area, look.button, _("Clear"),
+                      { clear_left, button_top,
+                          clear_right, button_bottom },
+                      button_style, clear_listener, 0);
 
   KeyboardWidget keyboard(look.button, FormCharacter, !accb,
                           default_shift_state);
@@ -229,10 +233,13 @@ TouchTextEntry(TCHAR *text, size_t width,
 
   kb = &keyboard;
 
-  WndButton backspace_button(client_area, look.button, _T("<-"),
-                             { backspace_left, padding, rc.right - padding,
-                                 editor_bottom },
-                             button_style, OnBackspace);
+  auto backspace_listener = MakeLambdaActionListener([](unsigned id){
+      OnBackspace();
+    });
+  Button backspace_button(client_area, look.button, _T("<-"),
+                          { backspace_left, padding, rc.right - padding,
+                              editor_bottom },
+                          button_style, backspace_listener, 0);
 
   AllowedCharactersCallback = accb;
 
@@ -240,7 +247,7 @@ TouchTextEntry(TCHAR *text, size_t width,
   ClearText();
 
   if (!StringIsEmpty(text)) {
-    CopyString(edittext, text, width);
+    CopyTruncateString(edittext, width, text);
     cursor = _tcslen(text);
   }
 
@@ -251,7 +258,7 @@ TouchTextEntry(TCHAR *text, size_t width,
   keyboard.Unprepare();
 
   if (result) {
-    CopyString(text, edittext, width);
+    CopyTruncateString(text, width, edittext);
   }
 
   return result;

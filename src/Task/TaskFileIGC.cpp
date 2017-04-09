@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -36,18 +36,16 @@ Copyright_License {
 #include <assert.h>
 
 static bool
-ReadIGCDeclaration(const TCHAR *path, IGCDeclarationHeader &header,
+ReadIGCDeclaration(Path path, IGCDeclarationHeader &header,
                    std::list<IGCDeclarationTurnpoint> &turnpoints)
-{
+try {
   // Create FileReader for reading the task
   FileLineReaderA reader(path);
-  if (reader.error())
-    return false;
 
   // Read IGC file
   char *line;
   bool header_found = false;
-  while ((line = reader.ReadLine()) != NULL) {
+  while ((line = reader.ReadLine()) != nullptr) {
     // Skip lines which are not declaration records
     if (*line != _T('C'))
       continue;
@@ -66,6 +64,21 @@ ReadIGCDeclaration(const TCHAR *path, IGCDeclarationHeader &header,
   }
 
   return header_found;
+} catch (const std::runtime_error &) {
+  return false;
+}
+
+static WaypointPtr
+MakeWaypoint(GeoPoint location, const TCHAR *name)
+{
+  Waypoint *wp = new Waypoint(location);
+  wp->name = name;
+
+  /* we don't know the elevation, so we just set it to zero; this is
+     not correct, but better than leaving it uninitialised */
+  wp->elevation = 0;
+
+  return WaypointPtr(wp);
 }
 
 OrderedTask*
@@ -78,7 +91,7 @@ TaskFileIGC::GetTask(const TaskBehaviour &task_behaviour,
   std::list<IGCDeclarationTurnpoint> turnpoints;
 
   if (!ReadIGCDeclaration(path, header, turnpoints))
-    return NULL;
+    return nullptr;
 
   // Number of turnpoints including start and finish
   unsigned num_turnpoints = header.num_turnpoints + 2;
@@ -89,7 +102,7 @@ TaskFileIGC::GetTask(const TaskBehaviour &task_behaviour,
     turnpoints.pop_back();
   } else if (num_turnpoints != turnpoints.size())
     // Declared number of turnpoints is not matching parsed number of turnpoints
-    return NULL;
+    return nullptr;
 
   // Create a blank task
   OrderedTask *task = new OrderedTask(task_behaviour);
@@ -108,23 +121,18 @@ TaskFileIGC::GetTask(const TaskBehaviour &task_behaviour,
     else
       waypoint_name.Format(_T("%s #%u"), _T("Turnpoint"), i);
 
-    Waypoint wp(it.location);
-    wp.name = waypoint_name.c_str();
-
-    /* we don't know the elevation, so we just set it to zero; this is
-       not correct, but better than leaving it uninitialised */
-    wp.elevation = fixed(0);
+    auto wp = MakeWaypoint(it.location, waypoint_name.c_str());
 
     OrderedTaskPoint *tp;
 
     if (i == 0)
-      tp = fact.CreateStart(wp);
+      tp = fact.CreateStart(std::move(wp));
     else if (i == num_turnpoints - 1)
-      tp = fact.CreateFinish(wp);
+      tp = fact.CreateFinish(std::move(wp));
     else
-      tp = fact.CreateIntermediate(wp);
+      tp = fact.CreateIntermediate(std::move(wp));
 
-    if (tp != NULL) {
+    if (tp != nullptr) {
       fact.Append(*tp);
       delete tp;
     }
@@ -137,17 +145,15 @@ TaskFileIGC::GetTask(const TaskBehaviour &task_behaviour,
 
 unsigned
 TaskFileIGC::Count()
-{
+try {
   // Open the IGC file
   FileLineReaderA reader(path);
-  if (reader.error())
-    return 0;
 
   IGCDeclarationHeader header;
 
   // Search for declaration
   char *line;
-  while ((line = reader.ReadLine()) != NULL) {
+  while ((line = reader.ReadLine()) != nullptr) {
     if (*line != 'C')
       continue;
 
@@ -167,5 +173,7 @@ TaskFileIGC::Count()
     return 1;
   }
 
+  return 0;
+} catch (const std::runtime_error &e) {
   return 0;
 }

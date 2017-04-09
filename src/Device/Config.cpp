@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,10 +24,11 @@ Copyright_License {
 #include "Config.hpp"
 #include "Asset.hpp"
 #include "Language/Language.hpp"
+#include "Util/StringCompare.hxx"
 
 #ifdef ANDROID
 #include "Android/BluetoothHelper.hpp"
-#include "Java/Global.hpp"
+#include "Java/Global.hxx"
 #endif
 
 bool
@@ -56,13 +57,13 @@ DeviceConfig::IsAvailable() const
     return HasIOIOLib();
 
   case PortType::AUTO:
-    return IsWindowsCE();
+    return false;
 
   case PortType::INTERNAL:
     return IsAndroid() || IsApple();
 
   case PortType::TCP_CLIENT:
-    return !IsWindowsCE();
+    return true;
 
   case PortType::TCP_LISTENER:
   case PortType::UDP_LISTENER:
@@ -89,10 +90,8 @@ DeviceConfig::ShouldReopenOnTimeout() const
 
   case PortType::SERIAL:
   case PortType::AUTO:
-    /* auto-reopen on Windows CE due to its quirks, but not Altair,
-       because Altair ports are known to be "kind of sane" (no flaky
-       Bluetooth drivers, because there's no Bluetooth) */
-    return IsWindowsCE() && !IsAltair();
+    /* TODO: old branch for Windows CE due to its quirks */
+    return false;
 
   case PortType::RFCOMM:
   case PortType::RFCOMM_SERVER:
@@ -135,14 +134,7 @@ DeviceConfig::MaybeBluetooth(PortType port_type, const TCHAR *path)
     return true;
 
 #ifdef HAVE_POSIX
-  if (port_type == PortType::SERIAL && _tcsstr(path, _T("/rfcomm")) != NULL)
-    return true;
-#endif
-
-#ifdef _WIN32_WCE
-  /* on Windows CE, any serial port may be mapped to a Bluetooth
-     driver */
-  if (port_type == PortType::SERIAL)
+  if (port_type == PortType::SERIAL && _tcsstr(path, _T("/rfcomm")) != nullptr)
     return true;
 #endif
 
@@ -161,13 +153,6 @@ DeviceConfig::MaybeBluetooth() const
 
 #ifdef HAVE_POSIX
   if (port_type == PortType::SERIAL && path.Contains(_T("/rfcomm")))
-    return true;
-#endif
-
-#ifdef _WIN32_WCE
-  /* on Windows CE, any serial port may be mapped to a Bluetooth
-     driver */
-  if (port_type == PortType::SERIAL)
     return true;
 #endif
 
@@ -209,7 +194,6 @@ DeviceConfig::Clear()
 #ifndef NDEBUG
   dump_port = false;
 #endif
-  ignore_checksum = false;
 }
 
 const TCHAR *

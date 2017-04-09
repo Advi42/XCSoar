@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -58,7 +58,7 @@ ParseAngle(const TCHAR *src, Angle &angle)
   if (endptr == src || *endptr != _T(' '))
     return false;
 
-  fixed value = fixed(deg + (double)min / 60 + sec / 3600);
+  auto value = deg + (double)min / 60 + sec / 3600;
   if (!is_positive)
     value = -value;
 
@@ -108,7 +108,7 @@ ParseLocationUTM(const TCHAR *src, GeoPoint &p)
   if (endptr == src || *endptr != _T(' '))
     return false;
 
-  UTM u(zone_number, zone_letter, fixed(easting), fixed(northing));
+  UTM u(zone_number, zone_letter, easting, northing);
   p = u.ToGeoPoint();
 
   // ensure longitude is within -180:180
@@ -118,14 +118,14 @@ ParseLocationUTM(const TCHAR *src, GeoPoint &p)
 }
 
 static bool
-ParseAltitude(const TCHAR *src, fixed &dest)
+ParseAltitude(const TCHAR *src, double &dest)
 {
   TCHAR *endptr;
   long alt = _tcstol(src, &endptr, 10);
   if (endptr == src)
     return false;
 
-  dest = fixed(alt);
+  dest = alt;
   return true;
 }
 
@@ -145,8 +145,7 @@ ParseString(const TCHAR *src, tstring &dest, unsigned len = 0)
 }
 
 bool
-WaypointReaderFS::ParseLine(const TCHAR* line, const unsigned linenum,
-                              Waypoints &way_points)
+WaypointReaderFS::ParseLine(const TCHAR *line, Waypoints &way_points)
 {
   //$FormatGEO
   //ACONCAGU  S 32 39 12.00    W 070 00 42.00  6962  Aconcagua
@@ -165,14 +164,11 @@ WaypointReaderFS::ParseLine(const TCHAR* line, const unsigned linenum,
   if (line[0] == '\0')
     return true;
 
-  if (linenum == 0 &&
-      _tcsstr(line, _T("$FormatUTM")) == line) {
-    is_utm = true;
+  if (line[0] == _T('$')) {
+    if (StringStartsWith(line, _T("$FormatUTM")))
+      is_utm = true;
     return true;
   }
-
-  if (line[0] == _T('$'))
-    return true;
 
   // Determine the length of the line
   size_t len = _tcslen(line);
@@ -181,19 +177,18 @@ WaypointReaderFS::ParseLine(const TCHAR* line, const unsigned linenum,
     return false;
 
   GeoPoint location;
-  if ((!is_utm && !ParseLocation(line + 10, location)) ||
-      (is_utm && !ParseLocationUTM(line + 9, location)))
+  if (!(is_utm
+        ? ParseLocationUTM(line + 9, location)
+        : ParseLocation(line + 10, location)))
     return false;
 
-  Waypoint new_waypoint(location);
-  new_waypoint.file_num = file_num;
-  new_waypoint.original_id = 0;
+  Waypoint new_waypoint = factory.Create(location);
 
   if (!ParseString(line, new_waypoint.name, 8))
     return false;
 
   if (!ParseAltitude(line + (is_utm ? 32 : 41), new_waypoint.elevation) &&
-      !CheckAltitude(new_waypoint))
+      !factory.FallbackElevation(new_waypoint))
     return false;
 
   // Description (Characters 35-44)
@@ -208,7 +203,7 @@ bool
 WaypointReaderFS::VerifyFormat(TLineReader &reader)
 {
   const TCHAR *line = reader.ReadLine();
-  if (line == NULL)
+  if (line == nullptr)
     return false;
 
   return StringStartsWith(line, _T("$FormatUTM")) ||

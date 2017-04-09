@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,19 +32,20 @@ Copyright_License {
 
 #include <stdio.h>
 
+static constexpr CoordinateFormat format = CoordinateFormat::DDMMSS;
+
 static void
 Main()
 {
   GeoPoint value = GeoPoint(Angle::Degrees(7.7061111111111114),
                             Angle::Degrees(51.051944444444445));
 
-  if (!GeoPointEntryDialog(_T("The caption"), value, true))
+  if (!GeoPointEntryDialog(_T("The caption"), value, format, true))
     return;
 
-  if (value.IsValid()) {
-    TCHAR buffer[64];
-    _tprintf(_T("%s\n"), FormatGeoPoint(value, buffer, ARRAY_SIZE(buffer),
-                                        CoordinateFormat::DDMMSS));
-  } else
+  if (value.IsValid())
+    _tprintf(_T("%s\n"),
+             FormatGeoPoint(value, CoordinateFormat::DDMMSS).c_str());
+  else
     printf("invalid\n");
 }

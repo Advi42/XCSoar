@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,12 +27,11 @@ Copyright_License {
 #include "Compiler.h"
 
 class FileCache;
-class ProtectedMarkers;
 class TopographyStore;
 class RasterTerrain;
-class RasterWeather;
 class GlideComputer;
 class DrawThread;
+class MultipleDevices;
 class DeviceBlackboard;
 class MergeThread;
 class CalculationThread;
@@ -41,7 +40,6 @@ class Airspaces;
 class ProtectedAirspaceWarningManager;
 class ProtectedTaskManager;
 class Replay;
-class AltairControl;
 class Logger;
 class GlueFlightLogger;
 class TrackingGlue;
@@ -52,14 +50,13 @@ extern Airspaces airspace_database;
 extern Waypoints way_points;
 extern ProtectedTaskManager *protected_task_manager;
 extern Replay *replay;
-extern ProtectedMarkers *protected_marks;
 extern TopographyStore *topography;
 extern RasterTerrain *terrain;
-extern RasterWeather RASP;
 extern GlideComputer *glide_computer;
 #ifndef ENABLE_OPENGL
 extern DrawThread *draw_thread;
 #endif
+extern MultipleDevices *devices;
 extern DeviceBlackboard *device_blackboard;
 extern MergeThread *merge_thread;
 extern CalculationThread *calculation_thread;
@@ -69,13 +66,9 @@ extern GlueFlightLogger *flight_logger;
 
 extern TrackingGlue *tracking;
 
-#ifdef GNAV
-extern AltairControl altair_control;
-#endif
-
 /**
  * Returns the global ProtectedAirspaceWarningManager instance.  May
- * be NULL if disabled.
+ * be nullptr if disabled.
  */
 gcc_pure
 ProtectedAirspaceWarningManager *

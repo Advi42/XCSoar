@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,12 +29,11 @@ Copyright_License {
 #include <zzip/lib.h>
 
 #include <algorithm>
-#include <stdlib.h>
 
 TopographyFile::TopographyFile(zzip_dir *_dir, const char *filename,
-                               fixed _threshold,
-                               fixed _label_threshold,
-                               fixed _important_label_threshold,
+                               double _threshold,
+                               double _label_threshold,
+                               double _important_label_threshold,
                                const Color _color,
                                int _label_field,
                                ResourceId _icon, ResourceId _big_icon,
@@ -55,7 +54,14 @@ TopographyFile::TopographyFile(zzip_dir *_dir, const char *filename,
     return;
   }
 
-  center = ImportRect(file.bounds).GetCenter();
+  const auto file_bounds = ImportRect(file.bounds);
+  if (!file_bounds.Check()) {
+    /* malformed bounds */
+    msShapefileClose(&file);
+    return;
+  }
+
+  center = file_bounds.GetCenter();
 
   shapes.ResizeDiscard(file.numshapes);
   std::fill(shapes.begin(), shapes.end(), ShapeList(nullptr));
@@ -114,7 +120,7 @@ TopographyFile::Update(const WindowProjection &map_projection)
     /* the cache is still fresh */
     return false;
 
-  cache_bounds = screenRect.Scale(fixed(2));
+  cache_bounds = screenRect.Scale(2);
 
   rectObj deg_bounds = ConvertRect(cache_bounds);
 
@@ -127,7 +133,7 @@ TopographyFile::Update(const WindowProjection &map_projection)
 
   case MS_DONE:
     /* screen is outside of map bounds */
-    return true;
+    return false;
 
   case MS_SUCCESS:
     break;
@@ -142,22 +148,44 @@ TopographyFile::Update(const WindowProjection &map_projection)
     if (!msGetBit(file.status, i)) {
       // If the shape is outside the bounds
       // delete the shape from the cache
-      delete it->shape;
-      it->shape = nullptr;
+      if (it->shape != nullptr) {
+        assert(*current == it);
+
+        /* remove from linked list (protected) */
+        {
+          const ScopeLock lock(mutex);
+          *current = it->next;
+          ++serial;
+        }
+
+        /* now it's unreachable, and we can delete the XShape without
+           holding a lock */
+        delete it->shape;
+        it->shape = nullptr;
+      }
     } else {
       // is inside the bounds
-      if (it->shape == nullptr)
+      if (it->shape == nullptr) {
+        assert(*current != it);
+
         // shape isn't cached yet -> cache the shape
         it->shape = LoadShape(&file, center, i, label_field);
-      // update list pointer
-      *current = it;
+        it->next = *current;
+
+        /* insert into linked list (protected) */
+        {
+          const ScopeLock lock(mutex);
+          *current = it;
+          ++serial;
+        }
+      }
+
       current = &it->next;
     }
   }
   // end of list marker
-  *current = nullptr;
+  assert(*current == nullptr);
 
-  ++serial;
   return true;
 }
 
@@ -182,13 +210,13 @@ TopographyFile::LoadAll()
 }
 
 unsigned
-TopographyFile::GetSkipSteps(fixed map_scale) const
+TopographyFile::GetSkipSteps(double map_scale) const
 {
-  if (Quadruple(map_scale) > scale_threshold * 3)
+  if (map_scale > scale_threshold * 0.75)
     return 4;
-  if (Double(map_scale) > scale_threshold)
+  if (2 * map_scale > scale_threshold)
     return 3;
-  if (Quadruple(map_scale) > scale_threshold)
+  if (4 * map_scale > scale_threshold)
     return 2;
   return 1;
 }
@@ -196,13 +224,13 @@ TopographyFile::GetSkipSteps(fixed map_scale) const
 #ifdef ENABLE_OPENGL
 
 unsigned
-TopographyFile::GetThinningLevel(fixed map_scale) const
+TopographyFile::GetThinningLevel(double map_scale) const
 {
-  if (Double(map_scale) > scale_threshold)
+  if (2 * map_scale > scale_threshold)
     return 3;
   if (map_scale * 3 > scale_threshold)
     return 2;
-  if (Quadruple(map_scale) > scale_threshold)
+  if (4 * map_scale > scale_threshold)
     return 1;
 
   return 0;
@@ -213,7 +241,7 @@ TopographyFile::GetMinimumPointDistance(unsigned level) const
 {
   switch (level) {
     case 1:
-      return (unsigned)(Quadruple(scale_threshold) / 30);
+      return (unsigned)(4 * scale_threshold / 30);
     case 2:
       return (unsigned)(6 * scale_threshold / 30);
     case 3:

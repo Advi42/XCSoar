@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,20 +24,19 @@
 #define TEST_DEBUG_HPP
 
 #include "Printing.hpp"
-#include <fstream>
-#include <iostream>
-#include <getopt.h>
-#include <string>
+
+#include "Replay/TaskAutoPilot.hpp"
+#include "OS/Path.hpp"
+
 extern "C" {
 #include "tap.h"
 }
 
-#include "Math/fixed.hpp"
-#include "Replay/TaskAutoPilot.hpp"
+#include <iosfwd>
+#include <string>
 
 extern int n_samples;
 void PrintDistanceCounts();
-void PrintQueries(unsigned n, std::ostream &fout);
 char WaitPrompt();
 extern int interactive;
 extern int verbose;
@@ -47,10 +46,10 @@ extern AutopilotParameters autopilot_parms;
 
 extern int terrain_height;
 const char* GetTestName(const char* in, int task_num, int wind_num);
-extern std::string replay_file;
-extern std::string task_file;
-extern std::string waypoint_file;
-extern fixed range_threshold;
+extern AllocatedPath replay_file;
+extern AllocatedPath task_file;
+extern AllocatedPath waypoint_file;
+extern double range_threshold;
 
 bool ParseArgs(int argc, char** argv);
 

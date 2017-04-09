@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,7 +22,14 @@ Copyright_License {
 */
 
 #include "InfoBoxLook.hpp"
+#include "FontDescription.hpp"
+#include "Colors.hpp"
 #include "Screen/Layout.hpp"
+#include "AutoFont.hpp"
+
+#ifdef HAVE_TEXT_CACHE
+#include "Screen/Custom/Cache.hpp"
+#endif
 
 #include <algorithm>
 
@@ -34,12 +41,7 @@ Copyright_License {
 
 void
 InfoBoxLook::Initialise(bool _inverse, bool use_colors,
-                        const Font &value_font,
-                        const Font &_small_font,
-#ifndef GNAV
-                        const Font &_unit_font,
-#endif
-                        const Font &title_font)
+                        unsigned width)
 {
   inverse = _inverse;
 
@@ -53,17 +55,11 @@ InfoBoxLook::Initialise(bool _inverse, bool use_colors,
   pressed_background_color = COLOR_YELLOW;
 
   Color border_color = Color(128, 128, 128);
-  border_pen.Set(BORDER_WIDTH, border_color);
-  selector_pen.Set(Layout::Scale(1) + 2, value.fg_color);
+  border_pen.Create(BORDER_WIDTH, border_color);
 
-  value.font = &value_font;
-  title.font = &title_font;
-  comment.font = &title_font;
-  small_font = &_small_font;
-#ifndef GNAV
-  unit_font = &_unit_font;
-  unit_fraction_pen.Set(1, value.fg_color);
-#endif
+  ReinitialiseLayout(width);
+
+  unit_fraction_pen.Create(1, value.fg_color);
 
   colors[0] = border_color;
   if (HasColors() && use_colors) {
@@ -74,4 +70,27 @@ InfoBoxLook::Initialise(bool _inverse, bool use_colors,
     colors[5] = inverse ? COLOR_INVERSE_MAGENTA : COLOR_MAGENTA;
   } else
     std::fill(colors + 1, colors + 6, inverse ? COLOR_WHITE : COLOR_BLACK);
+}
+
+void
+InfoBoxLook::ReinitialiseLayout(unsigned width)
+{
+  FontDescription title_font_d(8);
+  AutoSizeFont(title_font_d, width, _T("123456789012345"));
+  title_font.Load(title_font_d);
+
+  FontDescription value_font_d(10, true);
+  AutoSizeFont(value_font_d, width, _T("1234m"));
+  value_font.Load(value_font_d);
+
+  FontDescription small_value_font_d(10);
+  AutoSizeFont(small_value_font_d, width, _T("12345m"));
+  small_value_font.Load(small_value_font_d);
+
+  unsigned unit_font_height = std::max(value_font_d.GetHeight() * 2u / 5u, 7u);
+  unit_font.Load(FontDescription(unit_font_height));
+
+#ifdef HAVE_TEXT_CACHE
+  TextCache::Flush();
+#endif
 }

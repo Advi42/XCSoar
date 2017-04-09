@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,7 @@ Copyright_License {
 
 #include "BaroDevice.hpp"
 #include "NativeBaroListener.hpp"
-#include "Java/Class.hpp"
+#include "Java/Class.hxx"
 #include "Blackboard/DeviceBlackboard.hpp"
 #include "Components.hpp"
 #include "Interface.hpp"
@@ -65,7 +65,7 @@ CreateBaroDevice(JNIEnv *env, jobject holder,
 BaroDevice::BaroDevice(unsigned _index,
                            JNIEnv *env, jobject holder,
                            DeviceConfig::PressureUse use,
-                           fixed _offset, fixed _factor,
+                           double _offset, double _factor,
                            DeviceConfig::PressureType type, unsigned bus, unsigned addr,
                            unsigned sample_rate, unsigned flags)
   :index(_index),
@@ -77,7 +77,7 @@ BaroDevice::BaroDevice(unsigned _index,
    offset(_offset),
    factor(_factor),
    calibrate_count(-1), calibrate_sum(0.0),
-   kalman_filter(fixed(5), fixed(0.3))
+   kalman_filter(5, 0.3)
 {
 }
 
@@ -87,10 +87,10 @@ BaroDevice::~BaroDevice()
   env->CallVoidMethod(obj.Get(), close_method);
 }
 
-void BaroDevice::Calibrate(fixed value)
+void BaroDevice::Calibrate(double value)
 {
   calibrate_count = 0;
-  calibrate_sum = fixed(0);
+  calibrate_sum = 0;
   calibrate_value = value;
 }
 bool BaroDevice::IsCalibrating()
@@ -100,17 +100,17 @@ bool BaroDevice::IsCalibrating()
 
 gcc_pure
 static inline
-fixed ComputeNoncompVario(const fixed pressure, const fixed d_pressure)
+double ComputeNoncompVario(const double pressure, const double d_pressure)
 {
-  static constexpr fixed FACTOR(-2260.389548275485);
-  static constexpr fixed EXPONENT(-0.8097374740609689);
-  return fixed(FACTOR * pow(pressure, EXPONENT) * d_pressure);
+  static constexpr double FACTOR(-2260.389548275485);
+  static constexpr double EXPONENT(-0.8097374740609689);
+  return FACTOR * pow(pressure, EXPONENT) * d_pressure;
 }
 
 /*
  * TODO: use ProvidePitotPressure() and get rid of this static variable static_p.
  */
-static fixed static_p = fixed(0);
+static double static_p = 0;
 
 void
 BaroDevice::onBaroValues(unsigned sensor, AtmosphericPressure pressure)
@@ -134,18 +134,18 @@ BaroDevice::onBaroValues(unsigned sensor, AtmosphericPressure pressure)
   }
 
   pressure.Adjust(factor, offset);
-  if (pressure.IsPlausible() || (press_use == DeviceConfig::PressureUse::DYNAMIC && pressure.GetHectoPascal() > fixed(0.2)))
+  if (pressure.IsPlausible() || (press_use == DeviceConfig::PressureUse::DYNAMIC && pressure.GetHectoPascal() > 0.2))
   {
-    fixed param;
+    double param;
 
     // Set filter properties depending on sensor type
     if (press_type == DeviceConfig::PressureType::BMP085 &&
         press_use == DeviceConfig::PressureUse::STATIC_WITH_VARIO)
     {
-       if (static_p == fixed(0)) kalman_filter.SetAccelerationVariance(fixed(0.0075));
-       param = fixed(0.05);
+       if (static_p == 0) kalman_filter.SetAccelerationVariance(0.0075);
+       param = 0.05;
     } else {
-       param = fixed(0.5);
+       param = 0.5;
     }
 
     kalman_filter.Update(pressure.GetHectoPascal(), param);
@@ -171,17 +171,17 @@ BaroDevice::onBaroValues(unsigned sensor, AtmosphericPressure pressure)
         break;
 
       case DeviceConfig::PressureUse::PITOT:
-        if (static_p != fixed(0))
+        if (static_p != 0)
         {
-          fixed dyn = pressure.GetHectoPascal() - static_p;
-          if (dyn < fixed(0.31)) dyn = fixed(0);      // suppress speeds below ~25 km/h
+          double dyn = pressure.GetHectoPascal() - static_p;
+          if (dyn < 0.31) dyn = 0;      // suppress speeds below ~25 km/h
           basic.ProvideDynamicPressure(AtmosphericPressure::HectoPascal(dyn));
         }
         break;
 
       case DeviceConfig::PressureUse::PITOT_ZERO:
         offset = kalman_filter.GetXAbs() - static_p;
-        basic.ProvideSensorCalibration(fixed (1), offset);
+        basic.ProvideSensorCalibration(1, offset);
         break;
 
       case DeviceConfig::PressureUse::DYNAMIC:

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -37,25 +37,32 @@ struct UnitSymbolStrings {
 };
 
 static constexpr UnitSymbolStrings symbol_strings[] = {
-  { NULL, NULL },
-  { NULL, _T("km"), false },
-  { NULL, _T("NM"), false },
-  { NULL, _T("mi"), false },
+  { nullptr, nullptr },
+  { nullptr, _T("km"), false },
+  { nullptr, _T("NM"), false },
+  { nullptr, _T("mi"), false },
   { _T("km"), _T("h"), true },
-  { NULL, _T("kt"), false },
+  { nullptr, _T("kt"), false },
   { _T("mp"), _T("h"), false },
   { _T("m"), _T("s"), true },
   { _T("ft"), _T("min"), true },
-  { NULL, _T("m"), false },
-  { NULL, _T("ft"), false },
-  { NULL, _T("FL"), false },
-  { NULL, _T("K"), false },
+  { nullptr, _T("m"), false },
+  { nullptr, _T("ft"), false },
+  { nullptr, _T("FL"), false },
+  { nullptr, _T("K"), false },
   { _T(DEG), _T("C"), false },
   { _T(DEG), _T("F"), false },
   { _T("h"), _T("Pa"), false },
-  { NULL, _T("mb"), false },
+  { nullptr, _T("mb"), false },
   { _T("mm"), _T("Hg"), false },
   { _T("in"), _T("Hg"), false },
+  { _T("kg"), _T("m²"), true },
+  { _T("lb"), _T("ft²"), true },
+  { nullptr, _T("kg"), false },
+  { nullptr, _T("lb"), false },
+  { _T("%"), _T(" "), false },
+  { nullptr, _T(":1"), false },
+  { nullptr, _T("V"), false },
 };
 
 static_assert(ARRAY_SIZE(symbol_strings) == (size_t)Unit::COUNT,
@@ -74,7 +81,7 @@ UnitSymbolRenderer::GetSize(const Canvas &canvas, const Unit unit)
   if (!strings.line1 && !strings.line2)
     return {0, 0};
 
-  assert(strings.line2 != NULL);
+  assert(strings.line2 != nullptr);
 
   if (!strings.line1)
     return canvas.CalcTextSize(strings.line2);
@@ -89,7 +96,7 @@ UnitSymbolRenderer::GetSize(const Canvas &canvas, const Unit unit)
   return size;
 }
 
-UPixelScalar
+unsigned
 UnitSymbolRenderer::GetAscentHeight(const Font &font, const Unit unit)
 {
   assert((size_t)unit < ARRAY_SIZE(symbol_strings));
@@ -102,7 +109,7 @@ UnitSymbolRenderer::GetAscentHeight(const Font &font, const Unit unit)
   if (!strings.line1 && !strings.line2)
     return 0;
 
-  assert(strings.line2 != NULL);
+  assert(strings.line2 != nullptr);
 
   if (!strings.line1)
     return font.GetAscentHeight();
@@ -111,7 +118,7 @@ UnitSymbolRenderer::GetAscentHeight(const Font &font, const Unit unit)
 }
 
 void
-UnitSymbolRenderer::Draw(Canvas &canvas, const RasterPoint pos,
+UnitSymbolRenderer::Draw(Canvas &canvas, const PixelPoint pos,
                          const Unit unit, const Pen &unit_fraction_pen)
 {
   assert((size_t)unit < ARRAY_SIZE(symbol_strings));
@@ -124,7 +131,7 @@ UnitSymbolRenderer::Draw(Canvas &canvas, const RasterPoint pos,
   if (!strings.line1 && !strings.line2)
     return;
 
-  assert(strings.line2 != NULL);
+  assert(strings.line2 != nullptr);
 
   if (!strings.line1) {
     canvas.DrawText(pos.x, pos.y, strings.line2);
@@ -141,7 +148,7 @@ UnitSymbolRenderer::Draw(Canvas &canvas, const RasterPoint pos,
     }
 
     canvas.DrawText(pos.x, pos.y, strings.line1);
-    PixelScalar x = pos.x + (size1.cx - size2.cx) / 2;
+    int x = pos.x + (size1.cx - size2.cx) / 2;
     canvas.DrawText(x, pos.y + size1.cy, strings.line2);
   } else {
     if (strings.is_fraction) {
@@ -149,7 +156,7 @@ UnitSymbolRenderer::Draw(Canvas &canvas, const RasterPoint pos,
       canvas.DrawLine(pos.x, pos.y + size1.cy, pos.x + size2.cx, pos.y + size1.cy);
     }
 
-    PixelScalar x = pos.x + (size2.cx - size1.cx) / 2;
+    int x = pos.x + (size2.cx - size1.cx) / 2;
     canvas.DrawText(x, pos.y, strings.line1);
     canvas.DrawText(pos.x, pos.y + size1.cy, strings.line2);
   }

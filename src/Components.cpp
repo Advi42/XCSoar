@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,26 +22,20 @@ Copyright_License {
 */
 
 #include "Components.hpp"
-#include "Terrain/RasterWeather.hpp"
 #include "Computer/GlideComputer.hpp"
 #include "Engine/Airspace/Airspaces.hpp"
 #include "Waypoint/Waypoints.hpp"
 #include "Thread/Debug.hpp"
 
-#ifdef GNAV
-#include "Hardware/AltairControl.hpp"
-#endif
-
 FileCache *file_cache;
-ProtectedMarkers *protected_marks;
 TopographyStore *topography;
 RasterTerrain *terrain;
-RasterWeather RASP;
 
 #ifndef ENABLE_OPENGL
 DrawThread *draw_thread;
 #endif
 
+MultipleDevices *devices;
 DeviceBlackboard *device_blackboard;
 
 MergeThread *merge_thread;
@@ -63,16 +57,12 @@ Airspaces airspace_database;
 
 GlideComputer *glide_computer;
 
-#ifdef GNAV
-AltairControl altair_control;
-#endif
-
 ProtectedAirspaceWarningManager *
 GetAirspaceWarnings()
 {
-  return glide_computer != NULL
+  return glide_computer != nullptr
     ? &glide_computer->GetAirspaceWarnings()
-    : NULL;
+    : nullptr;
 }
 
 #ifndef NDEBUG
@@ -88,7 +78,7 @@ InDrawThread()
 #ifdef ENABLE_OPENGL
   return InMainThread() && draw_thread_handle.IsInside();
 #else
-  return draw_thread != NULL && draw_thread->IsInside();
+  return draw_thread != nullptr && draw_thread->IsInside();
 #endif
 }
 
@@ -117,7 +107,7 @@ LeaveDrawThread()
 bool
 InDrawThread()
 {
-  return draw_thread != NULL && draw_thread->IsInside();
+  return draw_thread != nullptr && draw_thread->IsInside();
 }
 
 #endif

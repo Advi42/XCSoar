@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -158,8 +158,8 @@ double DouglasPeuckerMod::DistanceGeo(const GeoPoint &p0,
 double DouglasPeuckerMod::DistanceTime(const unsigned time0,
                                         const unsigned time1,
                                         const unsigned time2) {
-  double out = sqrt(abs(time1 - time0) / max_delta_time * threshold) +
-               sqrt(abs(time2 - time0) / max_delta_time * threshold);
+  double out = sqrt(abs(int(time1 - time0)) / max_delta_time * threshold) +
+               sqrt(abs(int(time2 - time0)) / max_delta_time * threshold);
 
   out = pow(out, 2)/4;
 

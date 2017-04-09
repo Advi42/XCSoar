@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,6 @@ Copyright_License {
 
 #include "MenuBar.hpp"
 #include "Screen/ContainerWindow.hpp"
-#include "Screen/Layout.hpp"
 #include "Input/InputEvents.hpp"
 
 #include <assert.h>
@@ -32,8 +31,7 @@ gcc_pure
 static PixelRect
 GetButtonPosition(unsigned i, PixelRect rc)
 {
-  UPixelScalar hwidth = rc.right - rc.left;
-  UPixelScalar hheight = rc.bottom - rc.top;
+  unsigned hwidth = rc.GetWidth(), hheight = rc.GetHeight();
 
   if (hheight > hwidth) {
     // portrait
@@ -52,14 +50,7 @@ GetButtonPosition(unsigned i, PixelRect rc)
       hwidth /= 3;
 
       rc.left = rc.right - hwidth;
-
-      if (IsAltair()) {
-        PixelScalar k = rc.bottom - rc.top;
-        // JMW need upside down button order for rotated Altair
-        rc.top = rc.bottom - (i - 5) * k / 5 - hheight - Layout::Scale(20);
-      } else {
-        rc.top += (i - 5) * hheight;
-      }
+      rc.top += (i - 5) * hheight;
     }
 
     rc.right = rc.left + hwidth;
@@ -95,45 +86,18 @@ MenuBar::Button::OnClicked()
   return true;
 }
 
-#ifdef USE_GDI
-LRESULT
-MenuBar::Button::OnMessage(HWND hWnd, UINT message,
-                            WPARAM wParam, LPARAM lParam)
-{
-  switch (message) {
-  case WM_CAPTURECHANGED:
-    if (lParam == 0)
-      /* the button has the keyboard focus, and the user has stopped
-         dragging the mouse: return the keyboard focus to the parent
-         window, because menu buttons shouldn't have keyboard focus */
-      ::SetFocus(::GetParent(hWnd));
-    break;
-  }
-
-  return ButtonWindow::OnMessage(hWnd, message, wParam, lParam);
-}
-#endif
-
-MenuBar::MenuBar(ContainerWindow &parent)
+MenuBar::MenuBar(ContainerWindow &parent, const ButtonLook &look)
 {
   const PixelRect rc = parent.GetClientRect();
 
-  ButtonWindowStyle style;
+  WindowStyle style;
   style.Hide();
   style.Border();
-  style.multiline();
 
   for (unsigned i = 0; i < MAX_BUTTONS; ++i) {
     PixelRect button_rc = GetButtonPosition(i, rc);
-    buttons[i].Create(parent, _T(""), button_rc, style);
+    buttons[i].Create(parent, look, _T(""), button_rc, style);
   }
-}
-
-void
-MenuBar::SetFont(const Font &font)
-{
-  for (unsigned i = 0; i < MAX_BUTTONS; i++)
-    buttons[i].SetFont(font);
 }
 
 void
@@ -144,7 +108,7 @@ MenuBar::ShowButton(unsigned i, bool enabled, const TCHAR *text,
 
   Button &button = buttons[i];
 
-  button.SetText(text);
+  button.SetCaption(text);
   button.SetEnabled(enabled && event > 0);
   button.SetEvent(event);
   button.ShowOnTop();

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,32 +26,28 @@ Copyright_License {
 
 EventQueue::EventQueue()
  :now_us(MonotonicClockUS()),
-  running(true) {}
+  quit(false) {}
 
 void
 EventQueue::Push(const Event &event)
 {
   ScopeLock protect(mutex);
-  if (!running)
+  if (quit)
     return;
 
   events.push(event);
-  cond.Signal();
+  cond.signal();
 }
 
 bool
 EventQueue::Pop(Event &event)
 {
   ScopeLock protect(mutex);
-  if (!running || events.empty())
+  if (quit || events.empty())
     return false;
 
   event = events.front();
   events.pop();
-
-  if (event.type == Event::QUIT)
-    Quit();
-
   return true;
 }
 
@@ -72,7 +68,7 @@ bool
 EventQueue::Wait(Event &event)
 {
   ScopeLock protect(mutex);
-  if (!running)
+  if (quit)
     return false;
 
   if (events.empty())
@@ -84,19 +80,15 @@ EventQueue::Wait(Event &event)
 
     const int64_t timeout_us = timers.GetTimeoutUS(now_us);
     if (timeout_us < 0)
-      cond.Wait(mutex);
+      cond.wait(mutex);
     else
-      cond.Wait(mutex, (timeout_us + 999) / 1000);
+      cond.timed_wait(mutex, (timeout_us + 999) / 1000);
 
     now_us = MonotonicClockUS();
   }
 
   event = events.front();
   events.pop();
-
-  if (event.type == Event::QUIT)
-    Quit();
-
   return true;
 }
 
@@ -158,7 +150,7 @@ EventQueue::AddTimer(Timer &timer, unsigned ms)
   ScopeLock protect(mutex);
 
   timers.Add(timer, MonotonicClockUS() + ms * 1000);
-  cond.Signal();
+  cond.signal();
 }
 
 void

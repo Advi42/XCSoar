@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -39,8 +39,11 @@ public:
   /* on Linux, enumerate /sys/class/tty/ which is faster than /dev/
      (searches only the TTY character devices) and shows only the
      ports that really exist */
+  /* but use /dev because there is no noticable downside, and it
+   * allows for custom port mapping using udev file
+   */
   TTYEnumerator()
-    :dir(opendir("/sys/class/tty")) {}
+    :dir(opendir("/dev")) {}
 #else
   TTYEnumerator()
     :dir(opendir("/dev")) {}

@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 #  XCSoar Glide Computer - http://www.xcsoar.org/
-#  Copyright (C) 2000-2014 The XCSoar Project
+#  Copyright (C) 2000-2015 The XCSoar Project
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -36,24 +36,11 @@ if [ -f /mnt/onboard/.kobo/Kobo.tgz -o -f /mnt/onboard/.kobo/KoboRoot.tgz \
     -o -f /mnt/onboard/XCSoarData/kobo/start_nickel \
     -o ! -x /opt/xcsoar/bin/KoboMenu ]; then
 
-    # check the kernel
-    if [ -f /opt/xcsoar/lib/kernel/uImage.kobo ]; then
-        /bin/mkdir -p /proc /dev
-        /bin/mount -t proc none /proc
-
-        if zcat /proc/config.gz |grep -q ^CONFIG_USB_EHCI_ARC_OTG=y; then
-            # this is the USB-OTG kernel, but Nickel should better have
-            # the original Kobo kernel; install it and reboot
-            echo "Switch to Kobo kernel"
-            /bin/mount -t tmpfs none /dev
-            /bin/mknod /dev/mmcblk0 b 179 0
-            dd if=/opt/xcsoar/lib/kernel/uImage.kobo of=/dev/mmcblk0 bs=512 seek=2048 && sync && reboot
-        fi
-
-        umount /proc
-    fi
-
     rm -f /mnt/onboard/XCSoarData/kobo/start_nickel
+    # launch user script before nickel start
+    if [ -f /mnt/onboard/XCSoarData/kobo/init_nickel.sh ]; then
+        source /mnt/onboard/XCSoarData/kobo/init_nickel.sh
+    fi
     umount -l /mnt/onboard
     exec /etc/init.d/rcS
 fi
@@ -70,36 +57,10 @@ fi
 /bin/mount -t tmpfs none -o size=128k /var/run
 /bin/mount -t sysfs none -o size=500k /sys
 
-/bin/mknod /dev/null c 1 3
-/bin/mknod /dev/zero c 1 5
-/bin/mknod /dev/random c 1 8
-/bin/mknod /dev/urandom c 1 9
-/bin/mknod /dev/ptmx c 5 2
-/bin/mkdir /dev/input
-/bin/mknod /dev/input/event0 c 13 64
-/bin/mknod /dev/input/event1 c 13 65
-/bin/mknod /dev/fb0 c 29 0
-/bin/mknod /dev/ttyUSB0 c 188 0
-/bin/mknod /dev/ttymxc0 c 207 16
-/bin/mknod /dev/ttymxc1 c 207 17
-/bin/mknod /dev/ttymxc2 c 207 18
-/bin/mknod /dev/rtc0 c 254 0
-
-/bin/mknod /dev/mmcblk0 b 179 0
-/bin/mknod /dev/mmcblk0p1 b 179 1
-/bin/mknod /dev/mmcblk0p2 b 179 2
-/bin/mknod /dev/mmcblk0p3 b 179 3
+/sbin/udevd --daemon
+/sbin/udevadm trigger
 
 /sbin/hwclock -s -u
-
-# check the kernel
-if [ -f /opt/xcsoar/lib/kernel/uImage.otg ]; then
-    if ! zcat /proc/config.gz |grep -q ^CONFIG_USB_EHCI_ARC_OTG=y; then
-        # install the USB-OTG kernel and reboot
-        echo "Switch to USB-OTG kernel"
-        dd if=/opt/xcsoar/lib/kernel/uImage.otg of=/dev/mmcblk0 bs=512 seek=2048 && sync && reboot
-    fi
-fi
 
 # workaround for kernel crash "scheduling while atomic"
 echo -e '\000\000\000\000' > /proc/sys/kernel/hotplug
@@ -108,6 +69,11 @@ echo -e '\000\000\000\000' > /proc/sys/kernel/hotplug
 echo "ch 3" > /sys/devices/platform/pmic_light.1/lit
 echo "cur 0" > /sys/devices/platform/pmic_light.1/lit
 echo "dc 0" > /sys/devices/platform/pmic_light.1/lit
+
+# enable crash dumps
+/bin/mkdir -p /mnt/onboard/XCSoarData/crash
+echo '/mnt/onboard/XCSoarData/crash/core.%p' >/proc/sys/kernel/core_pattern
+ulimit -c unlimited
 
 # launch user script
 if [ -f /mnt/onboard/XCSoarData/kobo/init.sh ]; then

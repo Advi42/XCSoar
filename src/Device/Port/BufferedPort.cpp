@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,31 +28,18 @@ Copyright_License {
 
 #include <assert.h>
 
-BufferedPort::BufferedPort(DataHandler &_handler)
-  :Port(_handler),
+BufferedPort::BufferedPort(PortListener *_listener, DataHandler &_handler)
+  :Port(_listener, _handler),
    running(false), closing(false)
 {
 }
-
-#ifndef NDEBUG
-
-BufferedPort::~BufferedPort()
-{
-  assert(closing);
-}
-
-#endif
 
 void
 BufferedPort::BeginClose()
 {
   ScopeLock protect(mutex);
   closing = true;
-#ifdef HAVE_POSIX
-  cond.Signal();
-#else
-  data_trigger.Signal();
-#endif
+  cond.signal();
 }
 
 void
@@ -73,12 +60,7 @@ BufferedPort::StopRxThread()
   ScopeLock protect(mutex);
   running = false;
 
-#ifdef HAVE_POSIX
-  cond.Broadcast();
-#else
-  data_trigger.Signal();
-#endif
-
+  cond.broadcast();
   return true;
 }
 
@@ -91,12 +73,7 @@ BufferedPort::StartRxThread()
     buffer.Clear();
   }
 
-#ifdef HAVE_POSIX
-  cond.Broadcast();
-#else
-  data_trigger.Signal();
-#endif
-
+  cond.broadcast();
   return true;
 }
 
@@ -113,7 +90,7 @@ BufferedPort::Read(void *dest, size_t length)
     return -1;
 
   size_t nbytes = std::min(length, r.size);
-  std::copy(r.data, r.data + nbytes, (uint8_t *)dest);
+  std::copy_n(r.data, nbytes, (uint8_t *)dest);
   buffer.Consume(nbytes);
   return nbytes;
 }
@@ -132,14 +109,7 @@ BufferedPort::WaitRead(unsigned timeout_ms)
     if (remaining_ms <= 0)
       return WaitResult::TIMEOUT;
 
-#ifdef HAVE_POSIX
-    cond.Wait(mutex, remaining_ms);
-#else
-    mutex.Unlock();
-    data_trigger.Wait(remaining_ms);
-    data_trigger.Reset();
-    mutex.Lock();
-#endif
+    cond.timed_wait(mutex, remaining_ms);
   }
 
   return WaitResult::READY;
@@ -155,6 +125,7 @@ BufferedPort::DataReceived(const void *data, size_t length)
 
     ScopeLock protect(mutex);
 
+    buffer.Shift();
     auto r = buffer.Write();
     if (r.size == 0)
       /* the buffer is already full, discard excess data */
@@ -163,13 +134,9 @@ BufferedPort::DataReceived(const void *data, size_t length)
     /* discard excess data */
     size_t nbytes = std::min(length, r.size);
 
-    std::copy(p, p + nbytes, r.data);
+    std::copy_n(p, nbytes, r.data);
     buffer.Append(nbytes);
 
-#ifdef HAVE_POSIX
-    cond.Broadcast();
-#else
-    data_trigger.Signal();
-#endif
+    cond.broadcast();
   }
 }

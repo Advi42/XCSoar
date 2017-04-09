@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,23 +29,14 @@ Copyright_License {
 #include "Interface.hpp"
 #include "Time/PeriodClock.hpp"
 #include "Event/Idle.hpp"
+#include "Topography/Thread.hpp"
+#include "Terrain/Thread.hpp"
 
 GlueMapWindow::GlueMapWindow(const Look &look)
   :MapWindow(look.map, look.traffic),
-   logger(nullptr),
-   idle_robin(-1),
 #ifdef ENABLE_OPENGL
-   data_timer(*this),
-#endif
-   drag_mode(DRAG_NONE),
-   ignore_single_click(false),
-#ifdef ENABLE_OPENGL
-   kinetic_x(700),
-   kinetic_y(700),
    kinetic_timer(*this),
 #endif
-   arm_mapitem_list(false),
-   last_display_mode(DisplayMode::NONE),
    thermal_band_renderer(look.thermal_band, look.chart),
    final_glide_bar_renderer(look.final_glide_bar, look.map.task),
    vario_bar_renderer(look.vario_bar),
@@ -60,11 +51,41 @@ GlueMapWindow::~GlueMapWindow()
 }
 
 void
-GlueMapWindow::Create(ContainerWindow &parent, const PixelRect &rc)
+GlueMapWindow::SetTopography(TopographyStore *_topography)
 {
-  MapWindow::Create(parent, rc);
+  if (topography_thread != nullptr) {
+    topography_thread->LockStop();
+    delete topography_thread;
+    topography_thread = nullptr;
+  }
 
-  visible_projection.SetScale(CommonInterface::GetMapSettings().cruise_scale);
+  MapWindow::SetTopography(_topography);
+
+  if (_topography != nullptr)
+    topography_thread =
+      new TopographyThread(*_topography,
+                           [this](){
+                             SendUser(unsigned(Command::INVALIDATE));
+                           });
+}
+
+void
+GlueMapWindow::SetTerrain(RasterTerrain *_terrain)
+{
+  if (terrain_thread != nullptr) {
+    terrain_thread->LockStop();
+    delete terrain_thread;
+    terrain_thread = nullptr;
+  }
+
+  MapWindow::SetTerrain(_terrain);
+
+  if (_terrain != nullptr)
+    terrain_thread =
+      new TerrainThread(*_terrain,
+                        [this](){
+                          SendUser(unsigned(Command::INVALIDATE));
+                        });
 }
 
 void
@@ -111,16 +132,19 @@ GlueMapWindow::ExchangeBlackboard()
 {
   /* copy device_blackboard to MapWindow */
 
-  device_blackboard->mutex.Lock();
-  ReadBlackboard(device_blackboard->Basic(), device_blackboard->Calculated());
-  device_blackboard->mutex.Unlock();
+  {
+    const ScopeLock lock(device_blackboard->mutex);
+    ReadBlackboard(device_blackboard->Basic(),
+                   device_blackboard->Calculated());
+  }
 
 #ifndef ENABLE_OPENGL
-  next_mutex.Lock();
-  ReadMapSettings(next_settings_map);
-  ReadComputerSettings(next_settings_computer);
-  ReadUIState(next_ui_state);
-  next_mutex.Unlock();
+  {
+    const ScopeLock lock(next_mutex);
+    ReadMapSettings(next_settings_map);
+    ReadComputerSettings(next_settings_computer);
+    ReadUIState(next_ui_state);
+  }
 #endif
 }
 
@@ -149,6 +173,7 @@ GlueMapWindow::FullRedraw()
   UpdateScreenAngle();
   UpdateProjection();
   UpdateMapScale();
+  UpdateScreenBounds();
 
 #ifdef ENABLE_OPENGL
   Invalidate();
@@ -163,6 +188,7 @@ GlueMapWindow::QuickRedraw()
   UpdateScreenAngle();
   UpdateProjection();
   UpdateMapScale();
+  UpdateScreenBounds();
 
 #ifndef ENABLE_OPENGL
   /* update the Projection */
@@ -183,57 +209,19 @@ GlueMapWindow::QuickRedraw()
 #endif
 }
 
-/**
- * This idle function allows progressive scanning of visibility etc
- */
 bool
-GlueMapWindow::Idle()
+GlueMapWindow::OnUser(unsigned id)
 {
-  if (!render_projection.IsValid())
-    return false;
-
-  if (idle_robin == unsigned(-1)) {
-    /* draw the first frame as quickly as possible, so the user can
-       start interacting with XCSoar immediately */
-    idle_robin = 2;
-    return true;
-  }
-
-  if (!IsUserIdle(2500))
-    /* don't hold back the UI thread while the user is interacting */
-    return true;
-
-  PeriodClock clock;
-  clock.Update();
-
-  bool still_dirty;
-  bool topography_dirty = true; /* scan topography in every Idle() call */
-  bool terrain_dirty = true;
-  bool weather_dirty = true;
-
-  do {
-    idle_robin = (idle_robin + 1) % 3;
-    switch (idle_robin) {
-    case 0:
-      topography_dirty = UpdateTopography(1) > 0;
-      break;
-
-    case 1:
-      terrain_dirty = UpdateTerrain();
-      break;
-
-    case 2:
-      weather_dirty = UpdateWeather();
-      break;
-    }
-
-    still_dirty = terrain_dirty || topography_dirty || weather_dirty;
-  } while (!clock.Check(700) && /* stop after 700ms */
-#ifndef ENABLE_OPENGL
-           !draw_thread->IsTriggered() &&
+  switch (Command(id)) {
+  case Command::INVALIDATE:
+#ifdef ENABLE_OPENGL
+    Invalidate();
+#else
+    draw_thread->TriggerRedraw();
 #endif
-           IsUserIdle(2500) &&
-           still_dirty);
+    return true;
 
-  return still_dirty;
+  default:
+    return MapWindow::OnUser(id);
+  }
 }

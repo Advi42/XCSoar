@@ -9,9 +9,9 @@
  * 
  * JasPer License Version 2.0
  * 
+ * Copyright (c) 2001-2006 Michael David Adams
  * Copyright (c) 1999-2000 Image Power, Inc.
  * Copyright (c) 1999-2000 The University of British Columbia
- * Copyright (c) 2001-2003 Michael David Adams
  * 
  * All rights reserved.
  * 
@@ -573,7 +573,7 @@ int jpc_pchglist_insert(jpc_pchglist_t *pchglist, int pchgno, jpc_pchg_t *pchg)
 	}
 	if (pchglist->numpchgs >= pchglist->maxpchgs) {
 		newmaxpchgs = pchglist->maxpchgs + 128;
-		if (!(newpchgs = jas_realloc(pchglist->pchgs, newmaxpchgs * sizeof(jpc_pchg_t *)))) {
+		if (!(newpchgs = jas_realloc2(pchglist->pchgs, newmaxpchgs, sizeof(jpc_pchg_t *)))) {
 			return -1;
 		}
 		pchglist->maxpchgs = newmaxpchgs;

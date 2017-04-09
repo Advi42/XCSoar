@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,10 +26,8 @@ Copyright_License {
 #include "NMEA/Info.hpp"
 #include "NMEA/InputLine.hpp"
 #include "Compiler.h"
-#include "Util/Macros.hpp"
 
 #include <tchar.h>
-#include <stdio.h>
 #include <algorithm>
 
 #ifdef _UNICODE
@@ -41,7 +39,7 @@ PDSWC(NMEAInputLine &line, NMEAInfo &info, Vega::VolatileData &volatile_data)
 {
   unsigned value;
   if (line.ReadChecked(value) &&
-      info.settings.ProvideMacCready(fixed(value) / 10, info.clock))
+      info.settings.ProvideMacCready(value / 10., info.clock))
     volatile_data.mc = value;
 
   auto &switches = info.switch_state;
@@ -81,7 +79,7 @@ PDSWC(NMEAInputLine &line, NMEAInfo &info, Vega::VolatileData &volatile_data)
     : SwitchState::FlightMode::CRUISE;
 
   if (line.ReadChecked(value)) {
-    info.voltage = fixed(value) / 10;
+    info.voltage = value / 10.;
     info.voltage_available.Update(info.clock);
   }
 
@@ -112,15 +110,15 @@ VegaDevice::PDVSC(NMEAInputLine &line, gcc_unused NMEAInfo &info)
   char name[80];
   line.Read(name, 80);
 
-  if (strcmp(name, "ERROR") == 0)
+  if (StringIsEqual(name, "ERROR"))
     // ignore error responses...
     return true;
 
   int value = line.Read(0);
 
-  if (strcmp(name, "ToneDeadbandCruiseLow") == 0)
+  if (StringIsEqual(name, "ToneDeadbandCruiseLow"))
     value = std::max(value, -value);
-  if (strcmp(name, "ToneDeadbandCirclingLow") == 0)
+  if (StringIsEqual(name, "ToneDeadbandCirclingLow"))
     value = std::max(value, -value);
 
   settings.Lock();
@@ -139,19 +137,19 @@ PDVDV(NMEAInputLine &line, NMEAInfo &info)
   int value;
 
   if (line.ReadChecked(value))
-    info.ProvideTotalEnergyVario(fixed(value) / 10);
+    info.ProvideTotalEnergyVario(value / 10.);
 
   bool ias_available = line.ReadChecked(value);
   int tas_ratio = line.Read(1024);
   if (ias_available) {
-    const fixed ias = fixed(value) / 10;
+    const auto ias = value / 10.;
     info.ProvideBothAirspeeds(ias, ias * tas_ratio / 1024);
   }
 
   //hasVega = true;
 
   if (line.ReadChecked(value))
-    info.ProvidePressureAltitude(fixed(value));
+    info.ProvidePressureAltitude(value);
 
   return true;
 }
@@ -163,7 +161,7 @@ PDVDS(NMEAInputLine &line, NMEAInfo &info)
 {
   const int accel_x = line.Read(0), accel_z = line.Read(0);
 
-  fixed mag = SmallHypot(fixed(accel_x), fixed(accel_z));
+  auto mag = hypot(accel_x, accel_z);
   info.acceleration.ProvideGLoad(mag / 100, true);
 
   /*
@@ -171,12 +169,12 @@ PDVDS(NMEAInputLine &line, NMEAInfo &info)
   */
   line.Skip();
 
-  info.stall_ratio = line.Read(fixed(0));
+  info.stall_ratio = line.Read(0.);
   info.stall_ratio_available.Update(info.clock);
 
   int value;
   if (line.ReadChecked(value))
-    info.ProvideNettoVario(fixed(value) / 10);
+    info.ProvideNettoVario(value / 10.);
 
   //hasVega = true;
 
@@ -189,7 +187,7 @@ PDVVT(NMEAInputLine &line, NMEAInfo &info)
   int value;
   info.temperature_available = line.ReadChecked(value);
   if (info.temperature_available)
-    info.temperature = fixed(value) / 10;
+    info.temperature = Temperature::FromKelvin(value / 10.);
 
   info.humidity_available = line.ReadChecked(info.humidity);
 
@@ -201,7 +199,7 @@ static bool
 PDTSM(NMEAInputLine &line, gcc_unused NMEAInfo &info)
 {
   /*
-  int duration = (int)strtol(String, NULL, 10);
+  int duration = (int)strtol(String, nullptr, 10);
   */
   line.Skip();
 
@@ -226,25 +224,25 @@ VegaDevice::ParseNMEA(const char *String, NMEAInfo &info)
   if (memcmp(type, "$PD", 3) == 0)
     detected = true;
 
-  if (strcmp(type, "$PDSWC") == 0)
+  if (StringIsEqual(type, "$PDSWC"))
     return PDSWC(line, info, volatile_data);
-  else if (strcmp(type, "$PDAAV") == 0)
+  else if (StringIsEqual(type, "$PDAAV"))
     return PDAAV(line, info);
-  else if (strcmp(type, "$PDVSC") == 0)
+  else if (StringIsEqual(type, "$PDVSC"))
     return PDVSC(line, info);
-  else if (strcmp(type, "$PDVDV") == 0)
+  else if (StringIsEqual(type, "$PDVDV"))
     return PDVDV(line, info);
-  else if (strcmp(type, "$PDVDS") == 0)
+  else if (StringIsEqual(type, "$PDVDS"))
     return PDVDS(line, info);
-  else if (strcmp(type, "$PDVVT") == 0)
+  else if (StringIsEqual(type, "$PDVVT"))
     return PDVVT(line, info);
-  else if (strcmp(type, "$PDVSD") == 0) {
+  else if (StringIsEqual(type, "$PDVSD")) {
     const auto message = line.Rest();
     StaticString<256> buffer;
     buffer.SetASCII(message.begin(), message.end());
     Message::AddMessage(buffer);
     return true;
-  } else if (strcmp(type, "$PDTSM") == 0)
+  } else if (StringIsEqual(type, "$PDTSM"))
     return PDTSM(line, info);
   else
     return false;

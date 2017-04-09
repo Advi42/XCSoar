@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,21 +29,23 @@ Copyright_License {
 #include "Look/DialogLook.hpp"
 #include "Screen/Init.hpp"
 #include "Screen/Layout.hpp"
-#include "Screen/Key.h"
+#include "Event/KeyCode.hpp"
 #include "../test/src/Fonts.hpp"
 #include "Language/Language.hpp"
 #include "Form/ActionListener.hpp"
 #include "Screen/SingleWindow.hpp"
 #include "Screen/Canvas.hpp"
+#include "Kernel.hpp"
 #include "System.hpp"
 #include "NetworkDialog.hpp"
+#include "SystemDialog.hpp"
 #include "ToolsDialog.hpp"
 
 enum Buttons {
   LAUNCH_NICKEL = 100,
   TOOLS,
   NETWORK,
-  REBOOT,
+  SYSTEM,
   POWEROFF
 };
 
@@ -98,10 +100,11 @@ public:
 void
 KoboMenuWidget::CreateButtons(WidgetDialog &buttons)
 {
-  buttons.AddButton(("Nickel"), dialog, LAUNCH_NICKEL);
+  buttons.AddButton(("Nickel"), dialog, LAUNCH_NICKEL)
+      ->SetEnabled(!IsKoboOTGKernel());
   buttons.AddButton(("Tools"), *this, TOOLS);
   buttons.AddButton(_("Network"), *this, NETWORK);
-  buttons.AddButton(("Reboot"), dialog, REBOOT);
+  buttons.AddButton("System", *this, SYSTEM);
   buttons.AddButton(("Poweroff"), dialog, POWEROFF);
 }
 
@@ -121,7 +124,7 @@ bool
 KoboMenuWidget::KeyPress(unsigned key_code)
 {
   switch (key_code) {
-#ifdef USE_LINUX_INPUT
+#ifdef KOBO
   case KEY_POWER:
     dialog.OnAction(POWEROFF);
     return true;
@@ -139,8 +142,13 @@ KoboMenuWidget::OnAction(int id)
   case TOOLS:
     ShowToolsDialog();
     break;
+
   case NETWORK:
     ShowNetworkDialog();
+    break;
+
+  case SYSTEM:
+    ShowSystemDialog();
     break;
   }
 }
@@ -168,8 +176,7 @@ Main()
   InitialiseFonts();
 
   DialogLook dialog_look;
-  dialog_look.Initialise(bold_font, normal_font, small_font,
-                         bold_font, bold_font, bold_font);
+  dialog_look.Initialise();
 
   TopWindowStyle main_style;
   main_style.Resizable();
@@ -209,10 +216,6 @@ int main(int argc, char **argv)
       KoboRunXCSoar("-simulator");
       /* return to menu after XCSoar quits */
       break;
-
-    case REBOOT:
-      KoboReboot();
-      return EXIT_SUCCESS;
 
     case POWEROFF:
       KoboPowerOff();

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,20 +22,17 @@ Copyright_License {
 */
 
 #include "OS/PathName.hpp"
-#include "Util/StringUtil.hpp"
-
-#include <assert.h>
-#include <string.h>
-#include <algorithm>
+#include "Util/StringCompare.hxx"
+#include "Util/StringAPI.hxx"
 
 gcc_pure
 static const TCHAR *
 LastSeparator(const TCHAR *path)
 {
-  const TCHAR *p = _tcsrchr(path, _T('/'));
+  const auto *p = StringFindLast(path, _T('/'));
 #ifdef WIN32
-  const TCHAR *backslash = _tcsrchr(path, _T('\\'));
-  if (p == NULL || backslash > p)
+  const auto *backslash = StringFindLast(path, _T('\\'));
+  if (p == nullptr || backslash > p)
     p = backslash;
 #endif
   return p;
@@ -48,48 +45,11 @@ LastSeparator(TCHAR *path)
   return const_cast<TCHAR *>(LastSeparator((const TCHAR *)path));
 }
 
-bool
-IsBaseName(const TCHAR *path)
-{
-  assert(path != NULL);
-
-#ifdef WIN32
-  return _tcspbrk(path, _T("/\\")) == NULL;
-#else
-  return _tcschr(path, _T('/')) == NULL;
-#endif
-}
-
-const TCHAR *
-BaseName(const TCHAR *path)
-{
-  const TCHAR *p = LastSeparator(path);
-  if (p != NULL)
-    path = p + 1;
-
-  if (StringIsEmpty(path))
-    return NULL;
-
-  return path;
-}
-
-const TCHAR *
-DirName(const TCHAR *gcc_restrict path, TCHAR *gcc_restrict buffer)
-{
-  const TCHAR *p = LastSeparator(path);
-  if (p == NULL || p == path)
-    return _T(".");
-
-  TCHAR *end = std::copy(path, p, buffer);
-  *end = _T('\0');
-  return buffer;
-}
-
 void
 ReplaceBaseName(TCHAR *path, const TCHAR *new_base)
 {
   TCHAR *q = LastSeparator(path);
-  if (q != NULL)
+  if (q != nullptr)
     ++q;
   else
     q = path;

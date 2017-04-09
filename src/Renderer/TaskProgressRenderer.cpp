@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -34,30 +34,29 @@ void
 TaskProgressRenderer::Draw(const TaskSummary& summary, Canvas &canvas,
                            const PixelRect &rc, bool inverse)
 {
-  const int radius = std::min(rc.right - rc.left, rc.bottom - rc.top) / 2 - 
+  const int radius = std::min(rc.GetWidth(), rc.GetHeight()) / 2 -
                      Layout::Scale(3);
-  RasterPoint center;
+  PixelPoint center;
   center.x = (rc.left + rc.right) / 2;
   center.y = (rc.bottom + rc.top) / 2;
 
-  const fixed sweep = fixed_two_pi * fixed(0.9);
-  Pen pen_f(1, inverse ? COLOR_WHITE : COLOR_BLACK);
+  const Angle sweep = Angle::FullCircle() * 0.97;
 
-  if (summary.p_remaining < fixed(0.99)) {
+  if (summary.p_remaining < 0.99) {
     canvas.Select(look.hbGray);
     canvas.SelectNullPen();
-    canvas.DrawSegment(center.x, center.y, radius, Angle::Zero(),
-                   Angle::Radians(sweep * (fixed(1) -  summary.p_remaining)));
+    canvas.DrawSegment(center, radius, Angle::Zero(),
+                       sweep * (1 -  summary.p_remaining));
   }
 
+  const Pen pen_f(Layout::ScalePenWidth(1), inverse ? COLOR_WHITE : COLOR_BLACK);
   canvas.Select(pen_f);
   canvas.SelectHollowBrush();
   canvas.DrawCircle(center.x, center.y, radius);
 
   unsigned i = 0;
-  canvas.Select(pen_f);
   for (auto it = summary.pts.begin(); it != summary.pts.end(); ++it, ++i) {
-    Angle a = Angle::Radians(it->p * sweep);
+    Angle a = sweep * it->p;
     int x = center.x + (int)(radius * a.fastsine());
     int y = center.y - (int)(radius * a.fastcosine());
     int w;

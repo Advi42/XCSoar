@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,8 +24,6 @@ Copyright_License {
 #ifndef XCSOAR_DEVICE_PARSER_HPP
 #define XCSOAR_DEVICE_PARSER_HPP
 
-#include "Math/fixed.hpp"
-
 struct NMEAInfo;
 class NMEAInputLine;
 struct GeoPoint;
@@ -34,8 +32,7 @@ struct BrokenTime;
 
 class NMEAParser
 {
-  bool ignore_checksum;
-  fixed last_time;
+  double last_time;
 
 public:
   bool real;
@@ -43,7 +40,7 @@ public:
   bool use_geoid;
 
 public:
-  NMEAParser(bool ignore_checksum = false);
+  NMEAParser();
 
   /**
    * Resets the NMEAParser
@@ -52,10 +49,6 @@ public:
 
   void SetReal(bool _real) {
     real = _real;
-  }
-
-  void SetIgnoreChecksum(bool _ignore_checksum) {
-    ignore_checksum = _ignore_checksum;
   }
 
   void DisableGeoid() {
@@ -84,7 +77,8 @@ public:
    * updates the last_time reference if necessary
    * @return True if time has advanced since last call
    */
-  static bool TimeHasAdvanced(fixed this_time, fixed &last_time, NMEAInfo &info);
+  static bool TimeHasAdvanced(double this_time, double &last_time,
+                              NMEAInfo &info);
 
   static bool ReadGeoPoint(NMEAInputLine &line, GeoPoint &value_r);
 
@@ -94,7 +88,7 @@ public:
    * Read and parse a time stamp in the form "HHMMSS.SSS".
    */
   static bool ReadTime(NMEAInputLine &line, BrokenTime &broken_time,
-                       fixed &time_of_day_s);
+                       double &time_of_day_s);
 
 private:
   /**
@@ -104,7 +98,7 @@ private:
    * @param info NMEA_INFO struct to update
    * @return True if time has advanced since last call
    */
-  bool TimeHasAdvanced(fixed this_time, NMEAInfo &info);
+  bool TimeHasAdvanced(double this_time, NMEAInfo &info);
 
   /**
    * Parses a GLL sentence
@@ -143,6 +137,11 @@ private:
   bool RMC(NMEAInputLine &line, NMEAInfo &info);
 
   /**
+   * Parses a HDM sentence
+   */
+  bool HDM(NMEAInputLine &line, NMEAInfo &info);
+
+  /**
    * Parses a PGRMZ sentence (Garmin proprietary).
    *
    * @param line A NMEAInputLine instance that can be used for parsing
@@ -159,6 +158,15 @@ private:
    * @return Parsing success
    */
   static bool PTAS1(NMEAInputLine &line, NMEAInfo &info);
+
+  /**
+   * Parses a MWV sentence (NMEA Wind information).
+   *
+   * @param line A NMEAInputLine instance that can be used for parsing
+   * @param info NMEA_INFO struct to parse into
+   * @return Parsing success
+   */
+  static bool MWV(NMEAInputLine &line, NMEAInfo &info);
 };
 
 #endif

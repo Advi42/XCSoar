@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,13 +25,11 @@ Copyright_License {
 #define XCSOAR_FLARM_DEVICE_HPP
 
 #include "BinaryProtocol.hpp"
-#include "Util/AllocatedArray.hpp"
-#include "OS/ByteOrder.hpp"
+#include "Util/AllocatedArray.hxx"
 #include "Compiler.h"
 #include "tchar.h"
 #include "Device/Driver.hpp"
 #include "Device/SettingsMap.hpp"
-#include "Thread/Mutex.hpp"
 
 #include <string>
 
@@ -101,9 +99,10 @@ protected:
   bool ParsePFLAC(NMEAInputLine &line);
 
 public:
+  /* virtual methods from class Device */
   void LinkTimeout() override;
   bool EnableNMEA(OperationEnvironment &env) override;
-  virtual bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
+  bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
 
   bool Declare(const Declaration &declaration, const Waypoint *home,
                OperationEnvironment &env) override;
@@ -193,7 +192,7 @@ private:
    * @return An initialized FrameHeader instance
    */
   FLARM::FrameHeader PrepareFrameHeader(FLARM::MessageType message_type,
-                                        const void *data = NULL,
+                                        const void *data = nullptr,
                                         size_t length = 0);
 
   /**
@@ -289,7 +288,7 @@ private:
    * @param path Path to the IGC file to write into
    * @return True if received and written successfully, otherwise False
    */
-  bool DownloadFlight(const TCHAR *path, OperationEnvironment &env);
+  bool DownloadFlight(Path path, OperationEnvironment &env);
 
 public:
   /**
@@ -306,7 +305,7 @@ public:
    * @param path Path to the IGC file to write into
    * @return True if received and written successfully, otherwise False
    */
-  bool DownloadFlight(const RecordedFlightInfo &flight, const TCHAR *path,
+  bool DownloadFlight(const RecordedFlightInfo &flight, Path path,
                       OperationEnvironment &env) override;
 };
 

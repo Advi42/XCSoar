@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,9 +28,11 @@ Copyright_License {
 #include "AirspaceLook.hpp"
 #include "AircraftLook.hpp"
 #include "TaskLook.hpp"
-#include "MarkerLook.hpp"
 #include "TrailLook.hpp"
+#include "WaveLook.hpp"
 #include "WindArrowLook.hpp"
+#include "TopographyLook.hpp"
+#include "OverlayLook.hpp"
 #include "Screen/Icon.hpp"
 #include "Screen/Bitmap.hpp"
 #include "Screen/Pen.hpp"
@@ -49,13 +51,15 @@ struct MapLook {
   AirspaceLook airspace;
   AircraftLook aircraft;
   TaskLook task;
-  MarkerLook marker;
   TrailLook trail;
+  WaveLook wave;
   WindArrowLook wind;
 
 #ifdef HAVE_NOAA
   NOAALook noaa;
 #endif
+
+  OverlayLook overlay;
 
 #ifdef HAVE_HATCHED_BRUSH
   Bitmap above_terrain_bitmap;
@@ -69,8 +73,11 @@ struct MapLook {
   Pen compass_triangle_pen;
   Brush compass_triangle_brush;
 
-  Pen reach_pen;
-  Pen reach_pen_thick;
+  Pen reach_terrain_pen;
+  Pen reach_terrain_pen_thick;
+
+  Pen reach_working_pen;
+  Pen reach_working_pen_thick;
 
   Pen track_line_pen;
 
@@ -82,14 +89,10 @@ struct MapLook {
   MaskedIcon traffic_warning_icon;
   MaskedIcon traffic_alarm_icon;
 
-  MaskedIcon map_scale_left_icon;
-  MaskedIcon map_scale_right_icon;
-
-  MaskedIcon logger_on_icon, logger_off_icon;
   MaskedIcon cruise_mode_icon, climb_mode_icon, final_glide_mode_icon, abort_mode_icon;
   MaskedIcon waiting_for_fix_icon, no_gps_icon;
 
-  const Font *overlay_font;
+  TopographyLook topography;
 
   void Initialise(const MapSettings &settings,
                   const Font &font, const Font &bold_font);

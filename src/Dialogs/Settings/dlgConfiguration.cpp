@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,6 @@ Copyright_License {
 
 #include "Dialogs/Dialogs.h"
 #include "Dialogs/Message.hpp"
-#include "Widget/DockWindow.hpp"
 #include "Widget/ArrowPagerWidget.hpp"
 #include "Widget/CreateWindowWidget.hpp"
 #include "Dialogs/WidgetDialog.hpp"
@@ -35,7 +34,6 @@ Copyright_License {
 #include "Form/Button.hpp"
 #include "Form/LambdaActionListener.hpp"
 #include "Screen/Layout.hpp"
-#include "Screen/Key.h"
 #include "Profile/Profile.hpp"
 #include "LogFile.hpp"
 #include "Util/Macros.hpp"
@@ -71,12 +69,18 @@ Copyright_License {
 #include "Panels/AudioVarioConfigPanel.hpp"
 #endif
 
+#ifdef HAVE_VOLUME_CONTROLLER
+#include "Panels/AudioConfigPanel.hpp"
+#endif
+
 #ifdef HAVE_TRACKING
 #include "Panels/TrackingConfigPanel.hpp"
 #endif
 
-#ifdef HAVE_MODEL_TYPE
-#include "Panels/ExperimentalConfigPanel.hpp"
+#include "Panels/CloudConfigPanel.hpp"
+
+#ifdef HAVE_PCMET
+#include "Panels/WeatherConfigPanel.hpp"
 #endif
 
 #include <assert.h>
@@ -86,51 +90,80 @@ static unsigned current_page;
 // TODO: eliminate global variables
 static ArrowPagerWidget *pager;
 
-static constexpr TabMenuGroup main_menu_captions[] = {
-  { N_("Site Files"), },
-  { N_("Map Display"), },
-  { N_("Glide Computer"), },
-  { N_("Gauges"), },
-  { N_("Task Defaults"), },
-  { N_("Look"), },
-  { N_("Setup"), },
+static constexpr TabMenuPage files_pages[] = {
+  { N_("Site Files"), CreateSiteConfigPanel },
+  { nullptr, nullptr }
 };
 
-static constexpr TabMenuPage pages[] = {
-  {N_("Site Files"), 0, CreateSiteConfigPanel },
-  {N_("Orientation"), 1, CreateMapDisplayConfigPanel },
-  {N_("Elements"), 1, CreateSymbolsConfigPanel },
-  {N_("Waypoints"), 1, CreateWaypointDisplayConfigPanel },
-  {N_("Terrain"), 1, CreateTerrainDisplayConfigPanel },
-  {N_("Airspace"), 1, CreateAirspaceConfigPanel },
-  {N_("Safety Factors"), 2, CreateSafetyFactorsConfigPanel },
-  {N_("Glide Computer"), 2, CreateGlideComputerConfigPanel },
-  {N_("Wind"), 2, CreateWindConfigPanel },
-  {N_("Route"), 2, CreateRouteConfigPanel },
-  {N_("Scoring"), 2, CreateScoringConfigPanel },
-  {N_("FLARM, Other"), 3, CreateGaugesConfigPanel },
-  {N_("Vario"), 3, CreateVarioConfigPanel },
+static constexpr TabMenuPage map_pages[] = {
+  { N_("Orientation"), CreateMapDisplayConfigPanel },
+  { N_("Elements"), CreateSymbolsConfigPanel },
+  { N_("Waypoints"), CreateWaypointDisplayConfigPanel },
+  { N_("Terrain"), CreateTerrainDisplayConfigPanel },
+  { N_("Airspace"), CreateAirspaceConfigPanel },
+  { nullptr, nullptr }
+};
+
+static constexpr TabMenuPage computer_pages[] = {
+  { N_("Safety Factors"), CreateSafetyFactorsConfigPanel },
+  { N_("Glide Computer"), CreateGlideComputerConfigPanel },
+  { N_("Wind"), CreateWindConfigPanel },
+  { N_("Route"), CreateRouteConfigPanel },
+  { N_("Scoring"), CreateScoringConfigPanel },
+  { nullptr, nullptr }
+};
+
+static constexpr TabMenuPage gauge_pages[] = {
+  { N_("FLARM, Other"), CreateGaugesConfigPanel },
+  { N_("Vario"), CreateVarioConfigPanel },
 #ifdef HAVE_PCM_PLAYER
-  {N_("Audio Vario"), 3, CreateAudioVarioConfigPanel },
+  { N_("Audio Vario"), CreateAudioVarioConfigPanel },
 #endif
-  {N_("Task Rules"), 4, CreateTaskRulesConfigPanel },
-  {N_("Turnpoint Types"), 4, CreateTaskDefaultsConfigPanel },
-  {N_("Language, Input"), 5, CreateInterfaceConfigPanel },
-  {N_("Screen Layout"), 5, CreateLayoutConfigPanel },
-  {N_("Pages"), 5, CreatePagesConfigPanel },
-  {N_("InfoBox Sets"), 5, CreateInfoBoxesConfigPanel },
-  {N_("Logger"), 6, CreateLoggerConfigPanel },
-  {N_("Units"), 6, CreateUnitsConfigPanel },
+  { nullptr, nullptr }
+};
+
+static constexpr TabMenuPage task_pages[] = {
+  { N_("Task Rules"), CreateTaskRulesConfigPanel },
+  { N_("Turnpoint Types"), CreateTaskDefaultsConfigPanel },
+  { nullptr, nullptr }
+};
+
+static constexpr TabMenuPage look_pages[] = {
+  { N_("Language, Input"), CreateInterfaceConfigPanel },
+  { N_("Screen Layout"), CreateLayoutConfigPanel },
+  { N_("Pages"), CreatePagesConfigPanel },
+  { N_("InfoBox Sets"), CreateInfoBoxesConfigPanel },
+  { nullptr, nullptr }
+};
+
+static constexpr TabMenuPage setup_pages[] = {
+  { N_("Logger"), CreateLoggerConfigPanel },
+  { N_("Units"), CreateUnitsConfigPanel },
   // Important: all pages after Units in this list must not have data fields that are
   // unit-dependent because they will be saved after their units may have changed.
   // ToDo: implement API that controls order in which pages are saved
-  {N_("Time"), 6, CreateTimeConfigPanel },
+  { N_("Time"), CreateTimeConfigPanel },
 #ifdef HAVE_TRACKING
-  {N_("Tracking"), 6, CreateTrackingConfigPanel },
+  { N_("Tracking"), CreateTrackingConfigPanel },
 #endif
-#ifdef HAVE_MODEL_TYPE
-  {N_("Experimental Features"), 6, CreateExperimentalConfigPanel, },
+  { _T("XCSoar Cloud"), CreateCloudConfigPanel },
+#ifdef HAVE_PCMET
+  { _T("Weather"), CreateWeatherConfigPanel },
 #endif
+#ifdef HAVE_VOLUME_CONTROLLER
+  { N_("Audio"), CreateAudioConfigPanel },
+#endif
+  { nullptr, nullptr }
+};
+
+static constexpr TabMenuGroup main_menu_captions[] = {
+  { N_("Site Files"), files_pages },
+  { N_("Map Display"), map_pages },
+  { N_("Glide Computer"), computer_pages },
+  { N_("Gauges"), gauge_pages },
+  { N_("Task Defaults"), task_pages },
+  { N_("Look"), look_pages },
+  { N_("Setup"), setup_pages },
 };
 
 class ConfigurationExtraButtons final
@@ -143,7 +176,7 @@ class ConfigurationExtraButtons final
     PixelRect expert, button2, button1;
 
     Layout(const PixelRect &rc):expert(rc), button2(rc), button1(rc) {
-      const unsigned height = rc.bottom - rc.top;
+      const unsigned height = rc.GetHeight();
       const unsigned max_control_height = ::Layout::GetMaximumControlHeight();
 
       if (height >= 3 * max_control_height) {
@@ -161,16 +194,15 @@ class ConfigurationExtraButtons final
   const DialogLook &look;
 
   CheckBoxControl expert;
-  WndButton button2, button1;
+  Button button2, button1;
   bool borrowed2, borrowed1;
 
 public:
   ConfigurationExtraButtons(const DialogLook &_look)
     :look(_look),
-     button2(look.button), button1(look.button),
      borrowed2(false), borrowed1(false) {}
 
-  WndButton &GetButton(unsigned number) {
+  Button &GetButton(unsigned number) {
     switch (number) {
     case 1:
       return button1;
@@ -197,8 +229,8 @@ protected:
     expert.Create(parent, look, _("Expert"),
                   layout.expert, style, *this, EXPERT);
 
-    button2.Create(parent, _T(""), layout.button2, style);
-    button1.Create(parent, _T(""), layout.button1, style);
+    button2.Create(parent, look.button, _T(""), layout.button2, style);
+    button1.Create(parent, look.button, _T(""), layout.button1, style);
   }
 
   virtual void Show(const PixelRect &rc) override {
@@ -246,13 +278,13 @@ private:
 
 void
 ConfigPanel::BorrowExtraButton(unsigned i, const TCHAR *caption,
-                               void (*callback)())
+                               ActionListener &listener, int id)
 {
   ConfigurationExtraButtons &extra =
     (ConfigurationExtraButtons &)pager->GetExtra();
-  WndButton &button = extra.GetButton(i);
+  Button &button = extra.GetButton(i);
   button.SetCaption(caption);
-  button.SetOnClickNotify(callback);
+  button.SetListener(listener, id);
   button.Show();
 }
 
@@ -261,7 +293,7 @@ ConfigPanel::ReturnExtraButton(unsigned i)
 {
   ConfigurationExtraButtons &extra =
     (ConfigurationExtraButtons &)pager->GetExtra();
-  WndButton &button = extra.GetButton(i);
+  Button &button = extra.GetButton(i);
   button.Hide();
 }
 
@@ -328,8 +360,7 @@ void dlgConfigurationShowModal()
                                       return menu;
                                     }));
 
-  menu->InitMenu(pages, ARRAY_SIZE(pages),
-                 main_menu_captions, ARRAY_SIZE(main_menu_captions));
+  menu->InitMenu(main_menu_captions, ARRAY_SIZE(main_menu_captions));
 
   /* restore last selected menu item */
   menu->SetCursor(current_page);

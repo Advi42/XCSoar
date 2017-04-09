@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,7 +32,8 @@ Copyright_License {
 #include "Device/Declaration.hpp"
 #include "NMEA/Checksum.hpp"
 #include "Operation/Operation.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/TruncateString.hpp"
+#include "Util/ConvertString.hpp"
 
 #include <tchar.h>
 #include <stdio.h>
@@ -41,9 +42,6 @@ Copyright_License {
 #ifdef _UNICODE
 #include <windows.h>
 #endif
-
-// hack, soulf be configurable
-#define  USESHORTTPNAME   1
 
 // Additional sentance for EW support
 
@@ -65,9 +63,10 @@ protected:
                     OperationEnvironment &env);
 
 public:
-  virtual void LinkTimeout() override;
-  virtual bool Declare(const Declaration &declaration, const Waypoint *home,
-                       OperationEnvironment &env) override;
+  /* virtual methods from class Device */
+  void LinkTimeout() override;
+  bool Declare(const Declaration &declaration, const Waypoint *home,
+               OperationEnvironment &env) override;
 };
 
 static void
@@ -107,7 +106,7 @@ convert_string(char *dest, size_t size, const TCHAR *src)
     length = size - 1;
 
   int length2 = ::WideCharToMultiByte(CP_ACP, 0, src, length, dest, size,
-                                      NULL, NULL);
+                                      nullptr, nullptr);
   if (length2 < 0)
     length2 = 0;
   dest[length2] = '\0';
@@ -220,7 +219,6 @@ bool
 EWDevice::AddWaypoint(const Waypoint &way_point, OperationEnvironment &env)
 {
   char EWRecord[100];
-  TCHAR IDString[12];
   int DegLat, DegLon;
   double tmp, MinLat, MinLon;
   char NoS, EoW;
@@ -230,16 +228,15 @@ EWDevice::AddWaypoint(const Waypoint &way_point, OperationEnvironment &env)
     return false;
 
   // copy at most 6 chars
-  CopyString(IDString, way_point.name.c_str(), 7);
+  const WideToUTF8Converter name_utf8(way_point.name.c_str());
+  if (!name_utf8.IsValid())
+    return false;
+
+  char IDString[12];
+  char *end = CopyTruncateString(IDString, 7, name_utf8);
 
   // fill up with spaces
-  while (_tcslen(IDString) < 6)
-    _tcscat(IDString, _T(" "));
-
-#if USESHORTTPNAME > 0
-  // truncate to short name
-  _tcscpy(&IDString[3], _T("   "));
-#endif
+  std::fill(end, IDString + 6, ' ');
 
   // prepare lat
   tmp = (double)way_point.location.latitude.Degrees();

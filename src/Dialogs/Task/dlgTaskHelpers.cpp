@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,12 +23,11 @@ Copyright_License {
 
 #include "dlgTaskHelpers.hpp"
 #include "Dialogs/TextEntry.hpp"
-#include "Dialogs/Message.hpp"
 #include "Language/Language.hpp"
 #include "Units/Units.hpp"
 #include "Task/TypeStrings.hpp"
 #include "Task/ValidationErrorStrings.hpp"
-#include "Task/ProtectedTaskManager.hpp"
+#include "Task/SaveFile.hpp"
 #include "Task/ObservationZones/CylinderZone.hpp"
 #include "Task/ObservationZones/SectorZone.hpp"
 #include "Task/ObservationZones/LineSectorZone.hpp"
@@ -37,13 +36,10 @@ Copyright_License {
 #include "Engine/Task/Ordered/OrderedTask.hpp"
 #include "Engine/Task/Points/Type.hpp"
 #include "Engine/Task/Factory/AbstractTaskFactory.hpp"
-#include "Components.hpp"
 #include "LocalPath.hpp"
-#include "OS/FileUtil.hpp"
+#include "OS/Path.hpp"
 
 #include <assert.h>
-#include <stdio.h>
-#include <windef.h> /* for MAX_PATH */
 
 /**
  *
@@ -91,7 +87,7 @@ TaskSummaryShape(const OrderedTask *task, TCHAR *text)
     break;
 
   default:
-    _stprintf(text, _("%d legs"), task->TaskSize() - 1);
+    StringFormatUnsafe(text, _("%d legs"), task->TaskSize() - 1);
     break;
   }
   return FAIShape;
@@ -122,32 +118,32 @@ OrderedTaskSummary(const OrderedTask *task, TCHAR *text, bool linebreaks)
   }
 
   if (!task->TaskSize()) {
-    _stprintf(text, _("Task is empty (%s)"),
-             OrderedTaskFactoryName(task->GetFactoryType()));
+    StringFormatUnsafe(text, _("Task is empty (%s)"),
+                       OrderedTaskFactoryName(task->GetFactoryType()));
   } else {
     if (task->HasTargets())
-      _stprintf(text, _T("%s%s%.0f %s%s%s %.0f %s%s%s %.0f %s (%s)"),
-                summary_shape,
-                linebreak,
-                (double)Units::ToUserDistance(stats.distance_nominal),
-                Units::GetDistanceName(),
-                linebreak,
-                _("max."),
-                (double)Units::ToUserDistance(stats.distance_max),
-                Units::GetDistanceName(),
-                linebreak,
-                _("min."),
-                (double)Units::ToUserDistance(stats.distance_min),
-                Units::GetDistanceName(),
-                OrderedTaskFactoryName(task->GetFactoryType()));
+      StringFormatUnsafe(text, _T("%s%s%.0f %s%s%s %.0f %s%s%s %.0f %s (%s)"),
+                         summary_shape,
+                         linebreak,
+                         (double)Units::ToUserDistance(stats.distance_nominal),
+                         Units::GetDistanceName(),
+                         linebreak,
+                         _("max."),
+                         (double)Units::ToUserDistance(stats.distance_max),
+                         Units::GetDistanceName(),
+                         linebreak,
+                         _("min."),
+                         (double)Units::ToUserDistance(stats.distance_min),
+                         Units::GetDistanceName(),
+                         OrderedTaskFactoryName(task->GetFactoryType()));
     else
-      _stprintf(text, _T("%s%s%s %.0f %s (%s)"),
-                summary_shape,
-                linebreak,
-                _("dist."),
-                (double)Units::ToUserDistance(stats.distance_nominal),
-                Units::GetDistanceName(),
-                OrderedTaskFactoryName(task->GetFactoryType()));
+      StringFormatUnsafe(text, _T("%s%s%s %.0f %s (%s)"),
+                         summary_shape,
+                         linebreak,
+                         _("dist."),
+                         (double)Units::ToUserDistance(stats.distance_nominal),
+                         Units::GetDistanceName(),
+                         OrderedTaskFactoryName(task->GetFactoryType()));
   }
 }
 
@@ -157,19 +153,19 @@ OrderedTaskPointLabel(TaskPointType type, const TCHAR *name,
 {
   switch (type) {
   case TaskPointType::START:
-    _stprintf(buffer, _T("S: %s"), name);
+    StringFormatUnsafe(buffer, _T("S: %s"), name);
     break;
 
   case TaskPointType::AST:
-    _stprintf(buffer, _T("T%d: %s"), index, name);
+    StringFormatUnsafe(buffer, _T("T%d: %s"), index, name);
     break;
 
   case TaskPointType::AAT:
-    _stprintf(buffer, _T("A%d: %s"), index, name);
+    StringFormatUnsafe(buffer, _T("A%d: %s"), index, name);
     break;
 
   case TaskPointType::FINISH:
-    _stprintf(buffer, _T("F: %s"), name);
+    StringFormatUnsafe(buffer, _T("F: %s"), name);
     break;
 
   default:
@@ -187,21 +183,21 @@ OrderedTaskPointRadiusLabel(const ObservationZonePoint &ozp, TCHAR* buffer)
 
   case ObservationZone::Shape::SECTOR:
   case ObservationZone::Shape::ANNULAR_SECTOR:
-    _stprintf(buffer,_T("%s - %s: %.1f%s"), _("Sector"), _("Radius"),
-              (double)Units::ToUserDistance(((const SectorZone &)ozp).GetRadius()),
-              Units::GetDistanceName());
+    StringFormatUnsafe(buffer,_T("%s - %s: %.1f%s"), _("Sector"), _("Radius"),
+                       (double)Units::ToUserDistance(((const SectorZone &)ozp).GetRadius()),
+                       Units::GetDistanceName());
     return;
 
   case ObservationZone::Shape::LINE:
-    _stprintf(buffer,_T("%s - %s: %.1f%s"), _("Line"), _("Gate width"),
-              (double)Units::ToUserDistance(((const LineSectorZone &)ozp).GetLength()),
-              Units::GetDistanceName());
+    StringFormatUnsafe(buffer,_T("%s - %s: %.1f%s"), _("Line"), _("Gate width"),
+                       (double)Units::ToUserDistance(((const LineSectorZone &)ozp).GetLength()),
+                       Units::GetDistanceName());
     return;
 
   case ObservationZone::Shape::CYLINDER:
-    _stprintf(buffer,_T("%s - %s: %.1f%s"), _("Cylinder"), _("Radius"),
-              (double)Units::ToUserDistance(((const CylinderZone &)ozp).GetRadius()),
-              Units::GetDistanceName());
+    StringFormatUnsafe(buffer,_T("%s - %s: %.1f%s"), _("Cylinder"), _("Radius"),
+                       (double)Units::ToUserDistance(((const CylinderZone &)ozp).GetRadius()),
+                       Units::GetDistanceName());
     return;
 
   case ObservationZone::Shape::MAT_CYLINDER:
@@ -209,9 +205,9 @@ OrderedTaskPointRadiusLabel(const ObservationZonePoint &ozp, TCHAR* buffer)
     return;
 
   case ObservationZone::Shape::CUSTOM_KEYHOLE:
-    _stprintf(buffer,_T("%s - %s: %.1f%s"), _("Keyhole"), _("Radius"),
-              (double)Units::ToUserDistance(((const KeyholeZone &)ozp).GetRadius()),
-              Units::GetDistanceName());
+    StringFormatUnsafe(buffer,_T("%s - %s: %.1f%s"), _("Keyhole"), _("Radius"),
+                       (double)Units::ToUserDistance(((const KeyholeZone &)ozp).GetRadius()),
+                       Units::GetDistanceName());
     return;
 
   case ObservationZone::Shape::DAEC_KEYHOLE:
@@ -242,19 +238,14 @@ OrderedTaskPointRadiusLabel(const ObservationZonePoint &ozp, TCHAR* buffer)
 bool
 OrderedTaskSave(OrderedTask &task)
 {
-  assert(protected_task_manager != nullptr);
-
   TCHAR fname[69] = _T("");
   if (!TextEntryDialog(fname, 64, _("Enter a task name")))
     return false;
 
-  TCHAR path[MAX_PATH];
-  LocalPath(path, _T("tasks"));
-  Directory::Create(path);
+  const auto tasks_path = MakeLocalPath(_T("tasks"));
 
   _tcscat(fname, _T(".tsk"));
   task.SetName(StaticString<64>(fname));
-  LocalPath(path, _T("tasks"), fname);
-  protected_task_manager->TaskSave(path, task);
+  SaveTask(AllocatedPath::Build(tasks_path, fname), task);
   return true;
 }

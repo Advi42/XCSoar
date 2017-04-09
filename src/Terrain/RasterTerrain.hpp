@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,17 +27,16 @@ Copyright_License {
 #include "RasterMap.hpp"
 #include "Geo/GeoPoint.hpp"
 #include "Thread/Guard.hpp"
+#include "OS/Path.hpp"
+#include "IO/ZipArchive.hpp"
 #include "Compiler.h"
-
-#include <tchar.h>
 
 class FileCache;
 class OperationEnvironment;
 
 /**
- * Class to manage raster terrain database, potentially with 
- * caching or demand-loading.
- * 
+ * Class to manage raster terrain database, potentially with caching
+ * or demand-loading.
  */
 class RasterTerrain : public Guard<RasterMap> {
 public:
@@ -45,35 +44,31 @@ public:
   friend class ProtectedTaskManager; // for intersection
   friend class WaypointVisitorMap; // for intersection rendering
 
-  /** invalid value for terrain */
-  static constexpr short TERRAIN_INVALID = RasterBuffer::TERRAIN_INVALID;
+private:
+  ZipArchive archive;
 
-protected:
   RasterMap map;
 
+private:
+  /**
+   * Constructor.  Returns uninitialised object.
+   */
+  explicit RasterTerrain(ZipArchive &&_archive)
+    :Guard<RasterMap>(map), archive(std::move(_archive)) {}
+
 public:
-
-/** 
- * Constructor.  Returns uninitialised object. 
- * 
- */
-  RasterTerrain(const TCHAR *path, const TCHAR *world_file, FileCache *cache,
-                OperationEnvironment &operation)
-    :Guard<RasterMap>(map), map(path, world_file, cache, operation) {}
-
   const Serial &GetSerial() const {
     return map.GetSerial();
   }
 
-/** 
- * Load the terrain.  Determines the file to load from profile settings.
- * 
- */
+  /**
+   * Load the terrain.  Determines the file to load from profile settings.
+   */
   static RasterTerrain *OpenTerrain(FileCache *cache,
                                     OperationEnvironment &operation);
 
   gcc_pure
-  short GetTerrainHeight(const GeoPoint location) const {
+  TerrainHeight GetTerrainHeight(const GeoPoint location) const {
     Lease lease(*this);
     return lease->GetHeight(location);
   }
@@ -82,6 +77,22 @@ public:
     return map.GetMapCenter();
   }
 
+  /**
+   * @return true if the method shall be called again
+   */
+  bool UpdateTiles(const GeoPoint &location, double radius);
+
+private:
+  bool LoadCache(FileCache &cache, Path path);
+
+  bool LoadCache(FileCache *cache, Path path) {
+    return cache != nullptr && LoadCache(*cache, path);
+  }
+
+  bool SaveCache(FileCache &cache, Path path) const;
+
+  bool Load(Path path, FileCache *cache,
+            OperationEnvironment &operation);
 };
 
 #endif

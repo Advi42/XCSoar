@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,11 +26,11 @@ Copyright_License {
 #include "Screen/Icon.hpp"
 #include "Language/Language.hpp"
 #include "Screen/Layout.hpp"
-#include "Logger/Logger.hpp"
 #include "Task/ProtectedTaskManager.hpp"
+#include "Engine/Task/TaskManager.hpp"
 #include "Engine/Task/Ordered/OrderedTask.hpp"
 #include "Renderer/TextInBox.hpp"
-#include "Terrain/RasterWeather.hpp"
+#include "Weather/Rasp/RaspRenderer.hpp"
 #include "Formatter/UserUnits.hpp"
 #include "Formatter/UserGeoPointFormatter.hpp"
 #include "UIState.hpp"
@@ -38,8 +38,10 @@ Copyright_License {
 #include "Terrain/RasterTerrain.hpp"
 #include "Util/Macros.hpp"
 #include "Util/Clamp.hpp"
+#include "Util/StringAPI.hxx"
 #include "Look/GestureLook.hpp"
 #include "Input/InputEvents.hpp"
+#include "Renderer/MapScaleRenderer.hpp"
 
 #include <stdio.h>
 
@@ -70,10 +72,9 @@ GlueMapWindow::DrawCrossHairs(Canvas &canvas) const
   if (!render_projection.IsValid())
     return;
 
-  Pen dash_pen(Pen::DASH, 1, COLOR_DARK_GRAY);
-  canvas.Select(dash_pen);
+  canvas.Select(look.overlay.crosshair_pen);
 
-  const RasterPoint center = render_projection.GetScreenOrigin();
+  const auto center = render_projection.GetScreenOrigin();
 
   canvas.DrawLine(center.x + 20, center.y,
               center.x - 20, center.y);
@@ -93,13 +94,13 @@ GlueMapWindow::DrawPanInfo(Canvas &canvas) const
   mode.shape = LabelShape::OUTLINED;
   mode.align = TextInBoxMode::Alignment::RIGHT;
 
-  const Font &font = *look.overlay_font;
+  const Font &font = *look.overlay.overlay_font;
   canvas.Select(font);
 
-  UPixelScalar padding = Layout::FastScale(4);
-  UPixelScalar height = font.GetHeight();
-  PixelScalar y = 0 + padding;
-  PixelScalar x = render_projection.GetScreenWidth() - padding;
+  unsigned padding = Layout::FastScale(4);
+  unsigned height = font.GetHeight();
+  int y = 0 + padding;
+  int x = render_projection.GetScreenWidth() - padding;
 
   if (compass_visible)
     /* don't obscure the north arrow */
@@ -107,14 +108,11 @@ GlueMapWindow::DrawPanInfo(Canvas &canvas) const
     y += Layout::Scale(19) + Layout::FastScale(13);
 
   if (terrain) {
-    short elevation = terrain->GetTerrainHeight(location);
-    if (!RasterBuffer::IsSpecial(elevation)) {
-      StaticString<64> elevation_short, elevation_long;
-      FormatUserAltitude(fixed(elevation),
-                                elevation_short.buffer(), elevation_short.MAX_SIZE);
-
+    TerrainHeight elevation = terrain->GetTerrainHeight(location);
+    if (!elevation.IsSpecial()) {
+      StaticString<64> elevation_long;
       elevation_long = _("Elevation: ");
-      elevation_long += elevation_short;
+      elevation_long += FormatUserAltitude(elevation.GetValue());
 
       TextInBox(canvas, elevation_long, x, y, mode,
                 render_projection.GetScreenWidth(),
@@ -129,7 +127,7 @@ GlueMapWindow::DrawPanInfo(Canvas &canvas) const
 
   TCHAR *start = buffer;
   while (true) {
-    TCHAR *newline = _tcschr(start, _T('\n'));
+    auto *newline = StringFind(start, _T('\n'));
     if (newline != nullptr)
       *newline = _T('\0');
 
@@ -163,33 +161,25 @@ GlueMapWindow::DrawGPSStatus(Canvas &canvas, const PixelRect &rc,
     // early exit
     return;
 
-  PixelScalar x = rc.left + Layout::FastScale(2);
-  PixelScalar y = rc.bottom - Layout::FastScale(35);
-  icon->Draw(canvas, x, y);
+  PixelPoint p(rc.left + Layout::FastScale(2),
+               rc.bottom - Layout::FastScale(35));
+  icon->Draw(canvas, p);
 
-  x += icon->GetSize().cx + Layout::FastScale(4);
-  y = rc.bottom - Layout::FastScale(34);
+  p.x += icon->GetSize().cx + Layout::FastScale(4);
+  p.y = rc.bottom - Layout::FastScale(34);
 
   TextInBoxMode mode;
   mode.shape = LabelShape::ROUNDED_BLACK;
 
-  const Font &font = *look.overlay_font;
+  const Font &font = *look.overlay.overlay_font;
   canvas.Select(font);
-  TextInBox(canvas, txt, x, y, mode, rc, nullptr);
+  TextInBox(canvas, txt, p.x, p.y, mode, rc, nullptr);
 }
 
 void
 GlueMapWindow::DrawFlightMode(Canvas &canvas, const PixelRect &rc) const
 {
-  PixelScalar offset = 0;
-
-  // draw logger status
-  if (logger != nullptr && logger->IsLoggerActive()) {
-    bool flip = (Basic().date_time_utc.second % 2) == 0;
-    const MaskedIcon &icon = flip ? look.logger_on_icon : look.logger_off_icon;
-    offset = icon.GetSize().cx;
-    icon.Draw(canvas, rc.right - offset, rc.bottom - icon.GetSize().cy);
-  }
+  int offset = 0;
 
   // draw flight mode
   const MaskedIcon *bmp;
@@ -205,8 +195,9 @@ GlueMapWindow::DrawFlightMode(Canvas &canvas, const PixelRect &rc) const
 
   offset += bmp->GetSize().cx + Layout::Scale(6);
 
-  bmp->Draw(canvas, rc.right - offset,
-            rc.bottom - bmp->GetSize().cy - Layout::Scale(4));
+  bmp->Draw(canvas,
+            PixelPoint(rc.right - offset,
+                       rc.bottom - bmp->GetSize().cy - Layout::Scale(4)));
 
   // draw flarm status
   if (!GetMapSettings().show_flarm_alarm_level)
@@ -233,8 +224,9 @@ GlueMapWindow::DrawFlightMode(Canvas &canvas, const PixelRect &rc) const
 
   offset += bmp->GetSize().cx + Layout::Scale(6);
 
-  bmp->Draw(canvas, rc.right - offset,
-            rc.bottom - bmp->GetSize().cy - Layout::Scale(2));
+  bmp->Draw(canvas,
+            PixelPoint(rc.right - offset,
+                       rc.bottom - bmp->GetSize().cy - Layout::Scale(2)));
 }
 
 void
@@ -254,8 +246,8 @@ GlueMapWindow::DrawFinalGlide(Canvas &canvas, const PixelRect &rc) const
     if (!task_stats.task_valid || !solution.IsOk() || !solution_mc0.IsDefined())
       return;
 
-    if (solution_mc0.SelectAltitudeDifference(glide_settings) < fixed(-1000) &&
-        solution.SelectAltitudeDifference(glide_settings) < fixed(-1000))
+    if (solution_mc0.SelectAltitudeDifference(glide_settings) < -1000 &&
+        solution.SelectAltitudeDifference(glide_settings) < -1000)
       return;
   }
 
@@ -279,41 +271,15 @@ void
 GlueMapWindow::DrawMapScale(Canvas &canvas, const PixelRect &rc,
                             const MapWindowProjection &projection) const
 {
+  RenderMapScale(canvas, projection, rc, look.overlay);
+
   if (!projection.IsValid())
     return;
 
   StaticString<80> buffer;
 
-  fixed map_width = projection.GetScreenWidthMeters();
-
-  const Font &font = *look.overlay_font;
-  canvas.Select(font);
-  FormatUserMapScale(map_width, buffer.buffer(), true);
-  PixelSize text_size = canvas.CalcTextSize(buffer);
-
-  const PixelScalar text_padding_x = Layout::GetTextPadding();
-  const PixelScalar height = font.GetCapitalHeight()
-    + Layout::GetTextPadding();
-
-  PixelScalar x = 0;
-  look.map_scale_left_icon.Draw(canvas, 0, rc.bottom - height);
-
-  x += look.map_scale_left_icon.GetSize().cx;
-  canvas.DrawFilledRectangle(x, rc.bottom - height,
-                             x + 2 * text_padding_x + text_size.cx,
-                             rc.bottom, COLOR_WHITE);
-
-  canvas.SetBackgroundTransparent();
-  canvas.SetTextColor(COLOR_BLACK);
-  x += text_padding_x;
-  canvas.DrawText(x,
-                  rc.bottom - font.GetAscentHeight() - Layout::Scale(1),
-                  buffer);
-
-  x += text_padding_x + text_size.cx;
-  look.map_scale_right_icon.Draw(canvas, x, rc.bottom - height);
-
   buffer.clear();
+
   if (GetMapSettings().auto_zoom_enabled)
     buffer = _T("AUTO ");
 
@@ -344,13 +310,18 @@ GlueMapWindow::DrawMapScale(Canvas &canvas, const PixelRect &rc,
         _T("BALLAST %d LITERS "),
         (int)GetComputerSettings().polar.glide_polar_task.GetBallastLitres());
 
-  if (weather != nullptr && weather->GetParameter() > 0) {
-    const TCHAR *label = weather->ItemLabel(weather->GetParameter());
+  if (rasp_renderer != nullptr) {
+    const TCHAR *label = rasp_renderer->GetLabel();
     if (label != nullptr)
-      buffer += label;
+      buffer += gettext(label);
   }
 
   if (!buffer.empty()) {
+
+    const Font &font = *look.overlay.overlay_font;
+    canvas.Select(font);
+    const unsigned height = font.GetCapitalHeight()
+        + Layout::GetTextPadding();
     int y = rc.bottom - height;
 
     TextInBoxMode mode;
@@ -369,7 +340,7 @@ GlueMapWindow::DrawThermalEstimate(Canvas &canvas) const
     const MapWindowProjection &projection = render_projection;
     const ThermalLocatorInfo &thermal_locator = Calculated().thermal_locator;
     if (thermal_locator.estimate_valid) {
-      RasterPoint sc;
+      PixelPoint sc;
       if (projection.GeoToScreenIfVisible(thermal_locator.estimate_location, sc)) {
         look.thermal_source_icon.Draw(canvas, sc);
       }
@@ -380,7 +351,7 @@ GlueMapWindow::DrawThermalEstimate(Canvas &canvas) const
 }
 
 void
-GlueMapWindow::RenderTrail(Canvas &canvas, const RasterPoint aircraft_pos)
+GlueMapWindow::RenderTrail(Canvas &canvas, const PixelPoint aircraft_pos)
 {
   unsigned min_time;
   switch(GetMapSettings().trail.length) {
@@ -403,7 +374,7 @@ GlueMapWindow::RenderTrail(Canvas &canvas, const RasterPoint aircraft_pos)
 }
 
 void
-GlueMapWindow::RenderTrackBearing(Canvas &canvas, const RasterPoint aircraft_pos)
+GlueMapWindow::RenderTrackBearing(Canvas &canvas, const PixelPoint aircraft_pos)
 {
   DrawTrackBearing(canvas, aircraft_pos, InCirclingMode());
 }
@@ -412,13 +383,13 @@ void
 GlueMapWindow::DrawThermalBand(Canvas &canvas, const PixelRect &rc) const
 {
   if (Calculated().task_stats.total.solution_remaining.IsOk() &&
-      Calculated().task_stats.total.solution_remaining.altitude_difference > fixed(50)
+      Calculated().task_stats.total.solution_remaining.altitude_difference > 50
       && GetDisplayMode() == DisplayMode::FINAL_GLIDE)
     return;
 
   PixelRect tb_rect;
   tb_rect.left = rc.left;
-  tb_rect.right = rc.left+Layout::Scale(20);
+  tb_rect.right = rc.left+Layout::Scale(25);
   tb_rect.top = Layout::Scale(2);
   tb_rect.bottom = (rc.bottom-rc.top)/5 - Layout::Scale(2);
 
@@ -449,8 +420,8 @@ GlueMapWindow::DrawStallRatio(Canvas &canvas, const PixelRect &rc) const
 {
   if (Basic().stall_ratio_available) {
     // JMW experimental, display stall sensor
-    fixed s = Clamp(Basic().stall_ratio, fixed(0), fixed(1));
-    PixelScalar m((rc.bottom - rc.top) * s * s);
+    auto s = Clamp(Basic().stall_ratio, 0., 1.);
+    int m = rc.GetHeight() * s * s;
 
     canvas.SelectBlackPen();
     canvas.DrawLine(rc.right - 1, rc.bottom - m, rc.right - 11, rc.bottom - m);

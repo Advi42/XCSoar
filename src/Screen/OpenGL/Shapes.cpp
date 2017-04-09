@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Compute5r - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,16 +35,16 @@ namespace OpenGL {
 static GLFallbackArrayBuffer *
 MakeCircleBuffer(unsigned n)
 {
-  assert(4096 % n == 0);
+  assert(INT_ANGLE_RANGE % n == 0);
 
   auto buffer = new GLFallbackArrayBuffer();
 
-  FloatPoint *const p0 = (FloatPoint *)buffer->BeginWrite(sizeof(*p0) * n);
-  FloatPoint *p = p0, *p2 = p + n / 2;
+  FloatPoint2D *const p0 = (FloatPoint2D *)buffer->BeginWrite(sizeof(*p0) * n);
+  auto *p = p0, *p2 = p + n / 2;
 
   for (unsigned i = 0; i < n / 2; ++i, ++p, ++p2) {
-    float x = ISINETABLE[(i * (4096 / n) + 1024) & 0xfff] / 1024.;
-    float y = ISINETABLE[i * (4096 / n)] / 1024.;
+    float x = ISINETABLE[(i * (INT_ANGLE_RANGE / n) + 1024) & INT_ANGLE_MASK] / 1024.;
+    float y = ISINETABLE[i * (INT_ANGLE_RANGE / n)] / 1024.;
 
     p->x = x;
     p->y = y;
@@ -53,7 +53,7 @@ MakeCircleBuffer(unsigned n)
     p2->y = -y;
   }
 
-  buffer->CommitWrite(sizeof(*p0) * n, p);
+  buffer->CommitWrite(sizeof(*p0) * n, p0);
   return buffer;
 }
 
@@ -62,7 +62,7 @@ OpenGL::InitShapes()
 {
   DeinitShapes();
 
-  assert(4096 % CIRCLE_SIZE == 0);  // implies: assert(SIZE % 2 == 0)
+  assert(INT_ANGLE_RANGE % CIRCLE_SIZE == 0); // implies: assert(SIZE % 2 == 0)
 
   circle_buffer = MakeCircleBuffer(CIRCLE_SIZE);
   small_circle_buffer = MakeCircleBuffer(SMALL_CIRCLE_SIZE);

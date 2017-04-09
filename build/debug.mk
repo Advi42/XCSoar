@@ -1,16 +1,11 @@
 DEBUG ?= y
-DEBUG_GLIBCXX ?= $(DEBUG)
+DEBUG_GLIBCXX ?= n
 
 ifeq ($(DEBUG),y)
 OPTIMIZE := -O0
 OPTIMIZE += -funit-at-a-time
 else
-  ifeq ($(CLANG)$(LLVM)$(LTO),yny)
-    OPTIMIZE := -O4
-  else
-    OPTIMIZE := -Os
-  endif
-
+  OPTIMIZE := -Os
   OPTIMIZE += -DNDEBUG
 endif
 
@@ -41,7 +36,13 @@ OPTIMIZE += -funsafe-loop-optimizations
 endif
 
 ifeq ($(LTO),y)
-OPTIMIZE += -flto -fwhole-program
+ifeq ($(CLANG),n)
+# 8 LTO threads - that's an arbitrary value, but better than the
+# default
+OPTIMIZE += -flto=8
+else
+OPTIMIZE += -flto
+endif
 endif
 
 ifeq ($(LLVM),y)
@@ -53,4 +54,10 @@ ifeq ($(PROFILE),y)
 FLAGS_PROFILE := -pg
 else
 FLAGS_PROFILE :=
+endif
+
+ifeq ($(SANITIZE),y)
+SANITIZE_FLAGS := -fsanitize=address
+else
+SANITIZE_FLAGS :=
 endif

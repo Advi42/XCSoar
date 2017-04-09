@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ Copyright_License {
 #include "BMP085Listener.hpp"
 #include "Atmosphere/Temperature.hpp"
 #include "Atmosphere/Pressure.hpp"
-#include "Java/Class.hpp"
+#include "Java/Class.hxx"
 #include "org_xcsoar_NativeBMP085Listener.h"
 
 #include <stddef.h>
@@ -46,8 +46,8 @@ Java_org_xcsoar_NativeBMP085Listener_onBMP085Values(JNIEnv *env, jobject obj,
     return;
 
   BMP085Listener &listener = *(BMP085Listener *)(void *)ptr;
-  listener.onBMP085Values(CelsiusToKelvin(fixed(temperature)),
-                          AtmosphericPressure::Pascal(fixed(pressure)));
+  listener.onBMP085Values(CelsiusToKelvin(temperature),
+                          AtmosphericPressure::Pascal(pressure));
 }
 
 JNIEXPORT void JNICALL
@@ -79,7 +79,7 @@ NativeBMP085Listener::Deinitialise(JNIEnv *env)
 jobject
 NativeBMP085Listener::Create(JNIEnv *env, BMP085Listener &listener)
 {
-  assert(cls != NULL);
+  assert(cls != nullptr);
 
   return env->NewObject(cls, ctor, (jlong)&listener);
 }

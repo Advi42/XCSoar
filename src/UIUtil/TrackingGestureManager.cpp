@@ -29,28 +29,32 @@
 
 #include "TrackingGestureManager.hpp"
 
-bool
-TrackingGestureManager::Update(PixelScalar x, PixelScalar y)
-{
-  points.back() = { x, y };
+#include <assert.h>
 
-  if (!GestureManager::Update(x, y))
+bool
+TrackingGestureManager::Update(PixelPoint p)
+{
+  assert(!points.empty());
+
+  points.back() = p;
+
+  if (!GestureManager::Update(p))
     return false;
 
-  points.emplace_back(x, y);
+  points.emplace_back(p);
   return true;
 }
 
 void
-TrackingGestureManager::Start(PixelScalar x, PixelScalar y, int threshold)
+TrackingGestureManager::Start(PixelPoint p, int threshold)
 {
   // Start point
-  points.emplace_back(x, y);
+  points.emplace_back(p);
 
   // Next point that is changed by Update()
-  points.emplace_back(x, y);
+  points.emplace_back(p);
 
-  GestureManager::Start(x, y, threshold);
+  GestureManager::Start(p, threshold);
 }
 
 const TCHAR*

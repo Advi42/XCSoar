@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,9 +24,7 @@ Copyright_License {
 #include "Integer.hpp"
 #include "ComboList.hpp"
 #include "Util/NumberParser.hpp"
-#include "Asset.hpp"
 
-#include <stdlib.h>
 #include <stdio.h>
 
 static bool datafield_key_up = false;
@@ -94,9 +92,6 @@ DataFieldInteger::SpeedUp(bool keyup)
 {
   int res = 1;
 
-  if (IsAltair())
-    return res;
-
   if (keyup != datafield_key_up) {
     speedup = 0;
     datafield_key_up = keyup;
@@ -122,7 +117,7 @@ DataFieldInteger::SpeedUp(bool keyup)
 void
 DataFieldInteger::AppendComboValue(ComboList &combo_list, int value) const
 {
-  TCHAR a[edit_format.MAX_SIZE], b[display_format.MAX_SIZE];
+  TCHAR a[edit_format.capacity()], b[display_format.capacity()];
   _stprintf(a, edit_format, value);
   _stprintf(b, display_format, value);
   combo_list.Append(combo_list.size(), a, b);
@@ -155,7 +150,7 @@ DataFieldInteger::CreateComboList(const TCHAR *reference_string) const
   bool found_current = false;
   for (int i = first; i <= last; i += step) {
     if (!found_current && reference <= i) {
-      combo_list.ComboPopupItemSavedIndex = combo_list.size();
+      combo_list.current_index = combo_list.size();
 
       if (reference < i)
         /* the current value is not listed - insert it here */
@@ -170,7 +165,7 @@ DataFieldInteger::CreateComboList(const TCHAR *reference_string) const
   if (reference > last) {
     /* the current value out of range - append it here */
     last = reference;
-    combo_list.ComboPopupItemSavedIndex = combo_list.size();
+    combo_list.current_index = combo_list.size();
     AppendComboValue(combo_list, reference);
   }
 
@@ -182,7 +177,7 @@ DataFieldInteger::CreateComboList(const TCHAR *reference_string) const
 }
 
 void
-DataFieldInteger::SetFromCombo(int index, TCHAR *value)
+DataFieldInteger::SetFromCombo(gcc_unused int index, const TCHAR *value)
 {
   SetAsString(value);
 }

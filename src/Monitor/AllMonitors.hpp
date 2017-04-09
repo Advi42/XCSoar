@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,13 +25,20 @@ Copyright_License {
 #define XCSOAR_ALL_MONITORS_HPP
 
 #include "Blackboard/BlackboardListener.hpp"
+#include "RateLimiter.hpp"
+#include "WindMonitor.hpp"
+#include "AirspaceWarningMonitor.hpp"
+#include "TaskConstraintsMonitor.hpp"
 #include "TaskAdvanceMonitor.hpp"
 #include "MatTaskMonitor.hpp"
 
 /**
  * A container that combines all monitor classes.
  */
-class AllMonitors final : private NullBlackboardListener {
+class AllMonitors final : NullBlackboardListener, RateLimiter {
+  WindMonitor wind;
+  AirspaceWarningMonitor airspace_warnings;
+  TaskConstraintsMonitor task_constraints;
   TaskAdvanceMonitor task_advance;
   MatTaskMonitor mat_task;
 
@@ -40,18 +47,28 @@ public:
   ~AllMonitors();
 
   void Reset() {
+    wind.Reset();
+    airspace_warnings.Reset();
+    task_constraints.Reset();
     task_advance.Reset();
     mat_task.Reset();
   }
 
   void Check() {
+    wind.Check();
+    airspace_warnings.Check();
+    task_constraints.Check();
     task_advance.Check();
     mat_task.Check();
   }
 
 private:
-  virtual void OnCalculatedUpdate(const MoreData &basic,
-                                  const DerivedInfo &calculated) override {
+  void OnCalculatedUpdate(const MoreData &basic,
+                          const DerivedInfo &calculated) override {
+    RateLimiter::Trigger();
+  }
+
+  void Run() override {
     Check();
   }
 };

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,13 +25,10 @@ Copyright_License {
 #define XCSOAR_FORM_LIST_HPP
 
 #include "Screen/PaintWindow.hpp"
-#include "Form/ScrollBar.hpp"
-#include "Compiler.h"
-
-#ifndef _WIN32_WCE
 #include "Screen/Timer.hpp"
+#include "Form/ScrollBar.hpp"
 #include "UIUtil/KineticManager.hpp"
-#endif
+#include "Compiler.h"
 
 struct DialogLook;
 class ContainerWindow;
@@ -50,8 +47,7 @@ class LambdaListItemRenderer : public ListItemRenderer, private C {
 public:
   LambdaListItemRenderer(C &&c):C(std::move(c)) {}
 
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned idx) override {
+  void OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned idx) override {
     C::operator()(canvas, rc, idx);
   }
 };
@@ -73,22 +69,21 @@ public:
   FunctionListItemRenderer(ListItemRendererFunction _function)
     :function(_function) {}
 
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned idx) override {
+  void OnPaintItem(Canvas &canvas, const PixelRect rc, unsigned idx) override {
     function(canvas, rc, idx);
   }
 };
 
 class ListCursorHandler {
 public:
-  virtual void OnCursorMoved(unsigned index) {}
+  virtual void OnCursorMoved(gcc_unused unsigned index) {}
 
   gcc_pure
-  virtual bool CanActivateItem(unsigned index) const {
+  virtual bool CanActivateItem(gcc_unused unsigned index) const {
     return false;
   }
 
-  virtual void OnActivateItem(unsigned index) {}
+  virtual void OnActivateItem(gcc_unused unsigned index) {}
 };
 
 /**
@@ -103,7 +98,7 @@ protected:
   ScrollBar scroll_bar;
 
   /** The height of one item on the screen, in pixels. */
-  UPixelScalar item_height;
+  unsigned item_height;
   /** The number of items in the list. */
   unsigned length;
   /** The index of the topmost item currently being displayed. */
@@ -113,7 +108,7 @@ protected:
    * Which pixel row of the "origin" item is being displayed at the
    * top of the Window?
    */
-  UPixelScalar pixel_pan;
+  unsigned pixel_pan;
 
   /** The number of items visible at a time. */
   unsigned items_visible;
@@ -158,19 +153,25 @@ protected:
   ListItemRenderer *item_renderer;
   ListCursorHandler *cursor_handler;
 
-#ifndef _WIN32_WCE
   KineticManager kinetic;
   WindowTimer kinetic_timer;
-#endif
 
 public:
+  ListControl(const DialogLook &_look);
+
   /**
    * @param parent the parent window
    * @param _item_height Height of an item of the ListFrameControl
    */
   ListControl(ContainerWindow &parent, const DialogLook &look,
               PixelRect rc, const WindowStyle style,
-              UPixelScalar _item_height);
+              unsigned _item_height);
+
+  virtual ~ListControl();
+
+  void Create(ContainerWindow &parent,
+              PixelRect rc, const WindowStyle style,
+              unsigned _item_height);
 
   void SetItemRenderer(ListItemRenderer *_item_renderer) {
     assert(_item_renderer != nullptr);
@@ -194,7 +195,7 @@ public:
     return item_height;
   }
 
-  void SetItemHeight(UPixelScalar _item_height);
+  void SetItemHeight(unsigned _item_height);
 
   bool IsEmpty() const {
     return length == 0;
@@ -214,7 +215,7 @@ public:
   /**
    * Check whether the length of the list is below a certain
    * threshold.  Small lists may have different behaviour on some
-   * platforms (e.g. Altair).
+   * platforms.
    */
   bool IsShort() const {
     return length <= 8 || length <= items_visible;
@@ -245,7 +246,7 @@ public:
   /**
    * Pan the "origin item" to the specified pixel position.
    */
-  void SetPixelPan(UPixelScalar _pixel_pan);
+  void SetPixelPan(unsigned _pixel_pan);
 
   /**
    * Scrolls to the specified index.
@@ -309,29 +310,26 @@ protected:
   /** Draws the ScrollBar */
   void DrawScrollBar(Canvas &canvas);
 
-#ifndef _WIN32_WCE
-  virtual bool OnTimer(WindowTimer &timer) override;
-  virtual void OnDestroy() override;
-#endif
+  bool OnTimer(WindowTimer &timer) override;
+  void OnDestroy() override;
 
-  virtual void OnResize(PixelSize new_size) override;
+  void OnResize(PixelSize new_size) override;
 
-  virtual void OnSetFocus() override;
-  virtual void OnKillFocus() override;
+  void OnSetFocus() override;
+  void OnKillFocus() override;
 
-  virtual bool OnMouseDown(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseUp(PixelScalar x, PixelScalar y) override;
-  virtual bool OnMouseMove(PixelScalar x, PixelScalar y,
-                           unsigned keys) override;
-  virtual bool OnMouseWheel(PixelScalar x, PixelScalar y, int delta) override;
+  bool OnMouseDown(PixelPoint p) override;
+  bool OnMouseUp(PixelPoint p) override;
+  bool OnMouseMove(PixelPoint p, unsigned keys) override;
+  bool OnMouseWheel(PixelPoint p, int delta) override;
 
-  virtual bool OnKeyCheck(unsigned key_code) const override;
-  virtual bool OnKeyDown(unsigned key_code) override;
+  bool OnKeyCheck(unsigned key_code) const override;
+  bool OnKeyDown(unsigned key_code) override;
 
-  virtual void OnCancelMode() override;
+  void OnCancelMode() override;
 
-  virtual void OnPaint(Canvas &canvas) override;
-  virtual void OnPaint(Canvas &canvas, const PixelRect &dirty) override;
+  void OnPaint(Canvas &canvas) override;
+  void OnPaint(Canvas &canvas, const PixelRect &dirty) override;
 };
 
 #endif

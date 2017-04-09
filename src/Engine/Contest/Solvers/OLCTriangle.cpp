@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,8 +24,6 @@
 #include "Cast.hpp"
 #include "Trace/Trace.hpp"
 #include "Util/QuadTree.hpp"
-
-#include <limits>
 
 /*
  @todo potential to use 3d convex hull to speed search
@@ -55,7 +53,7 @@
  * now, we allow up to 5 km until this library has been implemented
  * properly.
  */
-static constexpr fixed max_distance(1000);
+static constexpr double max_distance(1000);
 
 OLCTriangle::OLCTriangle(const Trace &_trace,
                          const bool _is_fai, bool _predict,
@@ -81,7 +79,7 @@ OLCTriangle::Reset()
   // this should be adjusted when the trace size is known
   tick_iterations = 1000;
 
-  closing_pairs.clear();
+  closing_pairs.Clear();
   ClearTrace();
 
   ResetBranchAndBound();
@@ -96,7 +94,7 @@ OLCTriangle::ResetBranchAndBound()
 }
 
 gcc_pure
-static fixed
+static double
 CalcLegDistance(const ContestTraceVector &solution, const unsigned index)
 {
   // leg 0: 1-2
@@ -121,7 +119,7 @@ OLCTriangle::UpdateTrace(bool force)
 
     best_d = 0;
 
-    closing_pairs.clear();
+    closing_pairs.Clear();
     is_closed = FindClosingPairs(0);
 
    } else if (is_complete && incremental) {
@@ -194,7 +192,7 @@ OLCTriangle::SolveTriangle(bool exhaustive)
          closing_pair != closing_pairs.closing_pairs.end();
          ++closing_pair) {
 
-      auto already_relaxed = relaxed_pairs.findRange(*closing_pair);
+      auto already_relaxed = relaxed_pairs.FindRange(*closing_pair);
       if (already_relaxed.first != 0 || already_relaxed.second != 0)
         // this pair is already relaxed... continue with next
         continue;
@@ -202,14 +200,16 @@ OLCTriangle::SolveTriangle(bool exhaustive)
       unsigned relax_first = closing_pair->first;
       unsigned relax_last = closing_pair->second;
 
-      for (auto relaxed = closing_pair;
+      const unsigned max_first = closing_pair->first + relax;
+      const unsigned max_last = closing_pair->second + relax;
+
+      for (auto relaxed = std::next(closing_pair);
            relaxed != closing_pairs.closing_pairs.end() &&
-           relaxed->first <= closing_pair->first + relax &&
-           relaxed->second <= closing_pair->second + relax;
+           relaxed->first <= max_first && relaxed->second <= max_last;
            ++relaxed)
         relax_last = std::max(relax_last, relaxed->second);
 
-      relaxed_pairs.insert(ClosingPair(relax_first, relax_last));
+      relaxed_pairs.Insert(ClosingPair(relax_first, relax_last));
     }
 
     // TODO: reverse sort relaxed pairs according to number of contained points
@@ -226,7 +226,7 @@ OLCTriangle::SolveTriangle(bool exhaustive)
         // solution is better than best_d
         // only if triangle is inside a unrelaxed pair...
 
-        auto unrelaxed = closing_pairs.findRange(ClosingPair(std::get<0>(triangle), std::get<2>(triangle)));
+        auto unrelaxed = closing_pairs.FindRange(ClosingPair(std::get<0>(triangle), std::get<2>(triangle)));
         if (unrelaxed.first != 0 || unrelaxed.second != 0) {
           // fortunately it is inside a unrelaxed closing pair :-)
           start = unrelaxed.first;
@@ -242,7 +242,7 @@ OLCTriangle::SolveTriangle(bool exhaustive)
           for (const auto closing_pair : closing_pairs.closing_pairs) {
             if (closing_pair.first >= relaxed_pair.first &&
                 closing_pair.second <= relaxed_pair.second)
-              close_look.insert(closing_pair);
+              close_look.Insert(closing_pair);
          }
        }
       }
@@ -319,7 +319,7 @@ OLCTriangle::RunBranchAndBound(unsigned from, unsigned to, unsigned worst_d, boo
   // Assume a maximum speed of 100 m/s
   const unsigned fastskiprange = GetPoint(to).DeltaTime(GetPoint(from)) * 100;
   const unsigned fastskiprange_flat =
-    trace_master.ProjectRange(GetPoint(from).GetLocation(), fixed(fastskiprange));
+    trace_master.ProjectRange(GetPoint(from).GetLocation(), fastskiprange);
 
   if (fastskiprange_flat < worst_d)
     return std::tuple<unsigned, unsigned, unsigned, unsigned>(0, 0, 0, 0);
@@ -334,15 +334,16 @@ OLCTriangle::RunBranchAndBound(unsigned from, unsigned to, unsigned worst_d, boo
   // note: this is _not_ the breakepoint between small and large triangles,
   // but a slightly lower value used for relaxed large triangle checking.
   const unsigned large_triangle_check =
-    trace_master.ProjectRange(GetPoint(from).GetLocation(), fixed(500000)) * 0.99;
+    trace_master.ProjectRange(GetPoint(from).GetLocation(), 500000) * 0.99;
 
   if (!running) {
     // initiate algorithm. otherwise continue unfinished run
     running = true;
 
     // initialize bound-and-branch tree with root node (note: Candidate set interval is [min, max))
-    CandidateSet root_candidates(this, from, to + 1);
-    if (root_candidates.isFeasible(is_fai, large_triangle_check) && root_candidates.df_max >= worst_d)
+    CandidateSet root_candidates(*this, from, to + 1);
+    if (root_candidates.IsFeasible(is_fai, large_triangle_check) &&
+        root_candidates.df_max >= worst_d)
       branch_and_bound.insert(std::pair<unsigned, CandidateSet>(root_candidates.df_max, root_candidates));
   }
 
@@ -384,7 +385,8 @@ OLCTriangle::RunBranchAndBound(unsigned from, unsigned to, unsigned worst_d, boo
       node = --branch_and_bound.end();
     }
 
-    if (node->second.df_min >= worst_d && node->second.integral(this, is_fai, large_triangle_check)) {
+    if (node->second.df_min >= worst_d &&
+        node->second.IsIntegral(*this, is_fai, large_triangle_check)) {
       // node is integral feasible -> a possible solution
 
       worst_d = node->second.df_min;
@@ -399,29 +401,29 @@ OLCTriangle::RunBranchAndBound(unsigned from, unsigned to, unsigned worst_d, boo
     } else {
       // split largest bounding box of node and create child nodes
 
-      const unsigned tp1_diag = node->second.tp1.diagonal();
-      const unsigned tp2_diag = node->second.tp2.diagonal();
-      const unsigned tp3_diag = node->second.tp3.diagonal();
+      const unsigned tp1_diag = node->second.tp1.GetDiagnoal();
+      const unsigned tp2_diag = node->second.tp2.GetDiagnoal();
+      const unsigned tp3_diag = node->second.tp3.GetDiagnoal();
 
       const unsigned max_diag = std::max({tp1_diag, tp2_diag, tp3_diag});
 
       CandidateSet left, right;
       bool add = false;
 
-      if (tp1_diag == max_diag && node->second.tp1.size() != 1) {
+      if (tp1_diag == max_diag && node->second.tp1.GetSize() != 1) {
         // split tp1 range
         const unsigned split = (node->second.tp1.index_min + node->second.tp1.index_max) / 2;
 
         if (split <= node->second.tp2.index_max) {
           add = true;
 
-          left = CandidateSet(TurnPointRange(this, node->second.tp1.index_min, split),
+          left = CandidateSet(TurnPointRange(*this, node->second.tp1.index_min, split),
                               node->second.tp2, node->second.tp3);
 
-          right = CandidateSet(TurnPointRange(this, split, node->second.tp1.index_max),
+          right = CandidateSet(TurnPointRange(*this, split, node->second.tp1.index_max),
                                node->second.tp2, node->second.tp3);
         }
-      } else if (tp2_diag == max_diag && node->second.tp2.size() != 1) {
+      } else if (tp2_diag == max_diag && node->second.tp2.GetSize() != 1) {
         // split tp2 range
         const unsigned split = (node->second.tp2.index_min + node->second.tp2.index_max) / 2;
 
@@ -429,14 +431,14 @@ OLCTriangle::RunBranchAndBound(unsigned from, unsigned to, unsigned worst_d, boo
           add = true;
 
           left = CandidateSet(node->second.tp1,
-                              TurnPointRange(this, node->second.tp2.index_min, split),
+                              TurnPointRange(*this, node->second.tp2.index_min, split),
                               node->second.tp3);
 
           right = CandidateSet(node->second.tp1,
-                               TurnPointRange(this, split, node->second.tp2.index_max),
+                               TurnPointRange(*this, split, node->second.tp2.index_max),
                                node->second.tp3);
         }
-      } else if (node->second.tp3.size() != 1) {
+      } else if (node->second.tp3.GetSize() != 1) {
         // split tp3 range
         const unsigned split = (node->second.tp3.index_min + node->second.tp3.index_max) / 2;
 
@@ -444,20 +446,22 @@ OLCTriangle::RunBranchAndBound(unsigned from, unsigned to, unsigned worst_d, boo
           add = true;
 
           left = CandidateSet(node->second.tp1, node->second.tp2,
-                              TurnPointRange(this, node->second.tp3.index_min, split));
+                              TurnPointRange(*this, node->second.tp3.index_min, split));
 
           right = CandidateSet(node->second.tp1, node->second.tp2,
-                               TurnPointRange(this, split, node->second.tp3.index_max));
+                               TurnPointRange(*this, split, node->second.tp3.index_max));
         }
       }
 
       if (add) {
         // add the new candidate set only if it it's feasible and has d_min >= worst_d
-        if (left.df_max >= worst_d && left.isFeasible(is_fai, large_triangle_check)) {
+        if (left.df_max >= worst_d &&
+            left.IsFeasible(is_fai, large_triangle_check)) {
           branch_and_bound.insert(std::pair<unsigned, CandidateSet>(left.df_max, left));
         }
 
-        if (right.df_max >= worst_d && right.isFeasible(is_fai, large_triangle_check)) {
+        if (right.df_max >= worst_d &&
+            right.IsFeasible(is_fai, large_triangle_check)) {
           branch_and_bound.insert(std::pair<unsigned, CandidateSet>(right.df_max, right));
         }
       }
@@ -487,31 +491,48 @@ OLCTriangle::CalculateResult() const
 {
   ContestResult result;
   result.time = (is_complete && is_closed)
-    ? fixed(solution[4].DeltaTime(solution[0]))
-    : fixed(0);
+    ? solution[4].DeltaTime(solution[0])
+    : 0.;
   result.distance = (is_complete && is_closed)
     ? CalcLegDistance(solution, 0) + CalcLegDistance(solution, 1) + CalcLegDistance(solution, 2)
-    : fixed(0);
-  result.score = ApplyHandicap(result.distance * fixed(0.001));
+    : 0.;
+  result.score = ApplyHandicap(result.distance * 0.001);
   return result;
+}
+
+gcc_pure
+static bool
+IsInRange(const SearchPoint &a, const SearchPoint &b,
+          unsigned half_max_range_sq, double max_distance)
+{
+  /* optimisation: if the flat distance is much smaller than the
+     maximum range, we don't need to call the method
+     GeoPoint::Distance() which is very expensive */
+  return a.GetFlatLocation().DistanceSquared(b.GetFlatLocation()) <= half_max_range_sq ||
+    a.GetLocation().DistanceS(b.GetLocation()) <= max_distance;
 }
 
 bool
 OLCTriangle::FindClosingPairs(unsigned old_size)
 {
   if (predict) {
-    return closing_pairs.insert(ClosingPair(0, n_points-1));
+    return closing_pairs.Insert(ClosingPair(0, n_points-1));
   }
+
+  struct TracePointNode {
+    const TracePoint *point;
+    unsigned index;
+  };
 
   struct TracePointNodeAccessor {
     gcc_pure
     int GetX(const TracePointNode &node) const {
-      return node.point->GetFlatLocation().longitude;
+      return node.point->GetFlatLocation().x;
     }
 
     gcc_pure
     int GetY(const TracePointNode &node) const {
-      return node.point->GetFlatLocation().latitude;
+      return node.point->GetFlatLocation().y;
     }
   };
 
@@ -534,30 +555,31 @@ OLCTriangle::FindClosingPairs(unsigned old_size)
     point.point = &GetPoint(i);
     point.index = i;
 
-    const unsigned max_range =
-      trace_master.ProjectRange(GetPoint(i).GetLocation(), max_distance);
+    const SearchPoint start = *point.point;
+    const unsigned max_range = trace_master.ProjectRange(start.GetLocation(), max_distance);
+    const unsigned half_max_range_sq = max_range * max_range / 2;
 
-    const GeoPoint start = GetPoint(i).GetLocation();
-    const int min_altitude = GetMinimumFinishAltitude(GetPoint(i));
-    const int max_altitude = GetMaximumStartAltitude(GetPoint(i));
+    const int min_altitude = GetMinimumFinishAltitude(*point.point);
+    const int max_altitude = GetMaximumStartAltitude(*point.point);
 
     unsigned last = 0, first = i;
 
     const auto visitor = [this, i, start,
+                          half_max_range_sq,
                           min_altitude, max_altitude,
                           &first, &last]
       (const TracePointNode &node) {
-      const SearchPoint dest = GetPoint(node.index);
+      const auto &dest = *node.point;
 
       if (node.index + 2 < i &&
-          GetPoint(node.index).GetIntegerAltitude() <= max_altitude &&
-          start.Distance(dest.GetLocation()) <= max_distance) {
+          dest.GetIntegerAltitude() <= max_altitude &&
+          IsInRange(start, dest, half_max_range_sq, max_distance)) {
         // point i is last point
         first = std::min(node.index, first);
         last = i;
       } else if (node.index > i + 2 &&
-                 GetPoint(node.index).GetIntegerAltitude() >= min_altitude &&
-                 start.Distance(dest.GetLocation()) <= max_distance) {
+                 dest.GetIntegerAltitude() >= min_altitude &&
+                 IsInRange(start, dest, half_max_range_sq, max_distance)) {
         // point i is first point
         first = i;
         last = std::max(node.index, last);
@@ -566,7 +588,7 @@ OLCTriangle::FindClosingPairs(unsigned old_size)
 
     search_point_tree.VisitWithinRange(point, max_range, visitor);
 
-    if (last != 0 && closing_pairs.insert(ClosingPair(first, last)))
+    if (last != 0 && closing_pairs.Insert(ClosingPair(first, last)))
       new_pair = true;
   }
 

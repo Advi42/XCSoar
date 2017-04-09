@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@ Copyright_License {
 
 #include "Canvas.hpp"
 #include "Math/Point2D.hpp"
-#include "Util/DebugFlag.hpp"
 #include "Screen/OpenGL/Surface.hpp"
 
 #ifdef SOFTWARE_ROTATE_DISPLAY
@@ -42,11 +41,11 @@ class GLRenderBuffer;
  * An off-screen #Canvas implementation.
  */
 class BufferCanvas : public Canvas, private GLSurfaceListener {
-  GLTexture *texture;
+  GLTexture *texture = nullptr;
 
-  GLFrameBuffer *frame_buffer;
+  GLFrameBuffer *frame_buffer = nullptr;
 
-  GLRenderBuffer *stencil_buffer;
+  GLRenderBuffer *stencil_buffer = nullptr;
 
 #ifdef HAVE_GLES
   GLint old_viewport[4];
@@ -56,20 +55,18 @@ class BufferCanvas : public Canvas, private GLSurfaceListener {
   glm::mat4 old_projection_matrix;
 #endif
 
-  RasterPoint old_translate;
-  Point2D<unsigned> old_size;
+  PixelPoint old_translate;
+  UnsignedPoint2D old_size;
 
 #ifdef SOFTWARE_ROTATE_DISPLAY
   DisplayOrientation old_orientation;
 #endif
 
-  DebugFlag active;
+#ifndef NDEBUG
+  bool active = false;
+#endif
 
 public:
-  BufferCanvas()
-    :texture(nullptr), frame_buffer(nullptr), stencil_buffer(nullptr) {}
-  BufferCanvas(const Canvas &canvas,
-               UPixelScalar _width, UPixelScalar _height);
   ~BufferCanvas() {
     Destroy();
   }
@@ -123,8 +120,8 @@ public:
 #ifdef ENABLE_OPENGL
 private:
   /* from GLSurfaceListener */
-  virtual void SurfaceCreated() override;
-  virtual void SurfaceDestroyed() override;
+  void SurfaceCreated() override;
+  void SurfaceDestroyed() override;
 #endif
 };
 

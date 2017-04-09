@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,35 +21,66 @@ Copyright_License {
 }
 */
 
-#include "Terrain/RasterTileCache.hpp"
-#include "Terrain/RasterLocation.hpp"
-#include "jasper/jas_image.h"
+#include "RasterTileCache.hpp"
 #include "Math/Angle.hpp"
-#include "IO/ZipLineReader.hpp"
-#include "Operation/Operation.hpp"
-#include "Math/FastMath.h"
+#include "Math/FastMath.hpp"
+
+extern "C" {
+#include "jasper/jas_seq.h"
+}
 
 #include <string.h>
 #include <algorithm>
 
-short*
-RasterTileCache::GetImageBuffer(unsigned index)
+static void
+CopyOverviewRow(TerrainHeight *gcc_restrict dest, const jas_seqent_t *gcc_restrict src,
+                unsigned width, unsigned skip)
 {
-  if (TileRequest(index))
-    return tiles.GetLinear(index).GetImageBuffer();
-
-  return NULL;
+  for (unsigned x = 0; x < width; ++x, src += skip)
+    *dest++ = TerrainHeight(*src);
 }
 
 void
-RasterTileCache::SetTile(unsigned index,
-                         int xstart, int ystart, int xend, int yend)
+RasterTileCache::PutOverviewTile(unsigned index,
+                                 unsigned start_x, unsigned start_y,
+                                 unsigned end_x, unsigned end_y,
+                                 const struct jas_matrix &m)
 {
-  if (!segments.empty() && !segments.last().IsTileSegment())
-    /* link current marker segment with this tile */
-    segments.last().tile = index;
+  tiles.GetLinear(index).Set(start_x, start_y, end_x, end_y);
 
-  tiles.GetLinear(index).Set(xstart, ystart, xend, yend);
+  const unsigned dest_pitch = overview.GetWidth();
+
+  start_x = RasterTraits::ToOverview(start_x);
+  start_y = RasterTraits::ToOverview(start_y);
+
+  if (start_x >= overview.GetWidth() || start_y >= overview.GetHeight())
+    return;
+
+  unsigned width = RasterTraits::ToOverviewCeil(m.numcols_);
+  if (start_x + width > overview.GetWidth())
+    width = overview.GetWidth() - start_x;
+  unsigned height = RasterTraits::ToOverviewCeil(m.numrows_);
+  if (start_y + height > overview.GetHeight())
+    height = overview.GetHeight() - start_y;
+
+  const unsigned skip = 1 << OVERVIEW_BITS;
+
+  auto *gcc_restrict dest = overview.GetData()
+    + start_y * dest_pitch + start_x;
+
+  for (unsigned i = 0, y = 0; i < height; ++i, y += skip, dest += dest_pitch)
+    CopyOverviewRow(dest, m.rows_[y], width, skip);
+}
+
+void
+RasterTileCache::PutTileData(unsigned index,
+                             const struct jas_matrix &m)
+{
+  auto &tile = tiles.GetLinear(index);
+  if (!tile.IsRequested())
+    return;
+
+  tile.CopyFrom(m);
 }
 
 struct RTDistanceSort {
@@ -68,9 +99,6 @@ struct RTDistanceSort {
 bool
 RasterTileCache::PollTiles(int x, int y, unsigned radius)
 {
-  if (scan_overview)
-    return false;
-
   /* tiles are usually 256 pixels wide; with a radius smaller than
      that, the (optimized) tile distance calculations may fail;
      additionally, this ensures that tiles which are slightly out of
@@ -130,40 +158,28 @@ RasterTileCache::PollTiles(int x, int y, unsigned radius)
   return num_activate > 0;
 }
 
-bool
-RasterTileCache::TileRequest(unsigned index)
-{
-  RasterTile &tile = tiles.GetLinear(index);
-
-  if (!tile.IsRequested())
-    return false;
-
-  tile.Enable();
-  return true; // want to load this one!
-}
-
-short
+TerrainHeight
 RasterTileCache::GetHeight(unsigned px, unsigned py) const
 {
   if (px >= width || py >= height)
     // outside overall bounds
-    return RasterBuffer::TERRAIN_INVALID;
+    return TerrainHeight::Invalid();
 
   const RasterTile &tile = tiles.Get(px / tile_width, py / tile_height);
   if (tile.IsEnabled())
     return tile.GetHeight(px, py);
 
   // still not found, so go to overview
-  return overview.GetInterpolated(px << (SUBPIXEL_BITS - OVERVIEW_BITS),
-                                   py << (SUBPIXEL_BITS - OVERVIEW_BITS));
+  return overview.GetInterpolated(px << (RasterTraits::SUBPIXEL_BITS - RasterTraits::OVERVIEW_BITS),
+                                  py << (RasterTraits::SUBPIXEL_BITS - RasterTraits::OVERVIEW_BITS));
 }
 
-short
+TerrainHeight
 RasterTileCache::GetInterpolatedHeight(unsigned int lx, unsigned int ly) const
 {
   if ((lx >= overview_width_fine) || (ly >= overview_height_fine))
     // outside overall bounds
-    return RasterBuffer::TERRAIN_INVALID;
+    return TerrainHeight::Invalid();
 
   unsigned px = lx, py = ly;
   const unsigned int ix = CombinedDivAndMod(px);
@@ -174,8 +190,8 @@ RasterTileCache::GetInterpolatedHeight(unsigned int lx, unsigned int ly) const
     return tile.GetInterpolatedHeight(px, py, ix, iy);
 
   // still not found, so go to overview
-  return overview.GetInterpolated(lx >> OVERVIEW_BITS,
-                                   ly >> OVERVIEW_BITS);
+  return overview.GetInterpolated(RasterTraits::ToOverview(lx),
+                                  RasterTraits::ToOverview(ly));
 }
 
 void
@@ -188,9 +204,10 @@ RasterTileCache::SetSize(unsigned _width, unsigned _height,
   tile_width = _tile_width;
   tile_height = _tile_height;
 
-  overview.Resize(width >> OVERVIEW_BITS, height >> OVERVIEW_BITS);
-  overview_width_fine = width << SUBPIXEL_BITS;
-  overview_height_fine = height << SUBPIXEL_BITS;
+  overview.Resize(RasterTraits::ToOverview(width),
+                  RasterTraits::ToOverview(height));
+  overview_width_fine = width << RasterTraits::SUBPIXEL_BITS;
+  overview_height_fine = height << RasterTraits::SUBPIXEL_BITS;
 
   tiles.GrowDiscard(tile_columns, tile_rows);
 }
@@ -208,7 +225,6 @@ RasterTileCache::SetLatLonBounds(double _lon_min, double _lon_max,
                               std::max(lat_min, lat_max)),
                      GeoPoint(std::max(lon_min, lon_max),
                               std::min(lat_min, lat_max)));
-  bounds_initialised = true;
 }
 
 void
@@ -216,10 +232,8 @@ RasterTileCache::Reset()
 {
   width = 0;
   height = 0;
-  initialised = false;
-  bounds_initialised = false;
+  bounds.SetInvalid();
   segments.clear();
-  scan_overview = true;
 
   overview.Reset();
 
@@ -227,218 +241,19 @@ RasterTileCache::Reset()
     it->Disable();
 }
 
-gcc_pure
 const RasterTileCache::MarkerSegmentInfo *
 RasterTileCache::FindMarkerSegment(uint32_t file_offset) const
 {
-  for (const MarkerSegmentInfo *p = segments.begin(); p < segments.end(); ++p)
-    if (p->file_offset >= file_offset)
-      return p;
+  for (const auto &s : segments)
+    if (s.file_offset >= file_offset)
+      return &s;
 
-  return NULL;
-}
-
-long
-RasterTileCache::SkipMarkerSegment(long file_offset) const
-{
-  if (scan_overview)
-    /* use all segments when loading the overview */
-    return 0;
-
-  if (remaining_segments > 0) {
-    /* enable the follow-up segment */
-    --remaining_segments;
-    return 0;
-  }
-
-  const MarkerSegmentInfo *segment = FindMarkerSegment(file_offset);
-  if (segment == NULL)
-    /* past the end of the recorded segment list; shouldn't happen */
-    return 0;
-
-  long skip_to = segment->file_offset;
-  while (segment->IsTileSegment() &&
-         !tiles.GetLinear(segment->tile).IsRequested()) {
-    ++segment;
-    if (segment >= segments.end())
-      /* last segment is hidden; shouldn't happen either, because we
-         expect EOC there */
-      break;
-
-    skip_to = segment->file_offset;
-  }
-
-  remaining_segments = segment->count;
-  return skip_to - file_offset;
-}
-
-/**
- * Does this segment belong to the preceding tile?  If yes, then it
- * inherits the tile number.
- */
-static bool
-is_tile_segment(unsigned id)
-{
-  return id == 0xff93 /* SOD */ ||
-    id == 0xff52 /* COD */ ||
-    id == 0xff53 /* COC */ ||
-    id == 0xff5c /* QCD */ ||
-    id == 0xff5d /* QCC */ ||
-    id == 0xff5e /* RGN */ ||
-    id == 0xff5f /* POC */ ||
-    id == 0xff61 /* PPT */ ||
-    id == 0xff58 /* PLT */ ||
-    id == 0xff64 /* COM */;
+  return nullptr;
 }
 
 void
-RasterTileCache::MarkerSegment(long file_offset, unsigned id)
+RasterTileCache::FinishTileUpdate()
 {
-  if (!scan_overview || segments.full())
-    return;
-
-  if (operation != NULL)
-    operation->SetProgressPosition(file_offset / 65536);
-
-  if (is_tile_segment(id) && !segments.empty() &&
-      segments.last().IsTileSegment()) {
-    /* this segment belongs to the same tile as the preceding SOT
-       segment */
-    ++segments.last().count;
-    return;
-  }
-
-  if (segments.size() >= 2 && !segments.last().IsTileSegment() &&
-      !segments[segments.size() - 2].IsTileSegment()) {
-    /* the last two segments are both "generic" segments and can be merged*/
-    assert(segments.last().count == 0);
-
-    ++segments[segments.size() - 2].count;
-
-    /* reuse the second segment */
-    segments.last().file_offset = file_offset;
-  } else
-    segments.append(MarkerSegmentInfo(file_offset,
-                                      MarkerSegmentInfo::NO_TILE));
-}
-
-extern RasterTileCache *raster_tile_current;
-
-void
-RasterTileCache::LoadJPG2000(const char *jp2_filename)
-{
-  jas_stream_t *in;
-
-  raster_tile_current = this;
-
-  in = jas_stream_fopen(jp2_filename, "rb");
-  if (!in) {
-    Reset();
-    return;
-  }
-
-  if (operation != NULL)
-    operation->SetProgressRange(jas_stream_length(in) / 65536);
-
-  jp2_decode(in, scan_overview ? "xcsoar=2" : "xcsoar=1");
-  jas_stream_close(in);
-}
-
-bool
-RasterTileCache::LoadWorldFile(const TCHAR *path)
-{
-  ZipLineReaderA reader(path);
-  if (reader.error())
-    return false;
-
-  char *endptr;
-  const char *line = reader.ReadLine(); // x scale
-  double x_scale = strtod(line, &endptr);
-  if (endptr == line)
-    return false;
-
-  line = reader.ReadLine(); // y rotation
-  if (line == NULL)
-    return false;
-
-  double y_rotation = strtod(line, &endptr);
-  if (endptr == line || y_rotation < -0.01 || y_rotation > 0.01)
-    /* we don't support rotation */
-    return false;
-
-  line = reader.ReadLine(); // x rotation
-  if (line == NULL)
-    return false;
-
-  double x_rotation = strtod(line, &endptr);
-  if (endptr == line || x_rotation < -0.01 || x_rotation > 0.01)
-    /* we don't support rotation */
-    return false;
-
-  line = reader.ReadLine(); // y scale
-  if (line == NULL)
-    return false;
-
-  double y_scale = strtod(line, &endptr);
-  if (endptr == line)
-    return false;
-
-  line = reader.ReadLine(); // x origin
-  if (line == NULL)
-    return false;
-
-  double x_origin = strtod(line, &endptr);
-  if (endptr == line)
-    return false;
-
-  line = reader.ReadLine(); // y origin
-  if (line == NULL)
-    return false;
-
-  double y_origin = strtod(line, &endptr);
-  if (endptr == line)
-    return false;
-
-  SetLatLonBounds(x_origin, x_origin + GetWidth() * x_scale,
-                  y_origin, y_origin + GetHeight() * y_scale);
-  return true;
-}
-
-bool
-RasterTileCache::LoadOverview(const char *path, const TCHAR *world_file,
-                              OperationEnvironment &_operation)
-{
-  assert(operation == NULL);
-  operation = &_operation;
-
-  Reset();
-
-  LoadJPG2000(path);
-  scan_overview = false;
-
-  if (initialised && world_file != NULL)
-    LoadWorldFile(world_file);
-
-  if (initialised && !bounds_initialised)
-    initialised = false;
-
-  if (!initialised)
-    Reset();
-
-  operation = NULL;
-  return initialised;
-}
-
-void
-RasterTileCache::UpdateTiles(const char *path, int x, int y, unsigned radius)
-{
-  if (!PollTiles(x, y, radius))
-    return;
-
-  remaining_segments = 0;
-
-  LoadJPG2000(path);
-
   /* permanently disable the requested tiles which are still not
      loaded, to prevent trying to reload them over and over in a busy
      loop */
@@ -455,10 +270,10 @@ RasterTileCache::UpdateTiles(const char *path, int x, int y, unsigned radius)
 bool
 RasterTileCache::SaveCache(FILE *file) const
 {
-  if (!initialised)
+  if (!IsValid())
     return false;
 
-  assert(bounds_initialised);
+  assert(bounds.IsValid());
 
   /* save metadata */
   CacheHeader header;
@@ -523,7 +338,8 @@ RasterTileCache::LoadCache(FILE *file)
           header.tile_width, header.tile_height,
           header.tile_columns, header.tile_rows);
   bounds = header.bounds;
-  bounds_initialised = true;
+  if (!bounds.IsValid())
+    return false;
 
   /* load segments */
   for (unsigned i = 0; i < header.num_marker_segments; ++i) {
@@ -554,7 +370,5 @@ RasterTileCache::LoadCache(FILE *file)
             overview_size, file) != overview_size)
     return false;
 
-  initialised = true;
-  scan_overview = false;
   return true;
 }

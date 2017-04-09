@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -18,7 +18,7 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-  }
+}
 */
 
 package org.xcsoar;
@@ -65,6 +65,8 @@ final class IOIOHelper implements IOIOConnectionHolder,
     final String[] bootstraps = new String[]{
       "ioio.lib.impl.SocketIOIOConnectionBootstrap",
       "ioio.lib.android.accessory.AccessoryConnectionBootstrap",
+      "ioio.lib.android.bluetooth.BluetoothIOIOConnectionBootstrap",
+      "ioio.lib.android.device.DeviceConnectionBootstrap",
     };
 
     IOIOConnectionRegistry.addBootstraps(bootstraps);
@@ -163,9 +165,14 @@ final class IOIOHelper implements IOIOConnectionHolder,
 
     agent.enable();
 
-    for (IOIOConnectionBootstrap bootstrap : IOIOConnectionRegistry.getBootstraps())
-      if (bootstrap instanceof ContextWrapperDependent)
-        ((ContextWrapperDependent) bootstrap).open();
+    for (IOIOConnectionBootstrap bootstrap : IOIOConnectionRegistry.getBootstraps()) {
+      try {
+        if (bootstrap instanceof ContextWrapperDependent)
+          ((ContextWrapperDependent) bootstrap).open();
+      } catch (Exception e) {
+        Log.e(TAG, "ContextWrapperDependent.open() failed", e);
+      }
+    }
   }
 
   @Override public synchronized void removeListener(IOIOConnectionListener l) {

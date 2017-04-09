@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,14 +32,20 @@ Flight::Flight(const char* _flight_file, bool _keep_flight)
   : fixes(nullptr), keep_flight(_keep_flight), flight_file(_flight_file) {
   if (keep_flight)
     ReadFlight();
+
+  qnh = AtmosphericPressure::Standard();
+  qnh_available.Clear();
 }
 
 void Flight::ReadFlight() {
   fixes = new std::vector<IGCFixEnhanced>;
 
-  DebugReplay *replay = DebugReplayIGC::Create(flight_file);
+  DebugReplay *replay = DebugReplayIGC::Create(Path(flight_file));
 
   if (replay) {
+    if (qnh_available)
+      replay->SetQNH(qnh);
+
     while (replay->Next()) {
       IGCFixEnhanced fix;
       fix.Clear();

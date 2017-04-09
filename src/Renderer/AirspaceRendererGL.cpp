@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,13 +32,12 @@ Copyright_License {
 #include "Airspace/Airspaces.hpp"
 #include "Airspace/AirspacePolygon.hpp"
 #include "Airspace/AirspaceCircle.hpp"
-#include "Airspace/AirspaceVisitor.hpp"
 #include "Airspace/AirspaceWarningCopy.hpp"
-
+#include "Engine/Airspace/Predicate/AirspacePredicate.hpp"
 #include "Screen/OpenGL/Scope.hpp"
 
 class AirspaceVisitorRenderer final
-  : public AirspaceVisitor, protected MapCanvas
+  : protected MapCanvas
 {
   const AirspaceLook &look;
   const AirspaceWarningCopy &warning_manager;
@@ -50,7 +49,7 @@ public:
                           const AirspaceWarningCopy &_warnings,
                           const AirspaceRendererSettings &_settings)
     :MapCanvas(_canvas, _projection,
-               _projection.GetScreenBounds().Scale(fixed(1.1))),
+               _projection.GetScreenBounds().Scale(1.1)),
      look(_look), warning_manager(_warnings), settings(_settings)
   {
     glStencilMask(0xff);
@@ -68,14 +67,14 @@ private:
       settings.classes[airspace.GetType()];
     const AirspaceClassLook &class_look = look.classes[airspace.GetType()];
 
-    RasterPoint screen_center = projection.GeoToScreen(airspace.GetCenter());
+    auto screen_center = projection.GeoToScreen(airspace.GetReferenceLocation());
     unsigned screen_radius = projection.GeoToScreenDistance(airspace.GetRadius());
 
     if (!warning_manager.IsAcked(airspace) &&
         class_settings.fill_mode !=
         AirspaceClassRendererSettings::FillMode::NONE) {
-      GLEnable stencil(GL_STENCIL_TEST);
-      GLEnable blend(GL_BLEND);
+      const GLEnable<GL_STENCIL_TEST> stencil;
+      const GLEnable<GL_BLEND> blend;
       SetupInterior(airspace);
       if (warning_manager.HasWarning(airspace) ||
           warning_manager.IsInside(airspace) ||
@@ -115,7 +114,7 @@ private:
     if (!warning_manager.IsAcked(airspace) &&
         class_settings.fill_mode !=
         AirspaceClassRendererSettings::FillMode::NONE) {
-      GLEnable stencil(GL_STENCIL_TEST);
+      const GLEnable<GL_STENCIL_TEST> stencil;
 
       if (!fill_airspace) {
         // set stencil for filling (bit 0)
@@ -127,7 +126,7 @@ private:
       // fill interior without overpainting any previous outlines
       {
         SetupInterior(airspace, !fill_airspace);
-        GLEnable blend(GL_BLEND);
+        const GLEnable<GL_BLEND> blend;
         DrawPrepared();
       }
 
@@ -144,8 +143,8 @@ private:
       DrawPrepared();
   }
 
-protected:
-  virtual void Visit(const AbstractAirspace &airspace) override {
+public:
+  void Visit(const AbstractAirspace &airspace) {
     switch (airspace.GetShape()) {
     case AbstractAirspace::Shape::CIRCLE:
       VisitCircle((const AirspaceCircle &)airspace);
@@ -216,7 +215,7 @@ private:
 };
 
 class AirspaceFillRenderer final
-  : public AirspaceVisitor, protected MapCanvas
+  : protected MapCanvas
 {
   const AirspaceLook &look;
   const AirspaceWarningCopy &warning_manager;
@@ -228,7 +227,7 @@ public:
                        const AirspaceWarningCopy &_warnings,
                        const AirspaceRendererSettings &_settings)
     :MapCanvas(_canvas, _projection,
-               _projection.GetScreenBounds().Scale(fixed(1.1))),
+               _projection.GetScreenBounds().Scale(1.1)),
      look(_look), warning_manager(_warnings), settings(_settings)
   {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -236,11 +235,11 @@ public:
 
 private:
   void VisitCircle(const AirspaceCircle &airspace) {
-    RasterPoint screen_center = projection.GeoToScreen(airspace.GetCenter());
+    auto screen_center = projection.GeoToScreen(airspace.GetReferenceLocation());
     unsigned screen_radius = projection.GeoToScreenDistance(airspace.GetRadius());
 
     if (!warning_manager.IsAcked(airspace) && SetupInterior(airspace)) {
-      GLEnable blend(GL_BLEND);
+      const GLEnable<GL_BLEND> blend;
       canvas.DrawCircle(screen_center.x, screen_center.y, screen_radius);
     }
 
@@ -255,7 +254,7 @@ private:
 
     if (!warning_manager.IsAcked(airspace) && SetupInterior(airspace)) {
       // fill interior without overpainting any previous outlines
-      GLEnable blend(GL_BLEND);
+      GLEnable<GL_BLEND> blend;
       DrawPrepared();
     }
 
@@ -264,8 +263,8 @@ private:
       DrawPrepared();
   }
 
-protected:
-  virtual void Visit(const AbstractAirspace &airspace) override {
+public:
+  void Visit(const AbstractAirspace &airspace) {
     switch (airspace.GetShape()) {
     case AbstractAirspace::Shape::CIRCLE:
       VisitCircle((const AirspaceCircle &)airspace);
@@ -314,19 +313,25 @@ AirspaceRenderer::DrawInternal(Canvas &canvas,
                                const AirspaceWarningCopy &awc,
                                const AirspacePredicate &visible)
 {
+  const auto range =
+    airspaces->QueryWithinRange(projection.GetGeoScreenCenter(),
+                                projection.GetScreenDistanceMeters());
+
   if (settings.fill_mode == AirspaceRendererSettings::FillMode::ALL ||
       settings.fill_mode == AirspaceRendererSettings::FillMode::NONE) {
-    AirspaceFillRenderer renderer(canvas, projection, look, awc,
-                                  settings);
-    airspaces->VisitWithinRange(projection.GetGeoScreenCenter(),
-                                projection.GetScreenDistanceMeters(),
-                                renderer, visible);
+    AirspaceFillRenderer renderer(canvas, projection, look, awc, settings);
+    for (const auto &i : range) {
+      const AbstractAirspace &airspace = i.GetAirspace();
+      if (visible(airspace))
+        renderer.Visit(airspace);
+    }
   } else {
-    AirspaceVisitorRenderer renderer(canvas, projection, look, awc,
-                                     settings);
-    airspaces->VisitWithinRange(projection.GetGeoScreenCenter(),
-                                projection.GetScreenDistanceMeters(),
-                                renderer, visible);
+    AirspaceVisitorRenderer renderer(canvas, projection, look, awc, settings);
+    for (const auto &i : range) {
+      const AbstractAirspace &airspace = i.GetAirspace();
+      if (visible(airspace))
+        renderer.Visit(airspace);
+    }
   }
 }
 

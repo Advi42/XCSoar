@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@ Copyright_License {
 #include "Screen/LargeTextWindow.hpp"
 #include "Screen/Font.hpp"
 
-#include <windef.h> /* for MAX_PATH */
 #include <assert.h>
 
 gcc_pure
@@ -41,7 +40,7 @@ GetMinimumHeight(const WndProperty &control, const DialogLook &look,
                  bool vertical)
 {
   const unsigned padding = Layout::GetTextPadding();
-  unsigned height = look.text_font->GetHeight();
+  unsigned height = look.text_font.GetHeight();
   if (vertical && control.HasCaption())
     height *= 2;
   height += padding * 2;
@@ -243,7 +242,7 @@ void
 RowFormWidget::Add(Row::Type type, Window *window)
 {
   assert(IsDefined());
-#ifndef USE_GDI
+#ifndef USE_WINUSER
   assert(window->GetParent() == &GetWindow());
 #endif
   assert(window->IsVisible());
@@ -284,7 +283,7 @@ RowFormWidget::AddMultiLine(const TCHAR *text)
   ContainerWindow &panel = (ContainerWindow &)GetWindow();
   LargeTextWindow *ltw = new LargeTextWindow();
   ltw->Create(panel, rc, style);
-  ltw->SetFont(*look.text_font);
+  ltw->SetFont(look.text_font);
 
   if (text != nullptr)
     ltw->SetText(text);
@@ -292,7 +291,7 @@ RowFormWidget::AddMultiLine(const TCHAR *text)
   Add(Row::Type::MULTI_LINE, ltw);
 }
 
-WndButton *
+Button *
 RowFormWidget::AddButton(const TCHAR *label, ActionListener &listener, int id)
 {
   assert(IsDefined());
@@ -300,14 +299,13 @@ RowFormWidget::AddButton(const TCHAR *label, ActionListener &listener, int id)
   const PixelRect button_rc =
     InitialControlRect(Layout::GetMinimumControlHeight());
 
-  ButtonWindowStyle button_style;
+  WindowStyle button_style;
   button_style.TabStop();
-  button_style.multiline();
 
   ContainerWindow &panel = (ContainerWindow &)GetWindow();
 
-  WndButton *button = new WndButton(panel, look.button, label, button_rc,
-                                    button_style, listener, id);
+  Button *button = new Button(panel, look.button, label, button_rc,
+                              button_style, listener, id);
 
   Add(Row::Type::BUTTON, button);
   return button;
@@ -347,8 +345,8 @@ void
 RowFormWidget::UpdateLayout()
 {
   PixelRect current_rect = GetWindow().GetClientRect();
-  const unsigned total_width = current_rect.right - current_rect.left;
-  const unsigned total_height = current_rect.bottom - current_rect.top;
+  const unsigned total_width = current_rect.GetWidth();
+  const unsigned total_height = current_rect.GetHeight();
   current_rect.bottom = current_rect.top;
 
   const bool expert = UIGlobals::GetDialogSettings().expert;
@@ -401,8 +399,8 @@ RowFormWidget::UpdateLayout()
         const unsigned max_height = i.GetMaximumHeight(look, vertical);
         if (height > max_height) {
           /* never grow beyond declared maximum height */
+          grow_height = max_height - height + grow_height;
           height = max_height;
-          grow_height = max_height - height;
         }
 
         excess_height -= grow_height;
@@ -423,7 +421,7 @@ PixelSize
 RowFormWidget::GetMinimumSize() const
 {
   const unsigned value_width =
-    look.text_font->TextSize(_T("Foo Bar Foo Bar")).cx;
+    look.text_font.TextSize(_T("Foo Bar Foo Bar")).cx;
 
   const bool expert = UIGlobals::GetDialogSettings().expert;
 
@@ -443,7 +441,7 @@ PixelSize
 RowFormWidget::GetMaximumSize() const
 {
   const unsigned value_width =
-    look.text_font->TextSize(_T("Foo Bar Foo Bar")).cx * 2;
+    look.text_font.TextSize(_T("Foo Bar Foo Bar")).cx * 2;
 
   const unsigned edit_width = vertical
     ? std::max(GetRecommendedCaptionWidth(), value_width)

@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #include "FLARM/FlarmNetReader.hpp"
 #include "FLARM/FlarmNetRecord.hpp"
 #include "FLARM/FlarmId.hpp"
+#include "OS/Path.hpp"
 #include "TestUtil.hpp"
 
 int main(int argc, char **argv)
@@ -31,7 +32,8 @@ int main(int argc, char **argv)
   plan_tests(15);
 
   FlarmNetDatabase db;
-  int count = FlarmNetReader::LoadFile(_T("test/data/flarmnet/data.fln"), db);
+  int count = FlarmNetReader::LoadFile(Path(_T("test/data/flarmnet/data.fln")),
+                                       db);
   ok1(count == 6);
 
   FlarmId id = FlarmId::Parse("DDA85C", NULL);
@@ -39,13 +41,13 @@ int main(int argc, char **argv)
   const FlarmNetRecord *record = db.FindRecordById(id);
   ok1(record != NULL);
 
-  ok1(_tcscmp(record->id, _T("DDA85C")) == 0);
-  ok1(_tcscmp(record->pilot, _T("Tobias Bieniek")) == 0);
-  ok1(_tcscmp(record->airfield, _T("AACHEN")) == 0);
-  ok1(_tcscmp(record->plane_type, _T("Hornet")) == 0);
-  ok1(_tcscmp(record->registration, _T("D-4449")) == 0);
-  ok1(_tcscmp(record->callsign, _T("TH")) == 0);
-  ok1(_tcscmp(record->frequency, _T("130.625")) == 0);
+  ok1(StringIsEqual(record->id, _T("DDA85C")));
+  ok1(StringIsEqual(record->pilot, _T("Tobias Bieniek")));
+  ok1(StringIsEqual(record->airfield, _T("AACHEN")));
+  ok1(StringIsEqual(record->plane_type, _T("Hornet")));
+  ok1(StringIsEqual(record->registration, _T("D-4449")));
+  ok1(StringIsEqual(record->callsign, _T("TH")));
+  ok1(StringIsEqual(record->frequency, _T("130.625")));
 
   const FlarmNetRecord *array[3];
   ok1(db.FindRecordsByCallSign(_T("TH"), array, 3) == 2);
@@ -53,9 +55,9 @@ int main(int argc, char **argv)
   bool found4449 = false, found5799 = false;
   for (unsigned i = 0; i < 2; i++) {
     record = array[i];
-    if (_tcscmp(record->registration, _T("D-4449")) == 0)
+    if (StringIsEqual(record->registration, _T("D-4449")))
       found4449 = true;
-    if (_tcscmp(record->registration, _T("D-5799")) == 0)
+    if (StringIsEqual(record->registration, _T("D-5799")))
       found5799 = true;
   }
   ok1(found4449);

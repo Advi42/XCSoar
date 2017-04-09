@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -84,14 +84,14 @@ LoadString(const char *bytes, size_t length, TCHAR *res, size_t res_size)
 #endif
 
   // Trim the string of any additional spaces
-  TrimRight(res);
+  StripRight(res);
 }
 
 template<size_t size>
 static void
 LoadString(const char *bytes, size_t length, StaticString<size> &dest)
 {
-  return LoadString(bytes, length, dest.buffer(), dest.MAX_SIZE);
+  return LoadString(bytes, length, dest.buffer(), dest.capacity());
 }
 
 /**
@@ -116,7 +116,7 @@ LoadRecord(FlarmNetRecord &record, const char *line)
 
   // Terminate callsign string on first whitespace
   for (TCHAR *i = record.callsign.buffer(); *i != _T('\0'); ++i)
-    if (IsWhitespaceOrNull(*i))
+    if (IsWhitespaceFast(*i))
       *i = _T('\0');
 
   return true;
@@ -143,11 +143,10 @@ FlarmNetReader::LoadFile(NLineReader &reader, FlarmNetDatabase &database)
 }
 
 unsigned
-FlarmNetReader::LoadFile(const TCHAR *path, FlarmNetDatabase &database)
-{
+FlarmNetReader::LoadFile(Path path, FlarmNetDatabase &database)
+try {
   FileLineReaderA file(path);
-  if (file.error())
-    return 0;
-
   return LoadFile(file, database);
+} catch (const std::runtime_error &e) {
+  return 0;
 }

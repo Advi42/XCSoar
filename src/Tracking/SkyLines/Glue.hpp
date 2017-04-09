@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,36 +27,55 @@ Copyright_License {
 #include "Client.hpp"
 #include "Time/GPSClock.hpp"
 
+struct DerivedInfo;
+
 namespace SkyLinesTracking {
-  struct Settings;
 
-  class Glue {
-    Client client;
-    unsigned interval;
-    GPSClock clock;
+struct Settings;
+class Queue;
 
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
-    GPSClock traffic_clock;
-    bool traffic_enabled;
-#endif
+class Glue {
+  Client client;
+  unsigned interval = 0;
+  GPSClock clock;
 
-  public:
-    Glue();
+  GPSClock traffic_clock;
+  GPSClock thermal_clock;
 
-#ifdef HAVE_SKYLINES_TRACKING_HANDLER
-    void SetHandler(Handler *handler) {
-      client.SetHandler(handler);
-    }
-#endif
+  bool traffic_enabled = false;
+  bool near_traffic_enabled = false;
 
-    void SetSettings(const Settings &settings);
+  bool thermal_enabled = false;
 
-    void Tick(const NMEAInfo &basic);
+  bool roaming = true;
 
-    void RequestUserName(uint32_t user_id) {
-      client.SendUserNameRequest(user_id);
-    }
-  };
-}
+  Queue *queue = nullptr;
+
+  Client cloud_client;
+  GPSClock cloud_clock;
+
+  double last_climb_time = -1;
+
+public:
+  Glue(boost::asio::io_service &io_service, Handler *_handler);
+  ~Glue();
+
+  void SetSettings(const Settings &settings);
+
+  void Tick(const NMEAInfo &basic, const DerivedInfo &calculated);
+
+  void RequestUserName(uint32_t user_id) {
+    client.SendUserNameRequest(user_id);
+  }
+
+private:
+  gcc_pure
+  bool IsConnected() const;
+
+  void SendFixes(const NMEAInfo &basic);
+  void SendCloudFix(const NMEAInfo &basic, const DerivedInfo &calculated);
+};
+
+} /* namespace SkyLinesTracking */
 
 #endif

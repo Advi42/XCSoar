@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,20 +21,22 @@ Copyright_License {
 }
 */
 
-#include "Android/Main.hpp"
-#include "Android/Environment.hpp"
-#include "Android/Context.hpp"
-#include "Android/NativeView.hpp"
-#include "Android/SoundUtil.hpp"
-#include "Android/Vibrator.hpp"
-#include "Android/InternalSensors.hpp"
-#include "Android/PortBridge.hpp"
-#include "Android/BluetoothHelper.hpp"
-#include "Android/NativeInputListener.hpp"
-#include "Android/TextUtil.hpp"
-#include "Android/LogCat.hpp"
-#include "Android/Product.hpp"
-#include "Android/Nook.hpp"
+#include "Main.hpp"
+#include "Environment.hpp"
+#include "Context.hpp"
+#include "NativeView.hpp"
+#include "Bitmap.hpp"
+#include "SoundUtil.hpp"
+#include "Vibrator.hpp"
+#include "InternalSensors.hpp"
+#include "PortBridge.hpp"
+#include "BluetoothHelper.hpp"
+#include "NativeLeScanCallback.hpp"
+#include "NativePortListener.hpp"
+#include "NativeInputListener.hpp"
+#include "TextUtil.hpp"
+#include "Product.hpp"
+#include "Nook.hpp"
 #include "Language/Language.hpp"
 #include "Language/LanguageGlue.hpp"
 #include "LocalPath.hpp"
@@ -51,13 +53,14 @@ Copyright_License {
 #include "MainWindow.hpp"
 #include "Startup.hpp"
 #include "Interface.hpp"
-#include "Java/Global.hpp"
-#include "Java/File.hpp"
-#include "Java/InputStream.hpp"
-#include "Java/URL.hpp"
+#include "Java/Global.hxx"
+#include "Java/File.hxx"
+#include "Java/InputStream.hxx"
+#include "Java/URL.hxx"
 #include "Compiler.h"
 #include "org_xcsoar_NativeView.h"
-#include "IO/Async/GlobalIOThread.hpp"
+#include "IO/Async/GlobalAsioThread.hpp"
+#include "IO/Async/AsioThread.hpp"
 #include "Thread/Debug.hpp"
 
 #include "IOIOHelper.hpp"
@@ -80,6 +83,8 @@ Copyright_License {
 #include <assert.h>
 #include <stdlib.h>
 
+unsigned android_api_level;
+
 Context *context;
 
 NativeView *native_view;
@@ -97,6 +102,17 @@ extern "C" {
 }
 
 gcc_visibility_default
+JNIEXPORT jint JNICALL
+Java_org_xcsoar_NativeView_getEglContextClientVersion(JNIEnv *env, jobject obj)
+{
+#ifdef HAVE_GLES2
+  return 2;
+#else
+  return 1;
+#endif
+}
+
+gcc_visibility_default
 JNIEXPORT jboolean JNICALL
 Java_org_xcsoar_NativeView_initializeNative(JNIEnv *env, jobject obj,
                                             jobject _context,
@@ -104,22 +120,29 @@ Java_org_xcsoar_NativeView_initializeNative(JNIEnv *env, jobject obj,
                                             jint xdpi, jint ydpi,
                                             jint sdk_version, jstring product)
 {
+  android_api_level = sdk_version;
+
   InitThreadDebug();
 
-  InitialiseIOThread();
+  InitialiseAsioThread();
 
   Java::Init(env);
+  Java::Object::Initialise(env);
   Java::File::Initialise(env);
   Java::InputStream::Initialise(env);
   Java::URL::Initialise(env);
   Java::URLConnection::Initialise(env);
 
+  NativeView::Initialise(env);
   Environment::Initialise(env);
+  AndroidBitmap::Initialise(env);
   InternalSensors::Initialise(env);
+  NativePortListener::Initialise(env);
   NativeInputListener::Initialise(env);
   PortBridge::Initialise(env);
   BluetoothHelper::Initialise(env);
-  IOIOHelper::Initialise(env);
+  NativeLeScanCallback::Initialise(env);
+  const bool have_ioio = IOIOHelper::Initialise(env);
   NativeBMP085Listener::Initialise(env);
   BMP085Device::Initialise(env);
   NativeI2CbaroListener::Initialise(env);
@@ -140,11 +163,11 @@ Java_org_xcsoar_NativeView_initializeNative(JNIEnv *env, jobject obj,
   OpenGL::Initialise();
   TextUtil::Initialise(env);
 
-  assert(native_view == NULL);
+  assert(native_view == nullptr);
   native_view = new NativeView(env, obj, width, height, xdpi, ydpi,
-                               sdk_version, product);
+                               product);
 #ifdef __arm__
-  is_nook = strcmp(native_view->GetProduct(), "NOOK") == 0;
+  is_nook = StringIsEqual(native_view->GetProduct(), "NOOK");
 #endif
 
   event_queue = new EventQueue();
@@ -153,7 +176,8 @@ Java_org_xcsoar_NativeView_initializeNative(JNIEnv *env, jobject obj,
   Vibrator::Initialise(env);
   vibrator = Vibrator::Create(env, *context);
 
-  ioio_helper = new IOIOHelper(env);
+  if (have_ioio)
+    ioio_helper = new IOIOHelper(env);
 
 #ifdef __arm__
   if (IsNookSimpleTouch()) {
@@ -170,13 +194,6 @@ Java_org_xcsoar_NativeView_initializeNative(JNIEnv *env, jobject obj,
   return Startup();
 }
 
-void
-OnLogCatFinished(bool crash_found)
-{
-  if (crash_found)
-    CommonInterface::main_window->SendCrash();
-}
-
 gcc_visibility_default
 JNIEXPORT void JNICALL
 Java_org_xcsoar_NativeView_runNative(JNIEnv *env, jobject obj)
@@ -185,8 +202,6 @@ Java_org_xcsoar_NativeView_runNative(JNIEnv *env, jobject obj)
 
   OpenGL::Initialise();
 
-  CheckLogCat(*io_thread);
-
   CommonInterface::main_window->RunEventLoop();
 }
 
@@ -194,11 +209,11 @@ gcc_visibility_default
 JNIEXPORT void JNICALL
 Java_org_xcsoar_NativeView_deinitializeNative(JNIEnv *env, jobject obj)
 {
+  Shutdown();
+
   if (IsNookSimpleTouch()) {
     Nook::ExitFastMode();
   }
-
-  StopLogCat();
 
   InitThreadDebug();
 
@@ -212,14 +227,14 @@ Java_org_xcsoar_NativeView_deinitializeNative(JNIEnv *env, jobject obj)
   Fonts::Deinitialize();
 
   delete ioio_helper;
-  ioio_helper = NULL;
+  ioio_helper = nullptr;
 
   delete vibrator;
-  vibrator = NULL;
+  vibrator = nullptr;
 
   SoundUtil::Deinitialise(env);
   delete event_queue;
-  event_queue = NULL;
+  event_queue = nullptr;
   delete native_view;
   native_view = nullptr;
 
@@ -242,13 +257,17 @@ Java_org_xcsoar_NativeView_deinitializeNative(JNIEnv *env, jobject obj)
   VoltageDevice::Deinitialise(env);
   NativeVoltageListener::Deinitialise(env);
   IOIOHelper::Deinitialise(env);
+  NativeLeScanCallback::Deinitialise(env);
   BluetoothHelper::Deinitialise(env);
   NativeInputListener::Deinitialise(env);
+  NativePortListener::Deinitialise(env);
   InternalSensors::Deinitialise(env);
+  AndroidBitmap::Deinitialise(env);
   Environment::Deinitialise(env);
+  NativeView::Deinitialise(env);
   Java::URL::Deinitialise(env);
 
-  DeinitialiseIOThread();
+  DeinitialiseAsioThread();
 }
 
 gcc_visibility_default
@@ -256,15 +275,15 @@ JNIEXPORT void JNICALL
 Java_org_xcsoar_NativeView_resizedNative(JNIEnv *env, jobject obj,
                                          jint width, jint height)
 {
-  if (event_queue == NULL)
+  if (event_queue == nullptr)
     return;
 
   if (CommonInterface::main_window != nullptr)
-    CommonInterface::main_window->AnnounceResize(width, height);
+    CommonInterface::main_window->AnnounceResize({width, height});
 
   event_queue->Purge(Event::RESIZE);
 
-  Event event(Event::RESIZE, width, height);
+  Event event(Event::RESIZE, PixelPoint(width, height));
   event_queue->Push(event);
 }
 

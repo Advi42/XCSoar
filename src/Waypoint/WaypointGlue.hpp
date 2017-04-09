@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,13 +24,15 @@ Copyright_License {
 #ifndef XCSOAR_WAY_POINT_GLUE_HPP
 #define XCSOAR_WAY_POINT_GLUE_HPP
 
-struct Waypoint;
+#include "Engine/Waypoint/Ptr.hpp"
+
 class Waypoints;
 class RasterTerrain;
 class OperationEnvironment;
 struct PlacesOfInterestSettings;
 struct TeamCodeSettings;
 class DeviceBlackboard;
+class ProfileMap;
 
 /**
  * This class is used to parse different waypoint files
@@ -43,10 +45,10 @@ namespace WaypointGlue {
    * #PlacesOfInterestSettings.  Will not update the profile, because
    * that should only be done on user action.
    *
-   * @return the home #Waypoint, or NULL if it not found
+   * @return the home #Waypoint, or nullptr if it not found
    */
-  const Waypoint *FindHomeId(Waypoints &waypoints,
-                             PlacesOfInterestSettings &settings);
+  WaypointPtr FindHomeId(Waypoints &waypoints,
+                         PlacesOfInterestSettings &settings);
 
   /**
    * Find the configured home by id (in #PlacesOfInterestSettings) in
@@ -54,20 +56,20 @@ namespace WaypointGlue {
    * the home location in #PlacesOfInterestSettings.  Will not update
    * the profile, because that should only be done on user action.
    *
-   * @return the home #Waypoint, or NULL if it not found
+   * @return the home #Waypoint, or nullptr if it not found
    */
-  const Waypoint *FindHomeLocation(Waypoints &waypoints,
-                                   PlacesOfInterestSettings &settings);
+  WaypointPtr FindHomeLocation(Waypoints &waypoints,
+                               PlacesOfInterestSettings &settings);
 
   /**
    * Find the waypoint flagged as "home" in the #Waypoints database,
    * and configures it in #PlacesOfInterestSettings.  Will not update
    * the profile, because that should only be done on user action.
    *
-   * @return the home #Waypoint, or NULL if it not found
+   * @return the home #Waypoint, or nullptr if it not found
    */
-  const Waypoint *FindFlaggedHome(Waypoints &waypoints,
-                                  PlacesOfInterestSettings &settings);
+  WaypointPtr FindFlaggedHome(Waypoints &waypoints,
+                              PlacesOfInterestSettings &settings);
 
   /**
    * This functions checks if the home and teamcode waypoint
@@ -90,7 +92,8 @@ namespace WaypointGlue {
    * Save the home waypoint and the teamcode reference location to the
    * profile.
    */
-  void SaveHome(const PlacesOfInterestSettings &poi_settings,
+  void SaveHome(ProfileMap &profile,
+                const PlacesOfInterestSettings &poi_settings,
                 const TeamCodeSettings &team_code_settings);
 
   /**
@@ -103,10 +106,19 @@ namespace WaypointGlue {
                      const RasterTerrain *terrain,
                      OperationEnvironment &operation);
 
-  bool SaveWaypoints(const Waypoints &way_points);
-  bool SaveWaypointFile(const Waypoints &way_points, int num);
+  /**
+   * Append one waypoint to the file "user.cup".
+   *
+   * Throws std::runtime_error on error;
+   */
+  void SaveWaypoints(const Waypoints &way_points);
 
-  bool IsWritable();
+  /**
+   * Append one waypoint to the file "user.cup".
+   *
+   * Throws std::runtime_error on error;
+   */
+  void SaveWaypoint(const Waypoint &wp);
 };
 
 #endif

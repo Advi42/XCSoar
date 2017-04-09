@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -67,6 +67,11 @@ class LXDevice: public AbstractDevice
   bool is_nano;
 
   /**
+   * Was a LXNAV Nano identified via the port setup?
+   */
+  const bool port_is_nano;
+
+  /**
    * Was a LXNavigation LX1600/1606 vario detected?
    */
   bool is_lx16xx;
@@ -92,12 +97,12 @@ class LXDevice: public AbstractDevice
 
 public:
   LXDevice(Port &_port, unsigned baud_rate, unsigned _bulk_baud_rate,
-           bool _is_nano=false)
+           bool _port_is_nano=false)
     :port(_port), bulk_baud_rate(_bulk_baud_rate),
      busy(false),
      is_colibri(baud_rate == 4800),
-     is_v7(false), is_nano(_is_nano), is_lx16xx(false),
-     is_forwarded_nano(false),
+     is_v7(false), is_nano(_port_is_nano), port_is_nano(_port_is_nano),
+     is_lx16xx(false), is_forwarded_nano(false),
      mode(Mode::UNKNOWN), old_baud_rate(0) {}
 
   /**
@@ -111,7 +116,7 @@ public:
    * Was a LXNAV Nano detected?
    */
   bool IsNano() const {
-    return is_nano || is_forwarded_nano;
+    return port_is_nano || is_nano || is_forwarded_nano;
   }
 
   /**
@@ -202,32 +207,33 @@ protected:
   bool EnableCommandMode(OperationEnvironment &env);
 
 public:
-  virtual void LinkTimeout() override;
-  virtual bool EnableNMEA(OperationEnvironment &env) override;
+  /* virtual methods from class Device */
+  void LinkTimeout() override;
+  bool EnableNMEA(OperationEnvironment &env) override;
 
-  virtual bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
+  bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
 
-  virtual bool PutBallast(fixed fraction, fixed overload,
-                          OperationEnvironment &env) override;
-  virtual bool PutBugs(fixed bugs, OperationEnvironment &env) override;
-  virtual bool PutMacCready(fixed mc, OperationEnvironment &env) override;
-  virtual bool PutQNH(const AtmosphericPressure &pres,
+  bool PutBallast(double fraction, double overload,
+                  OperationEnvironment &env) override;
+  bool PutBugs(double bugs, OperationEnvironment &env) override;
+  bool PutMacCready(double mc, OperationEnvironment &env) override;
+  bool PutQNH(const AtmosphericPressure &pres,
+              OperationEnvironment &env) override;
+
+  bool PutVolume(unsigned volume, OperationEnvironment &env) override;
+
+  bool EnablePassThrough(OperationEnvironment &env) override;
+
+  bool Declare(const Declaration &declaration, const Waypoint *home,
+               OperationEnvironment &env) override;
+
+  void OnSysTicker() override;
+
+  bool ReadFlightList(RecordedFlightList &flight_list,
                       OperationEnvironment &env) override;
-
-  virtual bool PutVolume(unsigned volume, OperationEnvironment &env) override;
-
-  virtual bool EnablePassThrough(OperationEnvironment &env) override;
-
-  virtual bool Declare(const Declaration &declaration, const Waypoint *home,
-                       OperationEnvironment &env) override;
-
-  virtual void OnSysTicker() override;
-
-  virtual bool ReadFlightList(RecordedFlightList &flight_list,
-                              OperationEnvironment &env) override;
-  virtual bool DownloadFlight(const RecordedFlightInfo &flight,
-                              const TCHAR *path,
-                              OperationEnvironment &env) override;
+  bool DownloadFlight(const RecordedFlightInfo &flight,
+                      Path path,
+                      OperationEnvironment &env) override;
 };
 
 #endif

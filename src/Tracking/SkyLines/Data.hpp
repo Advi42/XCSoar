@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -30,44 +30,84 @@ Copyright_License {
 #include "Compiler.h"
 
 #include <map>
+#include <list>
+#include <chrono>
 
 #include <stdint.h>
 
 namespace SkyLinesTracking {
-  struct Data {
-    struct Traffic {
-      /**
-       * Millisecond of day.
-       *
-       * @see SkyLinesTracking::TrafficResponsePacket::Traffic::time
-       */
-      uint32_t time_of_day_ms;
 
-      GeoPoint location;
-      int altitude;
+struct Data {
+  struct Traffic {
+    /**
+     * Millisecond of day.
+     *
+     * @see SkyLinesTracking::TrafficResponsePacket::Traffic::time
+     */
+    uint32_t time_of_day_ms;
 
-      Traffic() = default;
-      constexpr Traffic(uint32_t _time, GeoPoint _location,
-                        int _altitude)
-        :time_of_day_ms(_time),
-         location(_location), altitude(_altitude) {}
-    };
+    GeoPoint location;
+    int altitude;
 
-    mutable Mutex mutex;
+    Traffic() = default;
+    constexpr Traffic(uint32_t _time, GeoPoint _location,
+                      int _altitude)
+    :time_of_day_ms(_time),
+      location(_location), altitude(_altitude) {}
+  };
 
-    std::map<uint32_t, Traffic> traffic;
+  struct Wave {
+    /**
+     * Millisecond of day.
+     *
+     * @see SkyLinesTracking::Wave::time
+     */
+    uint32_t time_of_day_ms;
 
     /**
-     * A database of user-id to display-name.  An empty string means
-     * the server has failed/refused to supply a name.
+     * Two points describing the wave line.  This is the same as the
+     * corresponding attributes in #WaveInfo.
      */
-    std::map<uint32_t, tstring> user_names;
+    GeoPoint a, b;
 
-    gcc_pure
-    bool IsUserKnown(uint32_t id) const {
-      return user_names.find(id) != user_names.end();
-    }
+    Wave() = default;
+    constexpr Wave(uint32_t _time, GeoPoint _a, GeoPoint _b)
+    :time_of_day_ms(_time), a(_a), b(_b) {}
   };
-}
+
+  struct Thermal {
+    std::chrono::steady_clock::time_point received_time;
+
+    AGeoPoint bottom_location, top_location;
+
+    double lift;
+
+    Thermal() = default;
+    Thermal(const AGeoPoint &_bottom, const AGeoPoint &_top, double _lift)
+      :received_time(std::chrono::steady_clock::now()),
+       bottom_location(_bottom), top_location(_top), lift(_lift) {}
+  };
+
+  mutable Mutex mutex;
+
+  std::map<uint32_t, Traffic> traffic;
+
+  /**
+   * A database of user-id to display-name.  An empty string means
+   * the server has failed/refused to supply a name.
+   */
+  std::map<uint32_t, tstring> user_names;
+
+  std::list<Wave> waves;
+
+  std::list<Thermal> thermals;
+
+  gcc_pure
+  bool IsUserKnown(uint32_t id) const {
+    return user_names.find(id) != user_names.end();
+  }
+};
+
+} /* namespace SkyLinesTracking */
 
 #endif

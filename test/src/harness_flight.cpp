@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -20,6 +20,7 @@
 }
 */
 
+#include "Printing.hpp"
 #include "harness_flight.hpp"
 #include "harness_airspace.hpp"
 #include "harness_wind.hpp"
@@ -31,16 +32,18 @@
 #include "Engine/Waypoint/Waypoints.hpp"
 #include "Engine/Airspace/AirspaceAircraftPerformance.hpp"
 #include "OS/FileUtil.hpp"
+#include "test_debug.hpp"
 
 #include <fstream>
 
-fixed
+double
 aat_min_time(int test_num)
 {
   OrderedTaskSettings beh;
+  beh.SetDefaults();
   switch (test_num) {
   case 2:
-    return fixed(3600 * 3.8);
+    return 3600 * 3.8;
   default:
     return beh.aat_min_time;
   }
@@ -48,8 +51,6 @@ aat_min_time(int test_num)
 
 #include "Task/TaskManager.hpp"
 #include "Task/Factory/AbstractTaskFactory.hpp"
-
-#define fixed_300 fixed(300)
 
 class PrintTaskAutoPilot: public TaskAutoPilot
 {
@@ -101,7 +102,7 @@ run_flight(TestFlightComponents components, TaskManager &task_manager,
 
   TestFlightResult result;
 
-  TaskAccessor ta(task_manager, fixed_300);
+  TaskAccessor ta(task_manager, 300);
   PrintTaskAutoPilot autopilot(parms);
   AircraftSim aircraft;
 
@@ -111,16 +112,14 @@ run_flight(TestFlightComponents components, TaskManager &task_manager,
   if (n_wind)
     aircraft.SetWind(wind_to_mag(n_wind), wind_to_dir(n_wind));
 
-  autopilot.SetSpeedFactor(fixed(speed_factor));
+  autopilot.SetSpeedFactor(speed_factor);
 
-  Directory::Create(_T("output/results"));
+  Directory::Create(Path(_T("output/results")));
   std::ofstream f4("output/results/res-sample.txt");
   std::ofstream f5("output/results/res-sample-filtered.txt");
 
   bool do_print = verbose;
   bool first = true;
-
-  static const fixed fixed_10(10);
 
   const AirspaceAircraftPerformance perf(task_manager.GetGlidePolar());
 
@@ -133,7 +132,10 @@ run_flight(TestFlightComponents components, TaskManager &task_manager,
 
   AirspaceWarningManager *airspace_warnings;
   if (airspaces) {
-    airspace_warnings = new AirspaceWarningManager(*airspaces);
+    AirspaceWarningConfig airspace_warning_config;
+    airspace_warning_config.SetDefaults();
+    airspace_warnings = new AirspaceWarningManager(airspace_warning_config,
+                                                   *airspaces);
     airspace_warnings->Reset(aircraft.GetState());
   } else {
     airspace_warnings = NULL;
@@ -142,7 +144,7 @@ run_flight(TestFlightComponents components, TaskManager &task_manager,
   do {
 
     if ((task_manager.GetActiveTaskPointIndex() == 1) &&
-        first && (task_manager.GetStats().total.time_elapsed > fixed_10)) {
+        first && (task_manager.GetStats().total.time_elapsed > 10)) {
       result.time_remaining = (double)task_manager.GetStats().total.time_remaining_now;
       first = false;
 
@@ -207,7 +209,7 @@ run_flight(TestFlightComponents components, TaskManager &task_manager,
       const AircraftState state_last = aircraft.GetLastState();
       task_manager.Update(state, state_last);
       task_manager.UpdateIdle(state);
-      task_manager.UpdateAutoMC(state, fixed(0));
+      task_manager.UpdateAutoMC(state, 0);
     }
 
   } while (autopilot.UpdateAutopilot(ta, aircraft.GetState()));
@@ -255,7 +257,7 @@ test_flight(TestFlightComponents components, int test_num, int n_wind,
 {
   // multipurpose flight test
 
-  GlidePolar glide_polar(fixed(2));
+  GlidePolar glide_polar(2);
   Waypoints waypoints;
   SetupWaypoints(waypoints);
 
@@ -264,7 +266,6 @@ test_flight(TestFlightComponents components, int test_num, int n_wind,
 
   TaskBehaviour task_behaviour;
   task_behaviour.SetDefaults();
-  task_behaviour.enable_trace = false;
   task_behaviour.auto_mc = auto_mc;
   task_behaviour.calc_glide_required = false;
   if ((test_num == 0) || (test_num == 2))

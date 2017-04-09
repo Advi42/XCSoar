@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Max Kellermann <max@duempel.org>
+ * Copyright (C) 2011 Max Kellermann <max.kellermann@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,8 @@
 
 #ifndef SLICE_ALLOCATOR_HPP
 #define SLICE_ALLOCATOR_HPP
+
+#include "Compiler.h"
 
 #include <utility>
 #include <cstddef>
@@ -144,7 +146,7 @@ public:
   SliceAllocator():head(nullptr) {}
 
   constexpr
-  SliceAllocator(const SliceAllocator &other):head(nullptr) {}
+  SliceAllocator(const SliceAllocator &):head(nullptr) {}
 
   ~SliceAllocator() {
     while (head != nullptr) {
@@ -207,6 +209,13 @@ public:
   }
 };
 
+#if CLANG_CHECK_VERSION(3,9)
+#pragma GCC diagnostic push
+/* suppress this warning, because GlobalSliceAllocator::allocator is
+   going to be instantiated in GlobalSliceAllocator.hpp */
+#pragma GCC diagnostic ignored "-Wundefined-var-template"
+#endif
+
 /**
  * This allocator refers to one global SliceAllocator, instead of
  * creating a new SliceAllocator for each container.
@@ -238,7 +247,7 @@ public:
 
   template<typename U>
   constexpr
-  GlobalSliceAllocator(const GlobalSliceAllocator<U, size> &_other) {}
+  GlobalSliceAllocator(const GlobalSliceAllocator<U, size> &) {}
 
   T *allocate(const size_type n) {
     return allocator.allocate(n);
@@ -257,5 +266,9 @@ public:
     allocator.destroy(t);
   }
 };
+
+#if CLANG_CHECK_VERSION(3,9)
+#pragma GCC diagnostic pop
+#endif
 
 #endif

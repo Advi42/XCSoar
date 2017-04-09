@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,18 +24,14 @@ Copyright_License {
 #include "ProcessTimer.hpp"
 #include "Interface.hpp"
 #include "ActionInterface.hpp"
-#include "Protection.hpp"
 #include "Input/InputQueue.hpp"
 #include "Input/InputEvents.hpp"
-#include "Device/device.hpp"
-#include "Device/All.hpp"
-#include "Screen/Blank.hpp"
-#include "UtilsSystem.hpp"
+#include "Device/MultipleDevices.hpp"
 #include "Blackboard/DeviceBlackboard.hpp"
 #include "Components.hpp"
 #include "Time/PeriodClock.hpp"
 #include "MainWindow.hpp"
-#include "Asset.hpp"
+#include "PopupMessage.hpp"
 #include "Simulator.hpp"
 #include "Replay/Replay.hpp"
 #include "InfoBoxes/InfoBoxManager.hpp"
@@ -43,28 +39,15 @@ Copyright_License {
 #include "BallastDumpManager.hpp"
 #include "Operation/Operation.hpp"
 #include "Tracking/TrackingGlue.hpp"
-#include "Operation/MessageOperationEnvironment.hpp"
 #include "Event/Idle.hpp"
-
-#ifdef _WIN32_WCE
-static void
-HeapCompact()
-{
-  static int iheapcompact = 0;
-  // called 2 times per second, compact heap every minute.
-  iheapcompact++;
-  if (iheapcompact == 120) {
-    MyCompactHeaps();
-    iheapcompact = 0;
-  }
-}
-#endif
+#include "Dialogs/Tracking/CloudEnableDialog.hpp"
 
 static void
 MessageProcessTimer()
 {
   // don't display messages if airspace warning dialog is active
-  if (CommonInterface::main_window->popup.Render())
+  if (CommonInterface::main_window->popup != nullptr &&
+      CommonInterface::main_window->popup->Render())
     // turn screen on if blanked and receive a new message
     ResetUserIdle();
 }
@@ -79,8 +62,7 @@ SystemClockTimer()
 #ifdef WIN32
   const NMEAInfo &basic = CommonInterface::Basic();
 
-  // Altair doesn't have a battery-backed up realtime clock,
-  // so as soon as we get a fix for the first time, set the
+  // as soon as we get a fix for the first time, set the
   // system clock to the GPS time.
   static bool sysTimeInitialised = false;
 
@@ -103,18 +85,6 @@ SystemClockTimer()
     sysTime.wMilliseconds = 0;
     ::SetSystemTime(&sysTime);
 
-#if defined(_WIN32_WCE) && defined(GNAV)
-    TIME_ZONE_INFORMATION tzi;
-    tzi.Bias = - CommonInterface::GetComputerSettings().utc_offset.AsMinutes();
-    _tcscpy(tzi.StandardName,TEXT("Altair"));
-    tzi.StandardDate.wMonth= 0; // disable daylight savings
-    tzi.StandardBias = 0;
-    _tcscpy(tzi.DaylightName,TEXT("Altair"));
-    tzi.DaylightDate.wMonth= 0; // disable daylight savings
-    tzi.DaylightBias = 0;
-
-    SetTimeZoneInformation(&tzi);
-#endif
     sysTimeInitialised =true;
   } else if (!basic.alive)
     /* set system clock again after a device reconnect; the new device
@@ -128,13 +98,7 @@ SystemClockTimer()
 static void
 SystemProcessTimer()
 {
-#ifdef _WIN32_WCE
-  HeapCompact();
-#endif
-
   SystemClockTimer();
-
-  CheckDisplayTimeOut(false);
 }
 
 static void
@@ -165,7 +129,7 @@ BallastDumpProcessTimer()
     // Plane is dry now -> disable ballast_timer
     settings_computer.polar.ballast_timer_active = false;
 
-  if (protected_task_manager != NULL)
+  if (protected_task_manager != nullptr)
     protected_task_manager->SetGlidePolar(glide_polar);
 }
 
@@ -175,30 +139,30 @@ ProcessAutoBugs()
   /**
    * Increase the bugs value every hour.
    */
-  static constexpr fixed interval(3600);
+  static constexpr double interval(3600);
 
   /**
    * Decrement the bugs setting by 1%.
    */
-  static constexpr fixed decrement(0.01);
+  static constexpr double decrement(0.01);
 
   /**
    * Don't go below this bugs setting.
    */
-  static constexpr fixed min_bugs(0.7);
+  static constexpr double min_bugs(0.7);
 
   /**
    * The time stamp (from FlyingState::flight_time) when we last
    * increased the bugs value automatically.
    */
-  static fixed last_auto_bugs;
+  static double last_auto_bugs;
 
   const FlyingState &flight = CommonInterface::Calculated().flight;
   const PolarSettings &polar = CommonInterface::GetComputerSettings().polar;
 
   if (!flight.flying)
     /* reset when not flying */
-    last_auto_bugs = fixed(0);
+    last_auto_bugs = 0;
   else if (!polar.auto_bugs)
     /* feature is disabled */
     last_auto_bugs = flight.flight_time;
@@ -210,23 +174,11 @@ ProcessAutoBugs()
 }
 
 static void
-ManualWindProcessTimer()
-{
-  ComputerSettings &settings_computer =
-    CommonInterface::SetComputerSettings();
-  const DerivedInfo &calculated = CommonInterface::Calculated();
-
-  /* as soon as another wind setting is used, clear the manual wind */
-  if (calculated.wind_available.Modified(settings_computer.wind.manual_wind_available))
-    settings_computer.wind.manual_wind_available.Clear();
-}
-
-static void
 SettingsProcessTimer()
 {
+  CloudEnableDialog();
   BallastDumpProcessTimer();
   ProcessAutoBugs();
-  ManualWindProcessTimer();
 }
 
 static void
@@ -246,6 +198,9 @@ CommonProcessTimer()
 static void
 ConnectionProcessTimer()
 {
+  if (devices == nullptr)
+    return;
+
   static bool connected_last = false;
   static bool location_last = false;
   static bool wait_connect = false;
@@ -275,7 +230,7 @@ ConnectionProcessTimer()
   /* this OperationEnvironment instance must be persistent, because
      DeviceDescriptor::Open() is asynchronous */
   static QuietOperationEnvironment env;
-  AllDevicesAutoReopen(env);
+  devices->AutoReopen(env);
 }
 
 void
@@ -285,7 +240,8 @@ ProcessTimer()
 
   if (!is_simulator()) {
     // now check GPS status
-    devTick();
+    if (devices != nullptr)
+      devices->Tick();
 
     // also service replay logger
     if (replay && replay->IsActive()) {
@@ -307,7 +263,7 @@ ProcessTimer()
   }
 
 #ifdef HAVE_TRACKING
-  if (tracking != NULL && CommonInterface::Basic().gps.real) {
+  if (tracking != nullptr) {
     tracking->SetSettings(CommonInterface::GetComputerSettings().tracking);
     tracking->OnTimer(CommonInterface::Basic(), CommonInterface::Calculated());
   }

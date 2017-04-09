@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -54,12 +54,12 @@ DebugReplayVector::Compute(const int elevation)
 
   FeaturesSettings features;
   features.nav_baro_altitude_enabled = true;
-  computer.Fill(computed_basic, AtmosphericPressure::Standard(), features);
+  computer.Fill(computed_basic, qnh, features);
   computer.Compute(computed_basic, last_basic, last_basic, calculated);
 
   if (elevation > -1000) {
     calculated.terrain_valid = true;
-    calculated.terrain_altitude = fixed(elevation);
+    calculated.terrain_altitude = elevation;
 
     if (computed_basic.NavAltitudeAvailable()) {
       calculated.altitude_agl = computed_basic.nav_altitude - calculated.terrain_altitude;
@@ -78,33 +78,25 @@ DebugReplayVector::CopyFromFix(const IGCFixEnhanced &fix)
 {
   NMEAInfo &basic = raw_basic;
 
-  basic.clock = basic.time =
-    fixed(fix.time.GetSecondOfDay());
+  basic.clock = basic.time = fix.time.GetSecondOfDay();
   basic.time_available.Update(basic.clock);
 
   basic.date_time_utc = BrokenDateTime(fix.date, fix.time);
   basic.alive.Update(basic.clock);
   basic.location = fix.location;
 
-  if (fix.gps_valid)
+  if (fix.gps_valid) {
     basic.location_available.Update(basic.clock);
-  else
+    basic.gps_altitude = fix.gps_altitude;
+    basic.gps_altitude_available.Update(basic.clock);
+  } else {
     basic.location_available.Clear();
-
-  if (fix.gps_altitude != 0) {
-    basic.gps_altitude = fixed(fix.gps_altitude);
-
-    if (fix.gps_valid)
-      basic.gps_altitude_available.Update(basic.clock);
-    else
-      basic.gps_altitude_available.Clear();
-  } else
     basic.gps_altitude_available.Clear();
+  }
 
   if (fix.pressure_altitude != 0) {
-    basic.pressure_altitude = basic.baro_altitude = fixed(fix.pressure_altitude);
+    basic.pressure_altitude = fix.pressure_altitude;
     basic.pressure_altitude_available.Update(basic.clock);
-    basic.baro_altitude_available.Update(basic.clock);
   }
 
   if (fix.enl >= 0) {
@@ -113,26 +105,25 @@ DebugReplayVector::CopyFromFix(const IGCFixEnhanced &fix)
   }
 
   if (fix.trt >= 0) {
-    basic.track = Angle::Degrees(fixed(fix.trt));
+    basic.track = Angle::Degrees(fix.trt);
     basic.track_available.Update(basic.clock);
   }
 
   if (fix.gsp >= 0) {
-    basic.ground_speed = Units::ToSysUnit(fixed(fix.gsp),
-                                          Unit::KILOMETER_PER_HOUR);
+    basic.ground_speed = Units::ToSysUnit(fix.gsp, Unit::KILOMETER_PER_HOUR);
     basic.ground_speed_available.Update(basic.clock);
   }
 
   if (fix.ias >= 0) {
-    fixed ias = Units::ToSysUnit(fixed(fix.ias), Unit::KILOMETER_PER_HOUR);
+    auto ias = Units::ToSysUnit(fix.ias, Unit::KILOMETER_PER_HOUR);
     if (fix.tas >= 0)
       basic.ProvideBothAirspeeds(ias,
-                                 Units::ToSysUnit(fixed(fix.tas),
+                                 Units::ToSysUnit(fix.tas,
                                                   Unit::KILOMETER_PER_HOUR));
     else
       basic.ProvideIndicatedAirspeedWithAltitude(ias, basic.pressure_altitude);
   } else if (fix.tas >= 0)
-    basic.ProvideTrueAirspeed(Units::ToSysUnit(fixed(fix.tas),
+    basic.ProvideTrueAirspeed(Units::ToSysUnit(fix.tas,
                                                Unit::KILOMETER_PER_HOUR));
 
   if (fix.siu >= 0) {

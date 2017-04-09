@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -31,54 +31,22 @@ Copyright_License {
 #ifndef XCSOAR_GEO_MATH_HPP
 #define XCSOAR_GEO_MATH_HPP
 
-#include "Math/fixed.hpp"
-#include "Math/Angle.hpp"
-#include "Constants.hpp"
 #include "Compiler.h"
 
 struct GeoPoint;
-
-/**
- * Convert a distance on earth's surface [m] to the according Angle,
- * assuming the earth is a sphere.
- */
-constexpr
-static inline Angle
-EarthDistanceToAngle(fixed distance)
-{
-  return Angle::Radians(distance / REARTH);
-}
-
-/**
- * Convert an angle to the according distance on earth's surface [m],
- * assuming the earth is a sphere.
- */
-constexpr
-static inline fixed
-AngleToEarthDistance(Angle angle)
-{
-  return angle.Radians() * REARTH;
-}
-
-/**
- * Finds cross track error in meters and closest point P4 between P3
- * and desired track P1-P2.  Very slow function!
- */
-fixed
-CrossTrackError(const GeoPoint &loc1, const GeoPoint &loc2,
-                const GeoPoint &loc3, GeoPoint *loc4);
+class Angle;
 
 /**
  * Calculates projected distance from P3 along line P1-P2.
  */
 gcc_pure
-fixed
+double
 ProjectedDistance(const GeoPoint &loc1, const GeoPoint &loc2,
                   const GeoPoint &loc3);
 
 void
 DistanceBearing(const GeoPoint &loc1, const GeoPoint &loc2,
-                fixed *distance, Angle *bearing);
+                double *distance, Angle *bearing);
 
 /**
  * Calculates the distance between two locations
@@ -87,7 +55,7 @@ DistanceBearing(const GeoPoint &loc1, const GeoPoint &loc2,
  * @return The distance
  */
 gcc_pure
-fixed
+double
 Distance(const GeoPoint &loc1, const GeoPoint &loc2);
 
 /**
@@ -108,8 +76,7 @@ Bearing(const GeoPoint &loc1, const GeoPoint &loc2);
  */
 gcc_pure
 GeoPoint
-IntermediatePoint(const GeoPoint &loc1, const GeoPoint &loc2,
-                  const fixed dthis);
+IntermediatePoint(const GeoPoint &loc1, const GeoPoint &loc2, double dthis);
 
 /**
  * Find the nearest great-circle middle point between the two.
@@ -131,7 +98,7 @@ Middle(const GeoPoint &a, const GeoPoint &b);
  * @return Distance 12 plus 23 (m)
  */
 gcc_pure
-fixed
+double
 DoubleDistance(const GeoPoint &loc1, const GeoPoint &loc2,
                const GeoPoint &loc3);
 
@@ -146,6 +113,6 @@ DoubleDistance(const GeoPoint &loc1, const GeoPoint &loc2,
  */
 gcc_pure
 GeoPoint FindLatitudeLongitude(const GeoPoint &loc,
-                               const Angle bearing, const fixed distance);
+                               Angle bearing, double distance);
 
 #endif

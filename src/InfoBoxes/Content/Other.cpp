@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,14 +27,9 @@ Copyright_License {
 #include "Renderer/HorizonRenderer.hpp"
 #include "Hardware/Battery.hpp"
 #include "OS/SystemLoad.hpp"
-#include "OS/MemInfo.hpp"
 #include "Language/Language.hpp"
 #include "UIGlobals.hpp"
 #include "Look/Look.hpp"
-
-#ifdef HAVE_MEM_INFO
-#include "Formatter/ByteSizeFormatter.hpp"
-#endif
 
 #include <tchar.h>
 
@@ -69,8 +64,7 @@ UpdateInfoBoxBattery(InfoBoxData &data)
         data.SetComment(_("AC ON"));
       else{
         DisplaySupplyVoltageAsValue = true;
-        data.SetValue(_T("%2.1fV"),
-                          CommonInterface::Basic().voltage);
+        data.SetValueFromVoltage(CommonInterface::Basic().voltage);
       }
       break;
     case Power::External::UNKNOWN:
@@ -86,9 +80,9 @@ UpdateInfoBoxBattery(InfoBoxData &data)
       if (Power::Battery::RemainingPercentValid){
 #endif
         if (!DisplaySupplyVoltageAsValue)
-          data.UnsafeFormatValue(_T("%d%%"), Power::Battery::RemainingPercent);
+          data.SetValueFromPercent(Power::Battery::RemainingPercent);
         else
-          data.UnsafeFormatComment(_T("%d%%"), Power::Battery::RemainingPercent);
+          data.SetCommentFromPercent(Power::Battery::RemainingPercent);
 #ifndef ANDROID
       }
       else
@@ -110,10 +104,10 @@ UpdateInfoBoxBattery(InfoBoxData &data)
 #endif
 
   if (CommonInterface::Basic().voltage_available) {
-    data.SetValue(_T("%2.1fV"), CommonInterface::Basic().voltage);
+    data.SetValueFromVoltage(CommonInterface::Basic().voltage);
     return;
   } else if (CommonInterface::Basic().battery_level_available) {
-    data.SetValue(_T("%.0f%%"), CommonInterface::Basic().battery_level);
+    data.SetValueFromPercent(CommonInterface::Basic().battery_level);
     return;
   }
 
@@ -139,7 +133,7 @@ UpdateInfoBoxCPULoad(InfoBoxData &data)
 {
   unsigned percent_load = SystemLoadCPU();
   if (percent_load <= 100) {
-    data.UnsafeFormatValue(_T("%d%%"), percent_load);
+    data.SetValueFromPercent(percent_load);
   } else {
     data.SetInvalid();
   }
@@ -148,11 +142,8 @@ UpdateInfoBoxCPULoad(InfoBoxData &data)
 void
 UpdateInfoBoxFreeRAM(InfoBoxData &data)
 {
-#ifdef HAVE_MEM_INFO
-  FormatByteSize(data.value.buffer(), data.value.MAX_SIZE, SystemFreeRAM(), true);
-#else
+  // used to be implemented on WinCE
   data.SetInvalid();
-#endif
 }
 
 void
@@ -168,8 +159,8 @@ InfoBoxContentHorizon::OnCustomPaint(Canvas &canvas, const PixelRect &rc)
 void
 InfoBoxContentHorizon::Update(InfoBoxData &data)
 {
-  if (!CommonInterface::Basic().attitude.bank_angle_available &&
-      !CommonInterface::Basic().attitude.pitch_angle_available) {
+  if (!CommonInterface::Basic().attitude.IsBankAngleUseable() &&
+      !CommonInterface::Basic().attitude.IsPitchAngleUseable()) {
     data.SetInvalid();
     return;
   }

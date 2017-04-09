@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,11 +26,7 @@ Copyright_License {
 
 #include "Screen/ContainerWindow.hpp"
 
-#ifdef HAVE_AYGSHELL_DLL
-#include "OS/AYGShellDLL.hpp"
-#endif
-
-#ifndef USE_GDI
+#ifndef USE_WINUSER
 #include "Screen/Custom/DoubleClick.hpp"
 #endif
 
@@ -40,62 +36,72 @@ Copyright_License {
 
 #ifdef ANDROID
 #include "Thread/Mutex.hpp"
-#include "Thread/Cond.hpp"
+#include "Thread/Cond.hxx"
 
 struct Event;
 
-#elif defined(USE_CONSOLE) || defined(NON_INTERACTIVE)
+#elif defined(USE_POLL_EVENT)
 struct Event;
 #elif defined(ENABLE_SDL)
 union SDL_Event;
+struct SDL_Window;
 #endif
 
 #include <tchar.h>
-
-#ifdef ENABLE_SDL
-#include <SDL_version.h>
-#endif
 
 #ifdef SOFTWARE_ROTATE_DISPLAY
 enum class DisplayOrientation : uint8_t;
 #endif
 
-#ifndef USE_GDI
+#ifndef USE_WINUSER
 class TopCanvas;
 #endif
 
+#ifdef USE_X11
+#define Font X11Font
+#define Window X11Window
+#define Display X11Display
+#include <X11/X.h>
+#ifdef USE_GLX
+#include <GL/glx.h>
+#undef NoValue
+#endif
+#undef Font
+#undef Window
+#undef Display
+#undef Expose
+#undef KeyPress
+struct _XDisplay;
+#endif
+
 class TopWindowStyle : public WindowStyle {
+#if defined(ENABLE_SDL) || defined(USE_X11)
+  bool full_screen = false;
+#endif
 #ifdef ENABLE_SDL
-  bool full_screen;
-  bool resizable;
+  bool resizable = false;
 #endif
 
 public:
   TopWindowStyle()
-#ifdef ENABLE_SDL
-    :full_screen(false), resizable(false)
-#endif
   {
     Popup();
   }
 
   TopWindowStyle(const WindowStyle other)
     :WindowStyle(other)
-#ifdef ENABLE_SDL
-    , full_screen(false), resizable(false)
-#endif
   {
     Popup();
   }
 
   void FullScreen() {
-#ifdef ENABLE_SDL
+#if defined(ENABLE_SDL) || defined(USE_X11)
     full_screen = true;
 #endif
   }
 
   bool GetFullScreen() const {
-#ifdef ENABLE_SDL
+#if defined(ENABLE_SDL) || defined(USE_X11)
     return full_screen;
 #else
     return false;
@@ -105,7 +111,7 @@ public:
   void Resizable() {
 #ifdef ENABLE_SDL
     resizable = true;
-#elif defined(USE_GDI)
+#elif defined(USE_WINUSER)
     style &= ~WS_BORDER;
     style |= WS_THICKFRAME;
 #endif
@@ -124,8 +130,21 @@ public:
  * A top-level full-screen window.
  */
 class TopWindow : public ContainerWindow {
-#ifndef USE_GDI
-  TopCanvas *screen;
+#ifdef USE_X11
+  _XDisplay *x_display;
+  X11Window x_window;
+#ifdef USE_GLX
+  GLXFBConfig *fb_cfg;
+#endif
+#elif defined(USE_WAYLAND)
+  struct wl_display *native_display;
+  struct wl_egl_window *native_window;
+#elif defined(ENABLE_SDL)
+  SDL_Window *window;
+#endif
+
+#ifndef USE_WINUSER
+  TopCanvas *screen = nullptr;
 
   bool invalidated;
 
@@ -138,64 +157,44 @@ class TopWindow : public ContainerWindow {
    * OpenGL operations are allowed, because the OpenGL surface does
    * not exist.
    */
-  bool paused;
+  bool paused = false;
 
   /**
    * Has the application been resumed?  When this flag is set,
    * TopWindow::Expose() attempts to reinitialize the OpenGL surface.
    */
-  bool resumed;
+  bool resumed = false;
 
   /**
    * Was the application view resized while paused?  If true, then
-   * new_width and new_height contain the new display dimensions.
+   * new_size contains the new display dimensions.
    */
-  bool resized;
+  bool resized = false;
 
-  UPixelScalar new_width, new_height;
+  PixelSize new_size;
 #endif
 
   DoubleClick double_click;
 
-#else /* USE_GDI */
-
-#ifdef _WIN32_WCE
-  /**
-   * A handle to the task bar that was manually hidden.  This is a
-   * hack when aygshell.dll is not available (Windows CE Core).
-   */
-  HWND task_bar;
-#endif
+#else /* USE_WINUSER */
 
   /**
    * On WM_ACTIVATE, the focus is returned to this window.
    */
   HWND hSavedFocus;
 
-#ifdef HAVE_AYGSHELL_DLL
-  SHACTIVATEINFO s_sai;
-#endif
-#endif /* USE_GDI */
+#endif /* USE_WINUSER */
 
-public:
-#ifdef HAVE_AYGSHELL_DLL
-  const AYGShellDLL ayg_shell_dll;
+#ifdef HAVE_HIGHDPI_SUPPORT
+  float point_to_real_x = 1, point_to_real_y = 1;
 #endif
 
 public:
-#ifdef ANDROID
-  TopWindow():screen(nullptr), paused(false), resumed(false), resized(false) {}
-#elif !defined(USE_GDI)
-  TopWindow():screen(nullptr) {}
-#endif
-
-#ifndef USE_GDI
+#ifndef USE_WINUSER
   virtual ~TopWindow();
 #endif
 
-#ifdef USE_GDI
-  static bool find(const TCHAR *cls, const TCHAR *text);
-
+#ifdef USE_WINUSER
   void Create(const TCHAR *cls, const TCHAR *text, PixelSize size,
               TopWindowStyle style=TopWindowStyle());
 #else
@@ -203,8 +202,11 @@ public:
               TopWindowStyle style=TopWindowStyle());
 #endif
 
-#ifdef _WIN32_WCE
-  void Destroy();
+#if defined(USE_X11) || defined(USE_WAYLAND) || defined(ENABLE_SDL)
+private:
+  void CreateNative(const TCHAR *text, PixelSize size, TopWindowStyle style);
+
+public:
 #endif
 
   /**
@@ -216,8 +218,8 @@ public:
   void CheckResize() {}
 #endif
 
-#if !defined(USE_GDI) && !(defined(ENABLE_SDL) && (SDL_MAJOR_VERSION >= 2))
-#if defined(ANDROID) || defined(USE_FB) || defined(USE_EGL) || defined(USE_VFB)
+#if !defined(USE_WINUSER) && !defined(ENABLE_SDL)
+#if defined(ANDROID) || defined(USE_FB) || defined(USE_EGL) || defined(USE_GLX) || defined(USE_VFB)
   void SetCaption(gcc_unused const TCHAR *caption) {}
 #else
   void SetCaption(const TCHAR *caption);
@@ -230,7 +232,7 @@ public:
    */
   void CancelMode();
 
-#if defined(USE_GDI) && !defined(_WIN32_WCE)
+#if defined(USE_WINUSER)
   gcc_pure
   const PixelRect GetClientRect() const {
     if (::IsIconic(hWnd)) {
@@ -240,11 +242,8 @@ public:
       if (::GetWindowPlacement(hWnd, &placement) &&
           (placement.showCmd == SW_MINIMIZE ||
            placement.showCmd == SW_SHOWMINIMIZED)) {
-        placement.rcNormalPosition.right -= placement.rcNormalPosition.left;
-        placement.rcNormalPosition.bottom -= placement.rcNormalPosition.top;
-        placement.rcNormalPosition.left = 0;
-        placement.rcNormalPosition.top = 0;
-        return reinterpret_cast<const PixelRect &>(placement.rcNormalPosition);
+        const auto &r = placement.rcNormalPosition;
+        return PixelRect(0, 0, r.right - r.left, r.bottom - r.top);
       }
     }
 
@@ -263,16 +262,19 @@ public:
   }
 #endif
 
-  void Fullscreen();
-
-#ifndef USE_GDI
-  virtual void Invalidate() override;
+#ifndef USE_WINUSER
+  void Invalidate() override;
 
 protected:
   void Expose();
 
+#if defined(USE_X11) || defined(USE_WAYLAND)
+  void EnableCapture() override;
+  void DisableCapture() override;
+#endif
+
 public:
-#endif /* !USE_GDI */
+#endif /* !USE_WINUSER */
 
   /**
    * Synchronously refresh the screen by handling all pending repaint
@@ -281,19 +283,22 @@ public:
   void Refresh();
 
   void Close() {
-    AssertNoneLocked();
-
-#ifndef USE_GDI
+#ifndef USE_WINUSER
     OnClose();
 #else
     ::SendMessage(hWnd, WM_CLOSE, 0, 0);
 #endif
   }
 
-#if defined(ANDROID) || defined(USE_CONSOLE)
+#if defined(ANDROID) || defined(USE_POLL_EVENT)
   bool OnEvent(const Event &event);
 #elif defined(ENABLE_SDL)
   bool OnEvent(const SDL_Event &event);
+#endif
+
+#if defined(USE_X11) || defined(USE_WAYLAND)
+  gcc_pure
+  bool IsVisible() const;
 #endif
 
 #ifdef ANDROID
@@ -302,7 +307,7 @@ public:
    * that this has happened.  The caller should also submit the RESIZE
    * event to the event queue.  This method is thread-safe.
    */
-  void AnnounceResize(UPixelScalar width, UPixelScalar height);
+  void AnnounceResize(PixelSize _new_size);
 
   bool ResumeSurface();
 
@@ -332,26 +337,35 @@ public:
 #endif
 
 protected:
+  PixelPoint PointToReal(PixelPoint p) const {
+#ifdef HAVE_HIGHDPI_SUPPORT
+    p.x = int(static_cast<float>(p.x) * point_to_real_x);
+    p.y = int(static_cast<float>(p.y) * point_to_real_y);
+#endif
+    return p;
+  }
+
+protected:
   virtual bool OnActivate();
   virtual bool OnDeactivate();
 
   virtual bool OnClose();
 
 #ifdef KOBO
-  virtual void OnDestroy() override;
+  void OnDestroy() override;
 #endif
 
 #ifdef DRAW_MOUSE_CURSOR
-  virtual void OnPaint(Canvas &canvas) override;
+  void OnPaint(Canvas &canvas) override;
 #endif
 
-#ifdef USE_GDI
-  virtual LRESULT OnMessage(HWND _hWnd, UINT message,
-                             WPARAM wParam, LPARAM lParam) override;
+#ifdef USE_WINUSER
+  LRESULT OnMessage(HWND _hWnd, UINT message,
+                    WPARAM wParam, LPARAM lParam) override;
 #endif
 
-#ifndef USE_GDI
-  virtual void OnResize(PixelSize new_size) override;
+#ifndef USE_WINUSER
+  void OnResize(PixelSize new_size) override;
 #endif
 
 #ifdef ANDROID

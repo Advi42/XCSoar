@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,7 +25,8 @@ Copyright_License {
 #define XCSOAR_SCREEN_OPENGL_CANVAS_HPP
 
 #include "Color.hpp"
-#include "Point.hpp"
+#include "Screen/Point.hpp"
+#include "BulkPoint.hpp"
 #include "Features.hpp"
 #include "System.hpp"
 #include "Screen/Brush.hpp"
@@ -38,6 +39,18 @@ Copyright_License {
 #endif
 
 #include <tchar.h>
+
+
+/* Workaround: Some Win32 headers define OPAQUE and TRANSPARENT as preprocessor
+ * defines. Undefine them to avoid name conflict. */
+#ifdef OPAQUE
+#undef OPAQUE
+#endif
+
+#ifdef TRANSPARENT
+#undef TRANSPARENT
+#endif
+
 
 class Angle;
 class Bitmap;
@@ -53,34 +66,25 @@ class Canvas {
   friend class BufferCanvas;
 
 protected:
-  RasterPoint offset;
-  PixelSize size;
-
-#ifdef USE_GLSL
-  glm::mat4 projection_matrix;
-#endif
+  PixelPoint offset = {0, 0};
+  PixelSize size = {0, 0};
 
   Pen pen;
   Brush brush;
-  const Font *font;
+  const Font *font = nullptr;
   Color text_color, background_color;
   enum {
     OPAQUE, TRANSPARENT
-  } background_mode;
+  } background_mode = OPAQUE;
 
   /**
    * static buffer to store vertices of wide lines.
    */
-  static AllocatedArray<RasterPoint> vertex_buffer;
+  static AllocatedArray<BulkPixelPoint> vertex_buffer;
 
 public:
-  Canvas()
-    :offset(0, 0), size(0, 0),
-     font(nullptr), background_mode(OPAQUE) {}
-
-  Canvas(PixelSize _size)
-    :offset(0, 0), size(_size),
-     font(nullptr), background_mode(OPAQUE) {}
+  Canvas() = default;
+  Canvas(PixelSize _size):size(_size) {}
 
   Canvas(const Canvas &other) = delete;
   Canvas &operator=(const Canvas &other) = delete;
@@ -135,7 +139,7 @@ public:
   }
 
   void SelectHollowBrush() {
-    brush.Reset();
+    brush.Destroy();
   }
 
   void SelectWhiteBrush() {
@@ -182,6 +186,8 @@ public:
     background_mode = TRANSPARENT;
   }
 
+  void InvertRectangle(PixelRect r);
+
   void Rectangle(int left, int top, int right, int bottom) {
     DrawFilledRectangle(left, top, right, bottom, brush);
 
@@ -222,7 +228,7 @@ public:
 
   void DrawOutlineRectangle(int left, int top, int right, int bottom,
                             Color color) {
-    color.Set();
+    color.Bind();
 #if defined(HAVE_GLES) && !defined(HAVE_GLES2)
     glLineWidthx(1 << 16);
 #else
@@ -262,15 +268,15 @@ public:
 
   void DrawRaisedEdge(PixelRect &rc);
 
-  void DrawPolyline(const RasterPoint *points, unsigned num_points);
+  void DrawPolyline(const BulkPixelPoint *points, unsigned num_points);
 
-  void DrawPolygon(const RasterPoint *points, unsigned num_points);
+  void DrawPolygon(const BulkPixelPoint *points, unsigned num_points);
 
   /**
    * Draw a triangle fan (GL_TRIANGLE_FAN).  The first point is the
    * origin of the fan.
    */
-  void DrawTriangleFan(const RasterPoint *points, unsigned num_points);
+  void DrawTriangleFan(const BulkPixelPoint *points, unsigned num_points);
 
   /**
    * Draw a solid thin horizontal line.
@@ -279,7 +285,7 @@ public:
 
   void DrawLine(int ax, int ay, int bx, int by);
 
-  void DrawLine(const RasterPoint a, const RasterPoint b) {
+  void DrawLine(const PixelPoint a, const PixelPoint b) {
     DrawLine(a.x, a.y, b.x, b.y);
   }
 
@@ -290,15 +296,15 @@ public:
    */
   void DrawExactLine(int ax, int ay, int bx, int by);
 
-  void DrawExactLine(const RasterPoint a, const RasterPoint b) {
+  void DrawExactLine(const PixelPoint a, const PixelPoint b) {
     DrawExactLine(a.x, a.y, b.x, b.y);
   }
 
-  void DrawLinePiece(const RasterPoint a, const RasterPoint b);
+  void DrawLinePiece(const PixelPoint a, const PixelPoint b);
 
   void DrawTwoLines(int ax, int ay, int bx, int by, int cx, int cy);
-  void DrawTwoLines(const RasterPoint a, const RasterPoint b,
-                    const RasterPoint c) {
+  void DrawTwoLines(const PixelPoint a, const PixelPoint b,
+                    const PixelPoint c) {
     DrawTwoLines(a.x, a.y, b.x, b.y, c.x, c.y);
   }
 
@@ -309,20 +315,21 @@ public:
 
   void DrawCircle(int x, int y, unsigned radius);
 
-  void DrawSegment(int x, int y, unsigned radius,
+  void DrawSegment(PixelPoint center, unsigned radius,
                    Angle start, Angle end, bool horizon=false);
 
-  void DrawAnnulus(int x, int y, unsigned small_radius,
+  void DrawAnnulus(PixelPoint center, unsigned small_radius,
                    unsigned big_radius,
                    Angle start, Angle end);
 
-  void DrawKeyhole(int x, int y, unsigned small_radius,
+  void DrawKeyhole(PixelPoint center, unsigned small_radius,
                    unsigned big_radius,
                    Angle start, Angle end);
+
+  void DrawArc(PixelPoint center, unsigned radius,
+               Angle start, Angle end);
 
   void DrawFocusRectangle(PixelRect rc);
-
-  void DrawButton(PixelRect rc, bool down);
 
   gcc_pure
   const PixelSize CalcTextSize(const TCHAR *text, size_t length) const;
@@ -373,7 +380,12 @@ public:
       DrawClippedText(x, y, GetWidth() - x, GetHeight() - y, t);
   }
 
-  void DrawFormattedText(PixelRect *rc, const TCHAR *text, unsigned format);
+  /**
+   * Render multi-line text.
+   *
+   * @return the resulting text height
+   */
+  unsigned DrawFormattedText(PixelRect r, const TCHAR *text, unsigned format);
 
   /**
    * Draws a texture.  The caller is responsible for binding it and
@@ -434,8 +446,7 @@ public:
   /**
    * Copy pixels from this object to a texture.  The texture must be
    * initialised already.  Note that the texture will be flipped
-   * vertically, and to draw it back to the screen, you need
-   * GLTexture::DrawFlipped().
+   * vertically. So the texture must be created with flipped=true.
    */
   void CopyToTexture(GLTexture &texture, PixelRect src_rc) const;
 };

@@ -210,7 +210,7 @@ SHPTreeHandle msSHPDiskTreeOpen(struct zzip_dir *zdir, const char * pszTree,
 
 void msSHPDiskTreeClose(SHPTreeHandle disktree)
 {
-  zzip_fclose( disktree->fp );
+  zzip_file_close( disktree->fp );
   free( disktree );
 }
 
@@ -778,6 +778,7 @@ int msWriteTree(treeObj *tree, char *filename, int B_order)
   i = fwrite( pabyBuf, 8, 1, disktree->fp );
   if( !i ) {
     fprintf (stderr, "unable to write to index file ... exiting \n");
+    msSHPDiskTreeClose( disktree );
     return (MS_FALSE);
   }
 

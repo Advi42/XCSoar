@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,7 +35,6 @@ Copyright_License {
 #include "UIGlobals.hpp"
 #include "Look/Look.hpp"
 #include "Computer/GlideComputer.hpp"
-#include "Dialogs/dlgInfoBoxAccess.hpp"
 #include "Dialogs/dlgAnalysis.hpp"
 #include "Util/Macros.hpp"
 #include "Language/Language.hpp"
@@ -61,7 +60,9 @@ InfoBoxContentSpark::Paint(Canvas &canvas, const PixelRect &rc,
   const Look &look = UIGlobals::GetLook();
   TraceHistoryRenderer renderer(look.trace_history, look.vario, look.chart);
   renderer.RenderVario(canvas, GetSparkRect(rc), var, center,
-                       CommonInterface::GetComputerSettings().polar.glide_polar_task.GetMC());
+                       CommonInterface::GetComputerSettings().polar.glide_polar_task.GetMC(),
+                       CommonInterface::Calculated().common_stats.vario_scale_positive,
+                       CommonInterface::Calculated().common_stats.vario_scale_negative * (center? 1:0));
 }
 
 void
@@ -93,11 +94,7 @@ InfoBoxContentSpark::SetVSpeedComment(InfoBoxData &data,
   if (var.empty())
     return;
 
-  TCHAR sTmp[32];
-  FormatUserVerticalSpeed(var.last(), sTmp,
-                          ARRAY_SIZE(sTmp));
-  data.SetComment(sTmp);
-
+  data.SetCommentFromVerticalSpeed(var.last());
   data.SetCustom();
 }
 
@@ -148,32 +145,31 @@ InfoBoxContentBarogram::OnCustomPaint(Canvas &canvas, const PixelRect &rc)
 }
 
 static void
-ShowAnalysis0()
+ShowAnalysisBarograph()
 {
   dlgAnalysisShowModal(UIGlobals::GetMainWindow(),
                        UIGlobals::GetLook(),
                        CommonInterface::Full(), *glide_computer,
-                       protected_task_manager,
                        &airspace_database,
-                       terrain, 0);
+                       terrain, AnalysisPage::BAROGRAPH);
 }
 
 static Widget *
-LoadAnalysis0Panel(unsigned id)
+LoadAnalysisBarographPanel(unsigned id)
 {
-  return new CallbackWidget(ShowAnalysis0);
+  return new CallbackWidget(ShowAnalysisBarograph);
 }
 
 static constexpr
-InfoBoxPanel analysis0_infobox_panels[] = {
-  { N_("Analysis"), LoadAnalysis0Panel },
+InfoBoxPanel analysis_barograph_infobox_panels[] = {
+  { N_("Analysis"), LoadAnalysisBarographPanel },
   { nullptr, nullptr }
 };
 
 const InfoBoxPanel *
 InfoBoxContentBarogram::GetDialogContent()
 {
-  return analysis0_infobox_panels;
+  return analysis_barograph_infobox_panels;
 }
 
 void

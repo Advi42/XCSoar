@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,7 @@ Copyright_License {
 
 #include "Device/Driver/AltairPro.hpp"
 #include "Device/Driver.hpp"
-#include "Device/Internal.hpp"
+#include "Device/Util/NMEAWriter.hpp"
 #include "Device/Port/Port.hpp"
 #include "Device/Declaration.hpp"
 #include "NMEA/Checksum.hpp"
@@ -31,7 +31,7 @@ Copyright_License {
 #include "NMEA/InputLine.hpp"
 #include "Units/System.hpp"
 #include "Waypoint/Waypoint.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/TruncateString.hpp"
 #include "Util/Macros.hpp"
 #include "Time/TimeoutClock.hpp"
 
@@ -63,16 +63,17 @@ public:
   AltairProDevice(Port &_port):port(_port){}
 
 public:
-  virtual bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
-  virtual bool Declare(const struct Declaration &declaration,
-                       const Waypoint *home,
-                       OperationEnvironment &env) override;
+  /* virtual methods from class Device */
+  bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
+  bool Declare(const struct Declaration &declaration,
+               const Waypoint *home,
+               OperationEnvironment &env) override;
 };
 
 static bool
-ReadAltitude(NMEAInputLine &line, fixed &value_r)
+ReadAltitude(NMEAInputLine &line, double &value_r)
 {
-  fixed value;
+  double value;
   bool available = line.ReadChecked(value);
   char unit = line.ReadFirstChar();
   if (!available)
@@ -107,7 +108,7 @@ PTFRS(NMEAInputLine &line, NMEAInfo &info)
 
   unsigned supply_voltage;
   if (line.ReadChecked(supply_voltage) && supply_voltage != 0) {
-    info.voltage = fixed(supply_voltage) / 1000;
+    info.voltage = supply_voltage / 1000.;
     info.voltage_available.Update(info.clock);
   }
 
@@ -127,7 +128,7 @@ AltairProDevice::ParseNMEA(const char *String, NMEAInfo &info)
   // no propriatary sentence
 
   if (StringIsEqual(type, "$PGRMZ")) {
-    fixed value;
+    double value;
     if (ReadAltitude(line, value))
       info.ProvidePressureAltitude(value);
 
@@ -157,15 +158,18 @@ AltairProDevice::DeclareInternal(const struct Declaration &declaration,
 {
   TCHAR Buffer[256];
 
-  _stprintf(Buffer, _T("PDVSC,S,Pilot,%s"), declaration.pilot_name.c_str());
+  StringFormatUnsafe(Buffer, _T("PDVSC,S,Pilot,%s"),
+                     declaration.pilot_name.c_str());
   if (!PropertySetGet(Buffer, ARRAY_SIZE(Buffer), env))
     return false;
 
-  _stprintf(Buffer, _T("PDVSC,S,GliderID,%s"), declaration.aircraft_registration.c_str());
+  StringFormatUnsafe(Buffer, _T("PDVSC,S,GliderID,%s"),
+                     declaration.aircraft_registration.c_str());
   if (!PropertySetGet(Buffer, ARRAY_SIZE(Buffer), env))
     return false;
 
-  _stprintf(Buffer, _T("PDVSC,S,GliderType,%s"), declaration.aircraft_type.c_str());
+  StringFormatUnsafe(Buffer, _T("PDVSC,S,GliderType,%s"),
+                     declaration.aircraft_type.c_str());
   if (!PropertySetGet(Buffer, ARRAY_SIZE(Buffer), env))
     return false;
 
@@ -179,30 +183,30 @@ AltairProDevice::DeclareInternal(const struct Declaration &declaration,
    */
 
   if (declaration.Size() > 1) {
-    PutTurnPoint(_T("DeclTakeoff"), NULL, env);
-    PutTurnPoint(_T("DeclLanding"), NULL, env);
+    PutTurnPoint(_T("DeclTakeoff"), nullptr, env);
+    PutTurnPoint(_T("DeclLanding"), nullptr, env);
 
     PutTurnPoint(_T("DeclStart"), &declaration.GetFirstWaypoint(), env);
     PutTurnPoint(_T("DeclFinish"), &declaration.GetLastWaypoint(), env);
 
     for (unsigned int index=1; index <= 10; index++){
       TCHAR TurnPointPropertyName[32];
-      _stprintf(TurnPointPropertyName, _T("DeclTurnPoint%d"), index);
+      StringFormatUnsafe(TurnPointPropertyName, _T("DeclTurnPoint%d"), index);
 
       if (index < declaration.Size() - 1) {
         PutTurnPoint(TurnPointPropertyName, &declaration.GetWaypoint(index),
                      env);
       } else {
-        PutTurnPoint(TurnPointPropertyName, NULL, env);
+        PutTurnPoint(TurnPointPropertyName, nullptr, env);
       }
     }
   }
 
-  _stprintf(Buffer, _T("PDVSC,S,DeclAction,DECLARE"));
+  UnsafeCopyString(Buffer, _T("PDVSC,S,DeclAction,DECLARE"));
   if (!PropertySetGet(Buffer, ARRAY_SIZE(Buffer), env))
     return false;
 
-  if (_tcscmp(&Buffer[9], _T("LOCKED")) == 0)
+  if (StringIsEqual(&Buffer[9], _T("LOCKED")))
     // FAILED! try to declare a task on a airborn recorder
     return false;
 
@@ -219,7 +223,7 @@ bool
 AltairProDevice::PropertySetGet(char *Buffer, size_t size,
                                 OperationEnvironment &env)
 {
-  assert(Buffer != NULL);
+  assert(Buffer != nullptr);
 
   port.Flush();
 
@@ -232,7 +236,7 @@ AltairProDevice::PropertySetGet(char *Buffer, size_t size,
   Buffer[6] = _T('A');
   char *comma = strchr(&Buffer[8], ',');
 
-  if (comma == NULL)
+  if (comma == nullptr)
     return false;
 
   comma[1] = '\0';
@@ -243,19 +247,12 @@ AltairProDevice::PropertySetGet(char *Buffer, size_t size,
 
   // read value eg bar
   while (size > 0) {
-    int remaining = timeout.GetRemainingSigned();
-    if (remaining < 0)
-      return false;
-
-    if (port.WaitRead(env, remaining) != Port::WaitResult::READY)
-      return false;
-
-    int nbytes = port.Read(Buffer, size);
-    if (nbytes < 0)
+    const size_t nbytes = port.WaitAndRead(Buffer, size, env, timeout);
+    if (nbytes == 0)
       return false;
 
     char *asterisk = (char *)memchr(Buffer, '*', nbytes);
-    if (asterisk != NULL) {
+    if (asterisk != nullptr) {
       *asterisk = 0;
       return true;
     }
@@ -271,11 +268,11 @@ bool
 AltairProDevice::PropertySetGet(TCHAR *s, size_t size,
                                 OperationEnvironment &env)
 {
-  assert(s != NULL);
+  assert(s != nullptr);
 
   char buffer[_tcslen(s) * 4 + 1];
   if (::WideCharToMultiByte(CP_ACP, 0, s, -1, buffer, sizeof(buffer),
-                               NULL, NULL) <= 0)
+                               nullptr, nullptr) <= 0)
     return false;
 
   if (!PropertySetGet(buffer, _tcslen(s) * 4 + 1, env))
@@ -302,9 +299,9 @@ AltairProDevice::PutTurnPoint(const TCHAR *propertyName,
   double tmp, MinLat, MinLon;
   char NoS, EoW;
 
-  if (waypoint != NULL){
+  if (waypoint != nullptr){
 
-    CopyString(Name, waypoint->name.c_str(), ARRAY_SIZE(Name));
+    CopyTruncateString(Name, ARRAY_SIZE(Name), waypoint->name.c_str());
 
     tmp = (double)waypoint->location.latitude.Degrees();
 
@@ -341,10 +338,9 @@ AltairProDevice::PutTurnPoint(const TCHAR *propertyName,
     EoW = 'E';
   }
 
-  _stprintf(Buffer, _T("PDVSC,S,%s,%02d%05.0f%c%03d%05.0f%c%s"),
-            propertyName,
-            DegLat, MinLat, NoS, DegLon, MinLon, EoW, Name
-  );
+  StringFormatUnsafe(Buffer, _T("PDVSC,S,%s,%02d%05.0f%c%03d%05.0f%c%s"),
+                     propertyName,
+                     DegLat, MinLat, NoS, DegLon, MinLon, EoW, Name);
 
   PropertySetGet(Buffer, ARRAY_SIZE(Buffer), env);
 

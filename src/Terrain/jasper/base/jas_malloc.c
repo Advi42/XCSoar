@@ -9,9 +9,9 @@
  * 
  * JasPer License Version 2.0
  * 
+ * Copyright (c) 2001-2006 Michael David Adams
  * Copyright (c) 1999-2000 Image Power, Inc.
  * Copyright (c) 1999-2000 The University of British Columbia
- * Copyright (c) 2001-2003 Michael David Adams
  * 
  * All rights reserved.
  * 
@@ -72,9 +72,13 @@
 \******************************************************************************/
 
 #include <stdio.h>
+#include <stdlib.h>
 
 /* We need the prototype for memset. */
 #include <string.h>
+#include <limits.h>
+#include <errno.h>
+#include <stdint.h>
 
 #include "jasper/jas_malloc.h"
 
@@ -88,8 +92,20 @@
 
 #if !defined(DEBUG_MEMALLOC)
 
+#define MEMALLOC_ALIGNMENT	32
+#define MEMALLOC_ALIGN2
+#undef MEMALLOC_ALIGN2
+
 void *jas_malloc(size_t size)
 {
+#if defined(MEMALLOC_ALIGN2)
+	void *ptr;
+abort();
+	if (posix_memalign(&ptr, MEMALLOC_ALIGNMENT, size)) {
+		return 0;
+	}
+	return ptr;
+#endif
 	return malloc(size);
 }
 
@@ -103,15 +119,43 @@ void *jas_realloc(void *ptr, size_t size)
 	return realloc(ptr, size);
 }
 
+void *jas_realloc2(void *ptr, size_t nmemb, size_t size)
+{
+	if (nmemb && SIZE_MAX / nmemb < size) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	return jas_realloc(ptr, nmemb * size);
+
+}
+
+void *jas_alloc2(size_t nmemb, size_t size)
+{
+	if (nmemb && SIZE_MAX / nmemb < size) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	return jas_malloc(nmemb * size);
+}
+
+void *jas_alloc3(size_t a, size_t b, size_t c)
+{
+	if (a && SIZE_MAX / a < b) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	return jas_alloc2(a*b, c);
+}
+
 void *jas_calloc(size_t nmemb, size_t size)
 {
 	void *ptr;
-	size_t n;
-	n = nmemb * size;
-	if (!(ptr = jas_malloc(n * sizeof(char)))) {
-		return 0;
-	}
-	memset(ptr, 0, n);
+
+	ptr = jas_alloc2(nmemb, size);
+	if (ptr)
+		memset(ptr, 0, nmemb*size);
 	return ptr;
 }
 

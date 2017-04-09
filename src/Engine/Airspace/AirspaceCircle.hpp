@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@
  */
 class AirspaceCircle final : public AbstractAirspace {
   const GeoPoint m_center;
-  const fixed m_radius;
+  const double m_radius;
 
 public:
   /**
@@ -46,26 +46,30 @@ public:
    *
    * @return Initialised airspace object
    */
-  AirspaceCircle(const GeoPoint &loc, const fixed _radius);
+  AirspaceCircle(const GeoPoint &loc, const double _radius);
 
   /* virtual methods from class AbstractAirspace */
-  virtual const GeoPoint GetCenter() const override {
+  const GeoPoint GetReferenceLocation() const override {
     return m_center;
   }
 
-  virtual bool Inside(const GeoPoint &loc) const override;
-  virtual AirspaceIntersectionVector Intersects(const GeoPoint &g1,
-                                                const GeoPoint &end,
-                                                const TaskProjection &projection) const override;
-  virtual GeoPoint ClosestPoint(const GeoPoint &loc,
-                                const TaskProjection &projection) const override;
+  const GeoPoint GetCenter() const override {
+		return GetReferenceLocation();
+  }
+
+  bool Inside(const GeoPoint &loc) const override;
+  AirspaceIntersectionVector Intersects(const GeoPoint &g1,
+                                        const GeoPoint &end,
+                                        const FlatProjection &projection) const override;
+  GeoPoint ClosestPoint(const GeoPoint &loc,
+                        const FlatProjection &projection) const override;
 
   /**
    * Accessor for radius
    *
    * @return Radius of circle (m)
    */
-  const fixed &GetRadius() const {
+  const double &GetRadius() const {
     return m_radius;
   }
 

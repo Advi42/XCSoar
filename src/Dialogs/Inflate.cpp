@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,8 @@ Copyright_License {
 
 #include "Inflate.hpp"
 
-#include <zlib/zlib.h>
+#include <zlib.h>
+
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
@@ -43,9 +44,11 @@ InflateToString(const void *compressed, size_t length)
   memset(&strm, 0, sizeof(strm));
   strm.zalloc = 0;
   strm.zfree = 0;
-  strm.next_in = reinterpret_cast<const uint8_t *>(compressed);
+  /* we need the const_cast because Android NDK r10e contains ZLib
+     1.2.3 headers without ZLIB_CONST support */
+  strm.next_in = const_cast<Bytef *>(reinterpret_cast<const Bytef *>(compressed));
   strm.avail_in = length;
-  strm.next_out = reinterpret_cast<uint8_t *>(buffer);
+  strm.next_out = reinterpret_cast<Bytef *>(buffer);
   strm.avail_out = buffer_size - 1;
 
   int result = inflateInit2(&strm, 16+MAX_WBITS);

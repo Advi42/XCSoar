@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,7 +28,6 @@ Copyright_License {
 #include "Compiler.h"
 
 #include <stdint.h>
-#include <stddef.h>
 
 class OperationEnvironment;
 class Port;
@@ -86,13 +85,16 @@ namespace CAI302 {
      */
     char result;
 
-    uint16_t bytes_per_block;
+    PackedBE16 bytes_per_block;
 
     /**
      * Approximate number of blocks.
      */
-    uint16_t num_blocks;
-  } gcc_packed;
+    PackedBE16 num_blocks;
+  };
+
+  static_assert(sizeof(FileASCII) == 5, "Wrong size");
+  static_assert(alignof(FileASCII) == 1, "Wrong alignment");
 
   /**
    * Download file in binary format (direct memory dump).
@@ -105,12 +107,15 @@ namespace CAI302 {
      */
     char result;
 
-    uint16_t bytes_per_block;
+    PackedBE16 bytes_per_block;
 
     uint8_t num_bytes[3];
 
-    uint16_t logging_code;
-  } gcc_packed;
+    PackedBE16 logging_code;
+  };
+
+  static_assert(sizeof(FileBinary) == 8, "Wrong size");
+  static_assert(alignof(FileBinary) == 1, "Wrong alignment");
 
   /**
    * Transfer a block.
@@ -244,6 +249,14 @@ namespace CAI302 {
 
     void SetSpeedUnit(unsigned unit) {
       SetUnitBits(6, 2, unit);
+    }
+
+    unsigned GetSinkTone() const {
+      return sink_tone;
+    }
+
+    void SetSinkTone(unsigned v) {
+      sink_tone = v;
     }
   } gcc_packed;
 

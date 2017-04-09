@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,11 +27,17 @@ Copyright_License {
 #include "UTF8.hpp"
 #include "Compiler.h"
 
+#ifdef _UNICODE
+#include "AllocatedString.hxx"
+#else
+#include "StringPointer.hxx"
+#endif
+
 #include <assert.h>
-#include <string.h>
-#include <tchar.h>
 
 #ifdef _UNICODE
+
+#include <tchar.h>
 
 gcc_malloc gcc_nonnull_all
 TCHAR *
@@ -58,21 +64,20 @@ ConvertWideToACP(const TCHAR *p);
  */
 class UTF8ToWideConverter {
 #ifdef _UNICODE
-  TCHAR *value;
+  typedef AllocatedString<TCHAR> Value;
 #else
-  const char *value;
+  typedef StringPointer<> Value;
 #endif
+  typedef typename Value::const_pointer const_pointer;
+
+  Value value;
 
 public:
 #ifdef _UNICODE
   UTF8ToWideConverter(const char *_value)
-    :value(ConvertUTF8ToWide(_value)) {}
-
-  ~UTF8ToWideConverter() {
-    delete[] value;
-  }
+    :value(Value::Donate(ConvertUTF8ToWide(_value))) {}
 #else
-  UTF8ToWideConverter(const char *_value):value(_value) {
+  UTF8ToWideConverter(const_pointer _value):value(_value) {
     assert(_value != nullptr);
   }
 #endif
@@ -83,18 +88,18 @@ public:
   gcc_pure
   bool IsValid() const {
 #ifdef _UNICODE
-    return value != nullptr;
+    return !value.IsNull();
 #else
-    assert(value != nullptr);
+    assert(!value.IsNull());
 
-    return ValidateUTF8(value);
+    return ValidateUTF8(value.c_str());
 #endif
   }
 
-  operator const TCHAR *() const {
-    assert(value != nullptr);
+  operator const_pointer() const {
+    assert(!value.IsNull());
 
-    return value;
+    return value.c_str();
   }
 };
 
@@ -104,21 +109,20 @@ public:
  */
 class WideToUTF8Converter {
 #ifdef _UNICODE
-  char *value;
+  typedef AllocatedString<> Value;
 #else
-  const char *value;
+  typedef StringPointer<> Value;
 #endif
+  typedef typename Value::const_pointer const_pointer;
+
+  Value value;
 
 public:
 #ifdef _UNICODE
   WideToUTF8Converter(const TCHAR *_value)
-    :value(ConvertWideToUTF8(_value)) {}
-
-  ~WideToUTF8Converter() {
-    delete[] value;
-  }
+    :value(Value::Donate(ConvertWideToUTF8(_value))) {}
 #else
-  WideToUTF8Converter(const char *_value):value(_value) {
+  WideToUTF8Converter(const_pointer _value):value(_value) {
     assert(_value != nullptr);
   }
 #endif
@@ -129,81 +133,18 @@ public:
   gcc_pure
   bool IsValid() const {
 #ifdef _UNICODE
-    return value != nullptr;
+    return !value.IsNull();
 #else
-    assert(value != nullptr);
+    assert(!value.IsNull());
 
     return true;
 #endif
   }
 
-  operator const char *() const {
-    assert(value != nullptr);
+  operator const_pointer() const {
+    assert(!value.IsNull());
 
-    return value;
-  }
-};
-
-/**
- * Convert an ACP string (Windows ANSI code page) to a TCHAR string.
- * The source buffer passed to the constructor must be valid as long
- * as this object is being used.
- */
-class ACPToWideConverter {
-#ifdef _UNICODE
-  TCHAR *value;
-#else
-  const char *value;
-#endif
-
-public:
-#ifdef _UNICODE
-  ACPToWideConverter(const char *_value)
-    :value(ConvertACPToWide(_value)) {}
-
-  ~ACPToWideConverter() {
-    delete[] value;
-  }
-#else
-  ACPToWideConverter(const char *_value):value(_value) {
-    assert(_value != nullptr);
-  }
-#endif
-
-  ACPToWideConverter(const ACPToWideConverter &other) = delete;
-  ACPToWideConverter &operator=(const ACPToWideConverter &other) = delete;
-
-  gcc_pure
-  bool IsValid() const {
-#ifdef _UNICODE
-    return value != nullptr;
-#else
-    assert(value != nullptr);
-
-    return true;
-#endif
-  }
-
-  operator const TCHAR *() const {
-    assert(value != nullptr);
-
-    return value;
-  }
-
-  /**
-   * Returns a newly allocated string.  It invalidates this object.
-   */
-  gcc_malloc
-  TCHAR *StealDup() {
-    assert(value != nullptr);
-
-#ifdef _UNICODE
-    TCHAR *result = value;
-    value = nullptr;
-    return result;
-#else
-    return strdup(value);
-#endif
+    return value.c_str();
   }
 };
 
@@ -214,21 +155,20 @@ public:
  */
 class WideToACPConverter {
 #ifdef _UNICODE
-  char *value;
+  typedef AllocatedString<> Value;
 #else
-  const char *value;
+  typedef StringPointer<> Value;
 #endif
+  typedef typename Value::const_pointer const_pointer;
+
+  Value value;
 
 public:
 #ifdef _UNICODE
   WideToACPConverter(const TCHAR *_value)
-    :value(ConvertWideToACP(_value)) {}
-
-  ~WideToACPConverter() {
-    delete[] value;
-  }
+    :value(Value::Donate(ConvertWideToACP(_value))) {}
 #else
-  WideToACPConverter(const char *_value):value(_value) {
+  WideToACPConverter(const_pointer _value):value(_value) {
     assert(_value != nullptr);
   }
 #endif
@@ -239,34 +179,18 @@ public:
   gcc_pure
   bool IsValid() const {
 #ifdef _UNICODE
-    return value != nullptr;
+    return !value.IsNull();
 #else
-    assert(value != nullptr);
+    assert(!value.IsNull());
 
     return true;
 #endif
   }
 
-  operator const char *() const {
-    assert(value != nullptr);
+  operator const_pointer() const {
+    assert(!value.IsNull());
 
-    return value;
-  }
-
-  /**
-   * Returns a newly allocated string.  It invalidates this object.
-   */
-  gcc_malloc
-  char *StealDup() {
-    assert(value != nullptr);
-
-#ifdef _UNICODE
-    char *result = value;
-    value = nullptr;
-    return result;
-#else
-    return strdup(value);
-#endif
+    return value.c_str();
   }
 };
 

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -30,13 +30,13 @@ Copyright_License {
 #include "MainWindow.hpp"
 #include "LogFile.hpp"
 #include "Language/Language.hpp"
-#include "Dialogs/XML.hpp"
 #include "Widget/RowFormWidget.hpp"
 #include "UIGlobals.hpp"
 #include "UtilsSettings.hpp"
 #include "Asset.hpp"
+#include "Menu/ShowMenuButton.hpp"
 
-#ifdef KOBO
+#ifdef USE_POLL_EVENT
 #include "Event/Globals.hpp"
 #include "Event/Queue.hpp"
 #endif
@@ -49,7 +49,10 @@ enum ControlIndex {
   AppStatusMessageAlignment,
   AppInverseInfoBox,
   AppInfoBoxColors,
-  AppInfoBoxBorder
+  AppInfoBoxBorder,
+#ifdef KOBO
+  ShowMenuButton,
+#endif
 };
 
 static constexpr StaticEnumChoice display_orientation_list[] = {
@@ -81,12 +84,16 @@ static constexpr StaticEnumChoice info_box_geometry_list[] = {
     N_("9 Right + Vario (Landscape)") },
   { (unsigned)InfoBoxSettings::Geometry::LEFT_6_RIGHT_3_VARIO,
     N_("9 Left + Right + Vario (Landscape)") },
+  { (unsigned)InfoBoxSettings::Geometry::LEFT_12_RIGHT_3_VARIO,
+    N_("12 Left + 3 Right Vario (Landscape)") },
   { (unsigned)InfoBoxSettings::Geometry::RIGHT_5,
     N_("5 Right (Square)") },
   { (unsigned)InfoBoxSettings::Geometry::BOTTOM_RIGHT_12,
     N_("12 Bottom or Right") },
   { (unsigned)InfoBoxSettings::Geometry::TOP_LEFT_12,
     N_("12 Top or Left") },
+  { (unsigned)InfoBoxSettings::Geometry::RIGHT_16,
+    N_("16 Right (Landscape)") },
   { (unsigned)InfoBoxSettings::Geometry::RIGHT_24,
     N_("24 Right (Landscape)") },
   { (unsigned)InfoBoxSettings::Geometry::TOP_LEFT_4,
@@ -174,10 +181,10 @@ LayoutConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
           (unsigned)ui_settings.traffic.gauge_location);
   SetExpertRow(AppFlarmLocation);
 
-  AddEnum(_("Tab dialog style"), NULL,
+  AddEnum(_("Tab dialog style"), nullptr,
           tabdialog_style_list, (unsigned)ui_settings.dialog.tab_style);
 
-  AddEnum(_("Message display"), NULL,
+  AddEnum(_("Message display"), nullptr,
           popup_msg_position_list,
           (unsigned)ui_settings.popup_message_position);
   SetExpertRow(AppStatusMessageAlignment);
@@ -198,6 +205,13 @@ LayoutConfigPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
   AddEnum(_("InfoBox border"), nullptr, infobox_border_list,
           unsigned(ui_settings.info_boxes.border_style));
   SetExpertRow(AppInfoBoxBorder);
+
+#ifdef KOBO
+  AddBoolean(_("Show Menubutton"), _("Show the Menubutton"),
+             ui_settings.show_menu_button);
+  SetExpertRow(ShowMenuButton);
+#endif
+
 }
 
 bool
@@ -243,6 +257,11 @@ LayoutConfigPanel::Save(bool &_changed)
                 ui_settings.info_boxes.use_colors))
     require_restart = changed = true;
 
+#ifdef KOBO
+  if (SaveValue(ShowMenuButton, ProfileKeys::ShowMenuButton,ui_settings.show_menu_button))
+    require_restart = changed = true;
+#endif
+
   DialogSettings &dialog_settings = CommonInterface::SetUISettings().dialog;
   changed |= SaveValueEnum(TabDialogStyle, ProfileKeys::AppDialogTabStyle, dialog_settings.tab_style);
 
@@ -256,8 +275,8 @@ LayoutConfigPanel::Save(bool &_changed)
         LogFormat("Display rotation failed");
     }
 
-#ifdef KOBO
-    event_queue->SetMouseRotation(ui_settings.display.orientation);
+#ifdef USE_POLL_EVENT
+    event_queue->SetDisplayOrientation(ui_settings.display.orientation);
 #endif
 
     CommonInterface::main_window->CheckResize();

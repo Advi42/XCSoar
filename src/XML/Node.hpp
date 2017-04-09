@@ -39,11 +39,9 @@
 #include <assert.h>
 #include <tchar.h>
 
-class TextWriter;
+class BufferedOutputStream;
 
-struct XMLNode {
-//  friend class XMLNode;
-protected:
+class XMLNode {
   /**
    * To allow shallow copy and "intelligent/smart" pointers (automatic
    * delete).
@@ -79,24 +77,13 @@ protected:
     /** Array of attributes */
     std::forward_list<Attribute> attributes;
 
-    unsigned ref_count;
-
     Data(const TCHAR *_name, bool _is_declaration)
       :name(_name),
-       is_declaration(_is_declaration),
-       ref_count(1) {}
+       is_declaration(_is_declaration) {}
 
     Data(const TCHAR *_name, size_t name_length, bool _is_declaration)
       :name(_name, name_length),
-       is_declaration(_is_declaration),
-       ref_count(1) {}
-
-    ~Data() {
-      assert(ref_count == 0);
-    }
-
-    void Ref();
-    void Unref();
+       is_declaration(_is_declaration) {}
 
     bool HasChildren() const {
       return !children.empty() || !text.empty();
@@ -206,7 +193,7 @@ public:
    * @param format false if no formatting is required, true
    * for formatted text with carriage returns and indentation.
    */
-  void Serialise(TextWriter &writer, bool format) const;
+  void Serialise(BufferedOutputStream &os, bool format) const;
 
   gcc_pure
   bool IsDeclaration() const {
@@ -217,14 +204,10 @@ public:
 
   // to allow shallow copy:
   ~XMLNode() {
-    if (d != nullptr)
-      d->Unref();
+    delete d;
   }
 
-  /**
-   * Shallow copy.
-   */
-  XMLNode(const XMLNode &A);
+  XMLNode(const XMLNode &A) = delete;
 
   XMLNode(XMLNode &&other)
     :d(other.d) {
@@ -234,15 +217,14 @@ public:
   /**
    * Shallow copy.
    */
-  XMLNode &operator=(const XMLNode& A);
+  XMLNode &operator=(const XMLNode& A) = delete;
 
   XMLNode &operator=(XMLNode &&other) {
     Data *old = d;
     d = other.d;
     other.d = nullptr;
 
-    if (old != nullptr)
-      old->Unref();
+    delete old;
 
     return *this;
   }
@@ -298,7 +280,8 @@ private:
    * This recurses through all subnodes then adds contents of the
    * nodes to the string.
    */
-  static void Serialise(const Data &data, TextWriter &writer, int format);
+  static void Serialise(const Data &data, BufferedOutputStream &os,
+                        int format);
 };
 
 #endif

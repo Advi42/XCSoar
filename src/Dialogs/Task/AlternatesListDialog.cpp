@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,16 +25,16 @@ Copyright_License {
 #include "Dialogs/WidgetDialog.hpp"
 #include "Dialogs/Waypoint/WaypointDialogs.hpp"
 #include "Widget/ListWidget.hpp"
-#include "Screen/Layout.hpp"
-#include "Screen/Font.hpp"
 #include "Look/DialogLook.hpp"
 #include "Task/ProtectedTaskManager.hpp"
+#include "Engine/Task/TaskManager.hpp"
 #include "Engine/Task/Unordered/AlternateList.hpp"
 #include "Components.hpp"
 #include "Interface.hpp"
 #include "UIGlobals.hpp"
 #include "Look/MapLook.hpp"
 #include "Renderer/WaypointListRenderer.hpp"
+#include "Renderer/TwoTextRowsRenderer.hpp"
 #include "Language/Language.hpp"
 
 class AlternatesListWidget final
@@ -46,7 +46,9 @@ class AlternatesListWidget final
 
   const DialogLook &dialog_look;
 
-  WndButton *details_button, *cancel_button, *goto_button;
+  TwoTextRowsRenderer row_renderer;
+
+  Button *details_button, *cancel_button, *goto_button;
 
 public:
   AlternateList alternates;
@@ -70,35 +72,35 @@ public:
 
 public:
   /* virtual methods from class Widget */
-  virtual void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
-  virtual void Unprepare() override {
+  void Prepare(ContainerWindow &parent, const PixelRect &rc) override;
+  void Unprepare() override {
     DeleteWindow();
   }
 
   /* virtual methods from class List::Handler */
-  virtual void OnPaintItem(Canvas &canvas, const PixelRect rc,
-                           unsigned index) override {
+  void OnPaintItem(Canvas &canvas, const PixelRect rc,
+                   unsigned index) override {
     assert(index < alternates.size());
 
     const ComputerSettings &settings = CommonInterface::GetComputerSettings();
-    const Waypoint &waypoint = alternates[index].waypoint;
+    const Waypoint &waypoint = *alternates[index].waypoint;
     const GlideResult& solution = alternates[index].solution;
 
     WaypointListRenderer::Draw(canvas, rc, waypoint, solution.vector.distance,
                                solution.SelectAltitudeDifference(settings.task.glide),
-                               UIGlobals::GetDialogLook(),
+                               row_renderer,
                                UIGlobals::GetMapLook().waypoint,
                                CommonInterface::GetMapSettings().waypoint);
   }
 
-  virtual bool CanActivateItem(unsigned index) const {
+  bool CanActivateItem(unsigned index) const  override{
     return true;
   }
 
-  virtual void OnActivateItem(unsigned index) override;
+  void OnActivateItem(unsigned index) override;
 
   /* virtual methods from class ActionListener */
-  virtual void OnAction(int id) override;
+  void OnAction(int id) override;
 };
 
 void
@@ -112,11 +114,9 @@ AlternatesListWidget::CreateButtons(WidgetDialog &dialog)
 void
 AlternatesListWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
-  UPixelScalar item_height = dialog_look.list.font_bold->GetHeight()
-    + Layout::Scale(6) + dialog_look.small_font->GetHeight();
-  assert(item_height > 0);
-
-  CreateList(parent, dialog_look, rc, item_height);
+  CreateList(parent, dialog_look, rc,
+             row_renderer.CalculateLayout(*dialog_look.list.font_bold,
+                                          dialog_look.small_font));
 
   GetList().SetLength(alternates.size());
 }
@@ -124,7 +124,7 @@ AlternatesListWidget::Prepare(ContainerWindow &parent, const PixelRect &rc)
 void
 AlternatesListWidget::OnActivateItem(unsigned index)
 {
-  details_button->OnClicked();
+  details_button->Click();
 }
 
 void
@@ -139,7 +139,7 @@ AlternatesListWidget::OnAction(int id)
     auto const &waypoint = item.waypoint;
 
     protected_task_manager->DoGoto(waypoint);
-    cancel_button->OnClicked();
+    cancel_button->Click();
 
     break;
   }
@@ -161,6 +161,7 @@ dlgAlternatesListShowModal()
   WidgetDialog dialog(dialog_look);
   dialog.CreateFull(UIGlobals::GetMainWindow(), _("Alternates"), &widget);
   widget.CreateButtons(dialog);
+  dialog.EnableCursorSelection();
 
   int i = dialog.ShowModal() == mrOK
     ? (int)widget.GetCursorIndex()
@@ -170,5 +171,5 @@ dlgAlternatesListShowModal()
   if (i < 0 || (unsigned)i >= widget.alternates.size())
     return;
 
-  dlgWaypointDetailsShowModal(widget.alternates[i].waypoint);
+  dlgWaypointDetailsShowModal(widget.alternates[i].waypoint, false);
 }

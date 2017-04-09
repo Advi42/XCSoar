@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -39,29 +39,35 @@ public:
 #ifdef USE_GDI
   enum Style {
     SOLID = PS_SOLID,
-    DASH = PS_DASH,
+    DASH1 = PS_DASH,
+    DASH2 = PS_DASH,
+    DASH3 = PS_DASH,
     BLANK = PS_NULL
   };
 #elif defined(USE_MEMORY_CANVAS)
   typedef uint8_t Style;
   static constexpr uint8_t SOLID = -1;
-  static constexpr uint8_t DASH = -1-0b1000;
+  static constexpr uint8_t DASH1= -1-0b1000;
+  static constexpr uint8_t DASH2= -1-0b1000;
+  static constexpr uint8_t DASH3= -1-0b1000;
   static constexpr uint8_t BLANK = 0;
 #else
   enum Style : uint8_t {
     SOLID,
-    DASH,
+    DASH1,
+    DASH2,
+    DASH3,
     BLANK
   };
 #endif
 
 protected:
 #ifdef USE_GDI
-  HPEN pen;
+  HPEN pen = nullptr;
 #else
   Color color;
 
-  uint8_t width;
+  uint8_t width = 0;
 
 #if defined(USE_MEMORY_CANVAS) || (defined(ENABLE_OPENGL) && !defined(HAVE_GLES))
   Style style;
@@ -72,34 +78,38 @@ public:
 #ifdef USE_GDI
 
   /** Base Constructor for the Pen class */
-  Pen() : pen(nullptr) {}
+  Pen() = default;
+
   /**
    * Constructor that creates a Pen object, based on the given parameters
-   * @param style Line style (SOLID, DASH, BLANK)
+   * @param style Line style (SOLID, DASH1/2/3, BLANK)
    * @param width Width of the line/Pen
    * @param c Color of the Pen
    */
-  Pen(Style Style, unsigned width, const Color c):pen(nullptr) {
-    Set(Style, width, c);
+  Pen(Style Style, unsigned width, const Color c) {
+    Create(Style, width, c);
   }
+
   /**
    * Constructor that creates a solid Pen object, based on the given parameters
    * @param width Width of the line/Pen
    * @param c Color of the Pen
    */
-  Pen(unsigned width, Color c):pen(nullptr) {
-    Set(width, c);
+  Pen(unsigned width, Color c) {
+    Create(width, c);
   }
 
   /** Destructor */
-  ~Pen() { Reset(); }
+  ~Pen() {
+    Destroy();
+  }
 
   Pen(const Pen &other) = delete;
   Pen &operator=(const Pen &other) = delete;
 
 #else /* !USE_GDI */
 
-  Pen():width(0) {}
+  Pen() = default;
 
   constexpr
   Pen(Style _style, unsigned _width, const Color _color)
@@ -122,21 +132,23 @@ public:
 public:
   /**
    * Sets the Pens parameters to the given values
-   * @param style Line style (SOLID, DASH, BLANK)
+   * @param style Line style (SOLID, DASH1/2/3, BLANK)
    * @param width Width of the line/Pen
    * @param c Color of the Pen
    */
-  void Set(Style style, unsigned width, const Color c);
+  void Create(Style style, unsigned width, const Color c);
+
   /**
    * Sets the Pens parameters to the given values
    * @param width Width of the line/Pen
    * @param c Color of the Pen
    */
-  void Set(unsigned width, const Color c);
+  void Create(unsigned width, const Color c);
+
   /**
    * Resets the Pen to nullptr
    */
-  void Reset();
+  void Destroy();
 
   /**
    * Returns whether the Pen is defined (!= nullptr)
@@ -182,9 +194,17 @@ private:
 #endif
 
 #ifndef HAVE_GLES
-    if (style == DASH) {
+    if (style == DASH1) {
+      /* XXX implement for OpenGL/ES (using a 1D texture?) */
+      glLineStipple(2, 0x1818);
+      glEnable(GL_LINE_STIPPLE);
+    } else if (style == DASH2) {
       /* XXX implement for OpenGL/ES (using a 1D texture?) */
       glLineStipple(2, 0x1f1f);
+      glEnable(GL_LINE_STIPPLE);
+    } else if (style == DASH3) {
+      /* XXX implement for OpenGL/ES (using a 1D texture?) */
+      glLineStipple(2, 0x8f8f);
       glEnable(GL_LINE_STIPPLE);
     }
 #endif
@@ -196,7 +216,7 @@ public:
    * Unbind() when you're done with this Pen.
    */
   void Bind() const {
-    color.Set();
+    color.Bind();
     BindStyle();
   }
 
@@ -209,7 +229,7 @@ public:
 
   void Unbind() const {
 #ifndef HAVE_GLES
-    if (style == DASH) {
+    if ((style == DASH1) || (style == DASH2) || (style == DASH3)) {
       glDisable(GL_LINE_STIPPLE);
     }
 #endif
@@ -226,7 +246,7 @@ public:
 #ifndef USE_GDI
 
 inline void
-Pen::Reset()
+Pen::Destroy()
 {
   assert(!IsDefined() || IsScreenInitialized());
 

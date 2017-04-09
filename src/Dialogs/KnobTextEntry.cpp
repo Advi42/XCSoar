@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,13 +26,12 @@ Copyright_License {
 #include "Language/Language.hpp"
 #include "Widget/WindowWidget.hpp"
 #include "Screen/Canvas.hpp"
-#include "Screen/Key.h"
-#include "Form/Button.hpp"
-#include "Asset.hpp"
+#include "Event/KeyCode.hpp"
 #include "Util/CharUtil.hpp"
 #include "UIGlobals.hpp"
 #include "Look/DialogLook.hpp"
 #include "Util/Macros.hpp"
+#include "Util/TruncateString.hpp"
 
 #include <algorithm>
 
@@ -78,7 +77,7 @@ public:
   KnobTextEntryWindow(const TCHAR *text, size_t width)
     :max_width(std::min(MAX_TEXTENTRY, width)),
      cursor(0), lettercursor(0) {
-    CopyString(buffer, text, max_width);
+    CopyTruncateString(buffer, max_width, text);
     MoveCursor();
   }
 
@@ -139,10 +138,10 @@ private:
 
 protected:
   /* virtual methods from class Window */
-  virtual void OnPaint(Canvas &canvas);
+  void OnPaint(Canvas &canvas) override;
 
   /* virtual methods from class ActionListener */
-  virtual void OnAction(int id) override;
+  void OnAction(int id) override;
 };
 
 void
@@ -154,15 +153,15 @@ KnobTextEntryWindow::OnPaint(Canvas &canvas)
 
   // Do the actual painting of the text
   const DialogLook &look = UIGlobals::GetDialogLook();
-  canvas.Select(*look.text_font);
+  canvas.Select(look.text_font);
 
   PixelSize tsize = canvas.CalcTextSize(buffer);
   PixelSize tsizec = canvas.CalcTextSize(buffer, cursor);
   PixelSize tsizea = canvas.CalcTextSize(buffer, cursor + 1);
 
-  RasterPoint p[5];
+  BulkPixelPoint p[5];
   p[0].x = 10;
-  p[0].y = (rc.bottom - rc.top - tsize.cy - 5) / 2;
+  p[0].y = (rc.GetHeight() - tsize.cy - 5) / 2;
 
   p[2].x = p[0].x + tsizec.cx;
   p[2].y = p[0].y + tsize.cy + 5;
@@ -238,16 +237,16 @@ inline void
 KnobTextEntryWidget::CreateButtons(WidgetDialog &dialog)
 {
   dialog.AddButton(_T("A+"), window, DOWN);
-  dialog.AddButtonKey(IsAltair() ? KEY_LEFT : KEY_UP);
+  dialog.AddButtonKey(KEY_UP);
 
   dialog.AddButton(_T("A-"), window, UP);
-  dialog.AddButtonKey(IsAltair() ? KEY_RIGHT : KEY_DOWN);
+  dialog.AddButtonKey(KEY_DOWN);
 
   dialog.AddSymbolButton(_T("<"), window, LEFT);
-  dialog.AddButtonKey(IsAltair() ? KEY_UP : KEY_LEFT);
+  dialog.AddButtonKey(KEY_LEFT);
 
   dialog.AddSymbolButton(_T(">"), window, RIGHT);
-  dialog.AddButtonKey(IsAltair() ? KEY_DOWN : KEY_RIGHT);
+  dialog.AddButtonKey(KEY_RIGHT);
 }
 
 void
@@ -264,8 +263,8 @@ KnobTextEntry(TCHAR *text, size_t width,
   widget.CreateButtons(dialog);
 
   if (dialog.ShowModal() == mrOK) {
-    TrimRight(widget.GetValue());
-    CopyString(text, widget.GetValue(), width);
+    StripRight(widget.GetValue());
+    CopyTruncateString(text, width, widget.GetValue());
   }
 
   dialog.StealWidget();

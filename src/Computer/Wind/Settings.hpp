@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -59,11 +59,7 @@ struct WindSettings {
    */
   bool zig_zag_wind;
 
-  /**
-   * If enabled, then the wind vector received from external devices
-   * overrides XCSoar's internal wind calculation.
-   */
-  bool use_external_wind;
+  bool external_wind;
 
   /**
    * This is the manual wind set by the pilot. Validity is set when

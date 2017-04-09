@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,10 +27,10 @@ Copyright_License {
 #include "WindowWidget.hpp"
 #include "Form/Edit.hpp"
 #include "Form/DataField/Base.hpp"
-#include "Util/StaticArray.hpp"
+#include "Repository/FileType.hpp"
+#include "Util/StaticArray.hxx"
 #include "Util/EnumCast.hpp"
 #include "Units/Group.hpp"
-#include "Math/fixed.hpp"
 
 #include <assert.h>
 #include <stdint.h>
@@ -41,7 +41,7 @@ class ActionListener;
 class Angle;
 class RoughTime;
 class RoughTimeDelta;
-class WndButton;
+class Button;
 
 /**
  * A #Widget that contains #WndProperty controls, one in a row.
@@ -78,7 +78,7 @@ class RowFormWidget : public WindowWidget {
       MULTI_LINE,
 
       /**
-       * A #WndButton.
+       * A #Button.
        */
       BUTTON,
 
@@ -340,7 +340,7 @@ public:
    */
   void AddReadOnly(const TCHAR *label, const TCHAR *help,
                    const TCHAR *display_format,
-                   fixed value);
+                   double value);
 
   /**
    * Add a read-only control displaying a floating-point value.  Use
@@ -348,7 +348,7 @@ public:
    */
   void AddReadOnly(const TCHAR *label, const TCHAR *help,
                    const TCHAR *display_format,
-                   UnitGroup unit_group, fixed value);
+                   UnitGroup unit_group, double value);
 
   /**
    * Add a read-only control displaying a boolean value.  Use
@@ -373,17 +373,17 @@ public:
   WndProperty *AddFloat(const TCHAR *label, const TCHAR *help,
                         const TCHAR *display_format,
                         const TCHAR *edit_format,
-                        fixed min_value, fixed max_value,
-                        fixed step, bool fine,
-                        fixed value,
+                        double min_value, double max_value,
+                        double step, bool fine,
+                        double value,
                         DataFieldListener *listener=nullptr);
 
   WndProperty *AddFloat(const TCHAR *label, const TCHAR *help,
                         const TCHAR *display_format,
                         const TCHAR *edit_format,
-                        fixed min_value, fixed max_value,
-                        fixed step, bool fine,
-                        UnitGroup unit_group, fixed value,
+                        double min_value, double max_value,
+                        double step, bool fine,
+                        UnitGroup unit_group, double value,
                         DataFieldListener *listener=nullptr);
 
   WndProperty *AddAngle(const TCHAR *label, const TCHAR *help,
@@ -419,9 +419,17 @@ public:
 
   void AddSpacer();
 
-  WndProperty *AddFileReader(const TCHAR *label, const TCHAR *help,
-                             const char *profile_key, const TCHAR *filters,
-                             bool nullable = true);
+  WndProperty *AddFile(const TCHAR *label, const TCHAR *help,
+                       const char *profile_key, const TCHAR *filters,
+                       FileType file_type,
+                       bool nullable = true);
+
+  WndProperty *AddFile(const TCHAR *label, const TCHAR *help,
+                       const char *profile_key, const TCHAR *filters,
+                       bool nullable = true) {
+    return AddFile(label, help, profile_key, filters, FileType::UNKNOWN,
+                   nullable);
+  }
 
   /**
    * Add a read-only multi-line control.  You can use
@@ -429,7 +437,7 @@ public:
    */
   void AddMultiLine(const TCHAR *text=nullptr);
 
-  WndButton *AddButton(const TCHAR *label, ActionListener &listener, int id);
+  Button *AddButton(const TCHAR *label, ActionListener &listener, int id);
 
   gcc_pure
   Widget &GetRowWidget(unsigned i) {
@@ -502,6 +510,10 @@ public:
     control.SetText(text);
   }
 
+  void ClearText(unsigned i) {
+    SetText(i, _T(""));
+  }
+
   /**
    * Update the text of a multi line control.
    */
@@ -541,9 +553,9 @@ public:
 
   void LoadValue(unsigned i, const TCHAR *value);
 
-  void LoadValue(unsigned i, fixed value);
+  void LoadValue(unsigned i, double value);
   void LoadValue(unsigned i, Angle value);
-  void LoadValue(unsigned i, fixed value, UnitGroup unit_group);
+  void LoadValue(unsigned i, double value, UnitGroup unit_group);
 
   void LoadValue(unsigned i, RoughTime value);
 
@@ -568,7 +580,7 @@ public:
   int GetValueInteger(unsigned i) const;
 
   gcc_pure
-  fixed GetValueFloat(unsigned i) const;
+  double GetValueFloat(unsigned i) const;
 
   gcc_pure
   Angle GetValueAngle(unsigned i) const;
@@ -588,11 +600,23 @@ public:
   bool SaveValue(unsigned i, int &value) const;
   bool SaveValue(unsigned i, uint8_t &value) const;
   bool SaveValue(unsigned i, uint16_t &value) const;
-  bool SaveValue(unsigned i, fixed &value) const;
+  bool SaveValue(unsigned i, double &value) const;
   bool SaveValue(unsigned i, Angle &value_r) const;
   bool SaveValue(unsigned i, RoughTime &value_r) const;
   bool SaveValue(unsigned i, TCHAR *string, size_t max_size) const;
+
+  template<size_t max>
+  bool SaveValue(unsigned i, StringBuffer<TCHAR, max> &value) const {
+    return SaveValue(i, value.data(), value.capacity());
+  }
+
   bool SaveValue(unsigned i, const char *profile_key, TCHAR *string, size_t max_size) const;
+
+  template<size_t max>
+  bool SaveValue(unsigned i, const char *profile_key,
+                 StringBuffer<TCHAR, max> &value) const {
+    return SaveValue(i, profile_key, value.data(), value.capacity());
+  }
 
   bool SaveValue(unsigned i, unsigned &value) const {
     return SaveValue(i, (int &)value);
@@ -602,17 +626,17 @@ public:
   bool SaveValue(unsigned i, const char *profile_key, int &value) const;
   bool SaveValue(unsigned i, const char *profile_key, uint8_t &value) const;
   bool SaveValue(unsigned i, const char *profile_key, uint16_t &value) const;
-  bool SaveValue(unsigned i, const char *profile_key, fixed &value) const;
+  bool SaveValue(unsigned i, const char *profile_key, double &value) const;
 
   bool SaveValue(unsigned i, const char *registry_key,
                  unsigned &value) const {
     return SaveValue(i, registry_key, (int &)value);
   }
 
-  bool SaveValue(unsigned i, UnitGroup unit_group, fixed &value) const;
+  bool SaveValue(unsigned i, UnitGroup unit_group, double &value) const;
 
   bool SaveValue(unsigned i, UnitGroup unit_group,
-                 const char *profile_key, fixed &value) const;
+                 const char *profile_key, double &value) const;
 
   bool SaveValue(unsigned i, UnitGroup unit_group,
                  const char *profile_key, unsigned int &value) const;
@@ -656,14 +680,13 @@ protected:
 
 public:
   /* virtual methods from Widget */
-  virtual PixelSize GetMinimumSize() const override;
-  virtual PixelSize GetMaximumSize() const override;
-  virtual void Initialise(ContainerWindow &parent,
-                          const PixelRect &rc) override;
-  virtual void Unprepare() override;
-  virtual void Show(const PixelRect &rc) override;
-  virtual void Move(const PixelRect &rc) override;
-  virtual bool SetFocus() override;
+  PixelSize GetMinimumSize() const override;
+  PixelSize GetMaximumSize() const override;
+  void Initialise(ContainerWindow &parent, const PixelRect &rc) override;
+  void Unprepare() override;
+  void Show(const PixelRect &rc) override;
+  void Move(const PixelRect &rc) override;
+  bool SetFocus() override;
 };
 
 #endif

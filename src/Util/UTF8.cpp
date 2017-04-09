@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -161,6 +161,85 @@ ValidateUTF8(const char *p)
   return true;
 }
 
+size_t
+SequenceLengthUTF8(char ch)
+{
+  if (IsASCII(ch))
+    return 1;
+  else if (IsLeading1(ch))
+    /* 1 continuation */
+    return 2;
+  else if (IsLeading2(ch))
+    /* 2 continuations */
+    return 3;
+  else if (IsLeading3(ch))
+    /* 3 continuations */
+    return 4;
+  else if (IsLeading4(ch))
+    /* 4 continuations */
+    return 5;
+  else if (IsLeading5(ch))
+    /* 5 continuations */
+    return 6;
+  else
+    /* continuation without a prefix or some other illegal
+       start byte */
+    return 0;
+}
+
+template<size_t L>
+struct CheckSequenceUTF8 {
+  gcc_pure
+  bool operator()(const char *p) const {
+    return IsContinuation(*p) && CheckSequenceUTF8<L-1>()(p + 1);
+  }
+};
+
+template<>
+struct CheckSequenceUTF8<0u> {
+  constexpr bool operator()(gcc_unused const char *p) const {
+    return true;
+  }
+};
+
+template<size_t L>
+gcc_pure
+static size_t
+InnerSequenceLengthUTF8(const char *p)
+{
+  return CheckSequenceUTF8<L>()(p)
+    ? L + 1
+    : 0u;
+}
+
+size_t
+SequenceLengthUTF8(const char *p)
+{
+  const unsigned char ch = *p++;
+
+  if (IsASCII(ch))
+    return 1;
+  else if (IsLeading1(ch))
+    /* 1 continuation */
+    return InnerSequenceLengthUTF8<1>(p);
+  else if (IsLeading2(ch))
+    /* 2 continuations */
+    return InnerSequenceLengthUTF8<2>(p);
+  else if (IsLeading3(ch))
+    /* 3 continuations */
+    return InnerSequenceLengthUTF8<3>(p);
+  else if (IsLeading4(ch))
+    /* 4 continuations */
+    return InnerSequenceLengthUTF8<4>(p);
+  else if (IsLeading5(ch))
+    /* 5 continuations */
+    return InnerSequenceLengthUTF8<5>(p);
+  else
+    /* continuation without a prefix or some other illegal
+       start byte */
+    return 0;
+}
+
 static const char *
 FindNonASCIIOrZero(const char *p)
 {
@@ -304,22 +383,23 @@ FindLeading(gcc_unused char *const begin, char *i)
   return i;
 }
 
-void
+char *
 CropIncompleteUTF8(char *const p)
 {
-  assert(p != nullptr);
-
   char *const end = FindTerminator(p);
   if (end == p)
-    return;
+    return end;
 
   char *const last = end - 1;
   if (!IsContinuation(*last)) {
-    if (!IsASCII(*last))
+    char *result = end;
+    if (!IsASCII(*last)) {
       *last = 0;
+      result = last;
+    }
 
     assert(ValidateUTF8(p));
-    return;
+    return result;
   }
 
   char *const leading = FindLeading(p, last);
@@ -346,19 +426,62 @@ CropIncompleteUTF8(char *const p)
 
   assert(n_continuations <= expected_continuations);
 
-  if (n_continuations < expected_continuations)
+  char *result = end;
+
+  if (n_continuations < expected_continuations) {
     /* this continuation is incomplete: truncate here */
     *leading = 0;
+    result = leading;
+  }
 
   /* now the string must be completely valid */
   assert(ValidateUTF8(p));
+
+  return result;
+}
+
+size_t
+TruncateStringUTF8(const char *p, size_t max_chars, size_t max_bytes)
+{
+#if !CLANG_CHECK_VERSION(3,6)
+  /* disabled on clang due to -Wtautological-pointer-compare */
+  assert(p != nullptr);
+#endif
+  assert(ValidateUTF8(p));
+
+  size_t result = 0;
+  while (max_chars > 0 && *p != '\0') {
+    size_t sequence = SequenceLengthUTF8(*p);
+    if (sequence > max_bytes)
+      break;
+
+    result += sequence;
+    max_bytes -= sequence;
+    p += sequence;
+    --max_chars;
+  }
+
+  return result;
+}
+
+char *
+CopyTruncateStringUTF8(char *dest, size_t dest_size,
+                       const char *src, size_t truncate)
+{
+  assert(dest != nullptr);
+  assert(dest_size > 0);
+  assert(src != nullptr);
+  assert(ValidateUTF8(src));
+
+  size_t copy = TruncateStringUTF8(src, truncate, dest_size - 1);
+  auto *p = std::copy_n(src, copy, dest);
+  *p = '\0';
+  return p;
 }
 
 std::pair<unsigned, const char *>
 NextUTF8(const char *p)
 {
-  assert(p != nullptr);
-
   unsigned char a = *p++;
   if (a == 0)
     return std::make_pair(0u, nullptr);

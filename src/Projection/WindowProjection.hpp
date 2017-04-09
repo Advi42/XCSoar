@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ Copyright_License {
 #include "Screen/Point.hpp"
 #include "Projection.hpp"
 #include "Geo/GeoBounds.hpp"
-#include "Util/DebugFlag.hpp"
+#include "Math/Point2D.hpp"
 
 #include <algorithm>
 
@@ -36,9 +36,11 @@ Copyright_License {
 class WindowProjection:
   public Projection
 {
-  DebugFlag screen_size_initialised;
+#ifndef NDEBUG
+  bool screen_size_initialised;
+#endif
 
-  unsigned screen_width, screen_height;
+  UnsignedPoint2D screen_size;
 
   /**
    * Geographical representation of the screen boundaries.
@@ -46,9 +48,13 @@ class WindowProjection:
    * This is a cached member that has to be updated manually by
    * calling UpdateScreenBounds()
    */
-  GeoBounds screenbounds_latlon;
+  GeoBounds screen_bounds;
 
 public:
+#ifndef NDEBUG
+  WindowProjection():screen_size_initialised(false) {}
+#endif
+
   /**
    * Converts a geographical location to a screen coordinate if the
    * location is within the visible bounds
@@ -56,7 +62,7 @@ public:
    * @param sc Screen coordinate (output)
    * @return True if the location is within the bounds
    */
-  bool GeoToScreenIfVisible(const GeoPoint &loc, RasterPoint &sc) const;
+  bool GeoToScreenIfVisible(const GeoPoint &loc, PixelPoint &sc) const;
 
   /**
    * Checks whether a geographical location is within the visible bounds
@@ -72,15 +78,18 @@ public:
    * @return True if the screen coordinate is within the bounds
    */
   gcc_pure
-  bool ScreenVisible(const RasterPoint &P) const;
+  bool ScreenVisible(const PixelPoint &P) const;
 
   void SetScreenSize(PixelSize new_size) {
     assert(new_size.cx > 0);
     assert(new_size.cy > 0);
 
-    screen_width = new_size.cx;
-    screen_height = new_size.cy;
+    screen_size.x = new_size.cx;
+    screen_size.y = new_size.cy;
+
+#ifndef NDEBUG
     screen_size_initialised = true;
+#endif
   }
 
   void SetMapRect(const PixelRect &rc) {
@@ -88,13 +97,13 @@ public:
   }
 
   gcc_pure
-  fixed GetMapScale() const;
+  double GetMapScale() const;
 
   /**
    * Configure the scale so a centered circle with the specified
    * radius is visible.
    */
-  void SetScaleFromRadius(fixed radius);
+  void SetScaleFromRadius(double radius);
 
   /**
    * Returns the width of the map area in pixels.
@@ -103,7 +112,7 @@ public:
   unsigned GetScreenWidth() const {
     assert(screen_size_initialised);
 
-    return screen_width;
+    return screen_size.x;
   }
 
   /**
@@ -113,15 +122,15 @@ public:
   unsigned GetScreenHeight() const {
     assert(screen_size_initialised);
 
-    return screen_height;
+    return screen_size.y;
   }
 
   /**
    * Returns the raster coordinates at the center of the map.
    */
   gcc_pure
-  RasterPoint GetScreenCenter() const {
-    RasterPoint pt;
+  PixelPoint GetScreenCenter() const {
+    PixelPoint pt;
     pt.x = GetScreenWidth() / 2;
     pt.y = GetScreenHeight() / 2;
     return pt;
@@ -130,7 +139,7 @@ public:
   /**
    * Returns the width of the map area in meters.
    */
-  fixed GetScreenWidthMeters() const {
+  double GetScreenWidthMeters() const {
     return DistancePixelsToMeters(GetScreenWidth());
   }
 
@@ -151,7 +160,7 @@ public:
   }
 
   gcc_pure
-  fixed GetScreenDistanceMeters() const;
+  double GetScreenDistanceMeters() const;
 
   /**
    * Returns the GeoPoint at the center of the screen.
@@ -162,10 +171,10 @@ public:
   // used by terrain renderer, topography and airspace
   gcc_pure
   const GeoBounds &GetScreenBounds() const {
-    return screenbounds_latlon;
+    return screen_bounds;
   }
 
-  /** Updates the cached screenbounds_latlon member */
+  /** Updates the cached screen_bounds member */
   void UpdateScreenBounds();
 
 protected:

@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,16 +24,19 @@
 #include "Logger/MD5.hpp"
 #include "IGC/IGCString.hpp"
 #include "IO/FileLineReader.hpp"
-#include "IO/TextWriter.hpp"
+#include "IO/FileOutputStream.hxx"
+#include "IO/BufferedOutputStream.hxx"
+#include "OS/Path.hpp"
 #include "Util/Macros.hpp"
 
-#include <tchar.h>
+#include <stdexcept>
+
 #include <string.h>
 
 /**
  * Security theater.
  */
-static constexpr MD5::State g_key[4] = {
+static constexpr MD5::State g_key[GRecord::N_MD5] = {
   { 0x1C80A301,0x9EB30b89,0x39CB2Afe,0x0D0FEA76 },
   { 0x48327203,0x3948ebea,0x9a9b9c9e,0xb3bed89a },
   { 0x67452301,0xefcdab89,0x98badcfe,0x10325476 },
@@ -45,7 +48,7 @@ GRecord::Initialize()
 {
   ignore_comma = true;
 
-  for (unsigned i = 0; i < 4; ++i)
+  for (unsigned i = 0; i < N_MD5; ++i)
     md5[i].Initialise(g_key[i]);
 }
 
@@ -84,22 +87,22 @@ AppendIGCString(MD5 &md5, const char *s, bool ignore_comma)
 void
 GRecord::AppendStringToBuffer(const char *in)
 {
-  for (int i = 0; i < 4; i++)
-    AppendIGCString(md5[i], in, ignore_comma);
+  for (auto &i : md5)
+    AppendIGCString(i, in, ignore_comma);
 }
 
 void
 GRecord::FinalizeBuffer()
 {
-  for (int i = 0; i < 4; i++)
-    md5[i].Finalize();
+  for (auto &i : md5)
+    i.Finalize();
 }
 
 void
 GRecord::GetDigest(char *output) const
 {
-  for (int i = 0; i <= 3; i++, output += MD5::DIGEST_LENGTH)
-    md5[i].GetDigest(output);
+  for (auto &i : md5)
+    output = i.GetDigest(output);
 }
 
 bool
@@ -129,23 +132,18 @@ GRecord::IncludeRecordInGCalc(const char *in)
   return valid;
 }
 
-bool
-GRecord::LoadFileToBuffer(const TCHAR *filename)
+void
+GRecord::LoadFileToBuffer(Path path)
 {
-  FileLineReaderA reader(filename);
-  if (reader.error())
-    return false;
+  FileLineReaderA reader(path);
 
   char *line;
-
   while ((line = reader.ReadLine()) != nullptr)
     AppendRecordToBuffer(line);
-
-  return true;
 }
 
 void
-GRecord::WriteTo(TextWriter &writer) const
+GRecord::WriteTo(BufferedOutputStream &writer) const
 {
   char digest[DIGEST_LENGTH + 1];
   GetDigest(digest);
@@ -157,28 +155,25 @@ GRecord::WriteTo(TextWriter &writer) const
        i != end; i += chars_per_line) {
     writer.Write('G');
     writer.Write(i, chars_per_line);
-    writer.NewLine();
+    writer.Write('\n');
   }
 }
 
-bool
-GRecord::AppendGRecordToFile(const TCHAR *filename)
+void
+GRecord::AppendGRecordToFile(Path path)
 {
-  TextWriter writer(filename, true);
-  if (!writer.IsOpen())
-    return false;
-
+  FileOutputStream file(path, FileOutputStream::Mode::APPEND_EXISTING);
+  BufferedOutputStream writer(file);
   WriteTo(writer);
-  return true;
+  writer.Flush();
+  file.Commit();
 }
 
-bool
-GRecord::ReadGRecordFromFile(const TCHAR *filename,
+void
+GRecord::ReadGRecordFromFile(Path path,
                              char *output, size_t max_length)
 {
-  FileLineReaderA reader(filename);
-  if (reader.error())
-    return false;
+  FileLineReaderA reader(path);
 
   unsigned int digest_length = 0;
   char *data;
@@ -189,17 +184,15 @@ GRecord::ReadGRecordFromFile(const TCHAR *filename,
     for (const char *p = data + 1; *p != '\0'; ++p) {
       output[digest_length++] = *p;
       if (digest_length >= max_length)
-        /* G record too large */
-        return false;
+        throw std::runtime_error("G record too large");
     }
   }
 
   output[digest_length] = '\0';
-  return true;
 }
 
-bool
-GRecord::VerifyGRecordInFile(const TCHAR *path)
+void
+GRecord::VerifyGRecordInFile(Path path)
 {
   // assumes FileName member is set
   // Load File into Buffer (assume name is already set)
@@ -207,8 +200,7 @@ GRecord::VerifyGRecordInFile(const TCHAR *path)
 
   // load Existing Digest "old"
   char old_g_record[DIGEST_LENGTH + 1];
-  if (!ReadGRecordFromFile(path, old_g_record, ARRAY_SIZE(old_g_record)))
-    return false;
+  ReadGRecordFromFile(path, old_g_record, ARRAY_SIZE(old_g_record));
 
   // recalculate digest from buffer
   FinalizeBuffer();
@@ -216,5 +208,6 @@ GRecord::VerifyGRecordInFile(const TCHAR *path)
   char new_g_record[DIGEST_LENGTH + 1];
   GetDigest(new_g_record);
 
-  return strcmp(old_g_record, new_g_record) == 0;
+  if (strcmp(old_g_record, new_g_record) != 0)
+    throw std::runtime_error("Invalid G record");
 }

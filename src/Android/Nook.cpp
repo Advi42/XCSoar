@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2012 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,33 +21,32 @@ Copyright_License {
 }
 */
 
-#include "Android/Nook.hpp"
+#include "Nook.hpp"
 #include "OS/FileUtil.hpp"
 #include "OS/Sleep.h"
 
 #include <stdlib.h>
 
 static char cmd_host[] = "su -c 'echo host > /sys/devices/platform/musb_hdrc/mode'";
-static char cmd_usb_rw[] = "su -c 'chmod 666 /dev/ttyUSB0'";
 static char cmd_set_charge_500[] = "su -c 'echo 500000 > /sys/class/regulator/regulator.5/device/force_current'";
 static char cmd_set_charge_100[] = "su -c 'echo 100000 > /sys/class/regulator/regulator.5/device/force_current'";
 
 bool
 Nook::EnterFastMode()
 {
-  File::WriteExisting("/sys/class/graphics/fb0/epd_refresh", "0");
+  File::WriteExisting(Path("/sys/class/graphics/fb0/epd_refresh"), "0");
   Sleep(1000);
-  File::WriteExisting("/sys/class/graphics/fb0/epd_refresh", "1");
-  return File::WriteExisting("/sys/class/graphics/fb0/fmode", "1");
+  File::WriteExisting(Path("/sys/class/graphics/fb0/epd_refresh"), "1");
+  return File::WriteExisting(Path("/sys/class/graphics/fb0/fmode"), "1");
 }
 
 void
 Nook::ExitFastMode()
 {
-  File::WriteExisting("/sys/class/graphics/fb0/fmode", "0");
-  File::WriteExisting("/sys/class/graphics/fb0/epd_refresh", "0");
+  File::WriteExisting(Path("/sys/class/graphics/fb0/fmode"), "0");
+  File::WriteExisting(Path("/sys/class/graphics/fb0/epd_refresh"), "0");
   Sleep(500);
-  File::WriteExisting("/sys/class/graphics/fb0/epd_refresh", "1");
+  File::WriteExisting(Path("/sys/class/graphics/fb0/epd_refresh"), "1");
 }
 
 void
@@ -58,8 +57,6 @@ Nook::InitUsb()
 
   system(cmd_host);
   Sleep(500);
-
-  system(cmd_usb_rw);
 }
 
 void

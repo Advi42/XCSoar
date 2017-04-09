@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -33,23 +33,15 @@ Copyright_License {
 #include "Hardware/RotateDisplay.hpp"
 #endif
 
-#ifdef USE_FREETYPE
-#include "Screen/FreeType/Init.hpp"
-#endif
-
 ScreenGlobalInit::ScreenGlobalInit()
 {
-#ifdef USE_FREETYPE
-  FreeType::Initialise();
-#endif
-
   Font::Initialise();
 
   event_queue = new EventQueue();
 
 #ifdef KOBO
   Display::Rotate(DisplayOrientation::DEFAULT);
-  event_queue->SetMouseRotation(DisplayOrientation::DEFAULT);
+  event_queue->SetDisplayOrientation(DisplayOrientation::DEFAULT);
 #endif
 
   ScreenInitialized();
@@ -60,9 +52,7 @@ ScreenGlobalInit::~ScreenGlobalInit()
   delete event_queue;
   event_queue = nullptr;
 
-#ifdef USE_FREETYPE
-  FreeType::Deinitialise();
-#endif
+  Font::Deinitialise();
 
   ScreenDeinitialized();
 }

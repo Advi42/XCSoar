@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@ Copyright_License {
 #include "WaypointReaderSeeYou.hpp"
 #include "Units/System.hpp"
 #include "Waypoint/Waypoints.hpp"
+#include "Util/ExtractParameters.hpp"
 #include "Util/Macros.hpp"
 
 #include <stdlib.h>
@@ -51,7 +52,7 @@ ParseAngle(const TCHAR* src, Angle& dest, const bool lat)
   if (endptr != src + 3 || l < 0 || l >= 1000)
     return false;
 
-  fixed value = fixed(deg) + fixed(min) / 60 + fixed(l) / 60000;
+  auto value = deg + min / 60. + l / 60000.;
 
   TCHAR sign = *endptr;
   if (sign == 'W' || sign == 'w' || sign == 'S' || sign == 's')
@@ -63,7 +64,7 @@ ParseAngle(const TCHAR* src, Angle& dest, const bool lat)
 }
 
 static bool
-ParseAltitude(const TCHAR* src, fixed& dest)
+ParseAltitude(const TCHAR *src, double &dest)
 {
   // Parse string
   TCHAR *endptr;
@@ -71,7 +72,7 @@ ParseAltitude(const TCHAR* src, fixed& dest)
   if (endptr == src)
     return false;
 
-  dest = fixed(value);
+  dest = value;
 
   // Convert to system unit if necessary
   TCHAR unit = *endptr;
@@ -83,7 +84,7 @@ ParseAltitude(const TCHAR* src, fixed& dest)
 }
 
 static bool
-ParseDistance(const TCHAR* src, fixed& dest)
+ParseDistance(const TCHAR *src, double &dest)
 {
   // Parse string
   TCHAR *endptr;
@@ -91,7 +92,7 @@ ParseDistance(const TCHAR* src, fixed& dest)
   if (endptr == src)
     return false;
 
-  dest = fixed(value);
+  dest = value;
 
   // Convert to system unit if necessary, assume m as default
   TCHAR* unit = endptr;
@@ -159,8 +160,7 @@ ParseStyle(const TCHAR* src, Waypoint::Type &type)
 }
 
 bool
-WaypointReaderSeeYou::ParseLine(const TCHAR* line, const unsigned linenum,
-                              Waypoints &waypoints)
+WaypointReaderSeeYou::ParseLine(const TCHAR* line, Waypoints &waypoints)
 {
   enum {
     iName = 0,
@@ -174,12 +174,17 @@ WaypointReaderSeeYou::ParseLine(const TCHAR* line, const unsigned linenum,
     iDescription = 10,
   };
 
-  if (linenum == 0)
-    ignore_following = false;
+  if (first) {
+    first = false;
+
+    /* skip first line if it doesn't begin with a quotation character
+       (usually the field order line) */
+    if (line[0] != _T('\"'))
+      return true;
+  }
 
   // If (end-of-file or comment)
   if (StringIsEmpty(line) ||
-      StringStartsWith(line, _T("**")) ||
       StringStartsWith(line, _T("*")))
     // -> return without error condition
     return true;
@@ -189,13 +194,8 @@ WaypointReaderSeeYou::ParseLine(const TCHAR* line, const unsigned linenum,
     /* line too long for buffer */
     return false;
 
-  // Skip first line if it doesn't begin with a quotation character
-  // (usually the field order line)
-  if (linenum == 0 && line[0] != _T('\"'))
-    return true;
-
   // If task marker is reached ignore all following lines
-  if (_tcsstr(line, _T("-----Related Tasks-----")) == line)
+  if (StringStartsWith(line, _T("-----Related Tasks-----")))
     ignore_following = true;
   if (ignore_following)
     return true;
@@ -211,20 +211,19 @@ WaypointReaderSeeYou::ParseLine(const TCHAR* line, const unsigned linenum,
       iLongitude >= n_params)
     return false;
 
-  Waypoint new_waypoint;
+  GeoPoint location;
 
   // Latitude (e.g. 5115.900N)
-  if (!ParseAngle(params[iLatitude], new_waypoint.location.latitude, true))
+  if (!ParseAngle(params[iLatitude], location.latitude, true))
     return false;
 
   // Longitude (e.g. 00715.900W)
-  if (!ParseAngle(params[iLongitude], new_waypoint.location.longitude, false))
+  if (!ParseAngle(params[iLongitude], location.longitude, false))
     return false;
 
-  new_waypoint.location.Normalize(); // ensure longitude is within -180:180
+  location.Normalize(); // ensure longitude is within -180:180
 
-  new_waypoint.file_num = file_num;
-  new_waypoint.original_id = 0;
+  Waypoint new_waypoint = factory.Create(location);
 
   // Name (e.g. "Some Turnpoint")
   if (*params[iName] == _T('\0'))
@@ -235,7 +234,7 @@ WaypointReaderSeeYou::ParseLine(const TCHAR* line, const unsigned linenum,
   /// @todo configurable behaviour
   if ((iElevation >= n_params ||
       !ParseAltitude(params[iElevation], new_waypoint.elevation)) &&
-      !CheckAltitude(new_waypoint))
+      !factory.FallbackElevation(new_waypoint))
     return false;
 
   // Style (e.g. 5)
@@ -251,16 +250,16 @@ WaypointReaderSeeYou::ParseLine(const TCHAR* line, const unsigned linenum,
       new_waypoint.radio_frequency = RadioFrequency::Parse(params[iFrequency]);
 
     // Runway length (e.g. 546.0m)
-    fixed rwlen = fixed(-1);
+    double rwlen = -1;
     if (iRWLen < n_params && ParseDistance(params[iRWLen], rwlen) &&
-        positive(rwlen))
+        rwlen > 0)
       new_waypoint.runway.SetLength(uround(rwlen));
 
     if (iRWDir < n_params && *params[iRWDir]) {
       TCHAR *end;
       int direction =_tcstol(params[iRWDir], &end, 10);
       if (end == params[iRWDir] || direction < 0 || direction > 360 ||
-          (direction == 0 && !positive(rwlen)))
+          (direction == 0 && rwlen <= 0))
         direction = -1;
       else if (direction == 360)
         direction = 0;

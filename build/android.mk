@@ -4,8 +4,8 @@
 
 ifeq ($(TARGET),ANDROID)
 
-ANDROID_KEYSTORE = $(HOME)/.android/mk.keystore
-ANDROID_KEY_ALIAS = mk
+ANDROID_KEYSTORE ?= $(HOME)/.android/mk.keystore
+ANDROID_KEY_ALIAS ?= mk
 ANDROID_BUILD = $(TARGET_OUTPUT_DIR)/build
 ANDROID_BIN = $(TARGET_BIN_DIR)
 
@@ -16,6 +16,9 @@ else
 endif
 ANDROID_SDK_PLATFORM_DIR = $(ANDROID_SDK)/platforms/$(ANDROID_SDK_PLATFORM)
 ANDROID_ABI_DIR = $(ANDROID_BUILD)/libs/$(ANDROID_ABI5)
+
+ANDROID_BUILD_TOOLS_DIR = $(ANDROID_SDK)/build-tools/20.0.0
+ZIPALIGN = $(ANDROID_BUILD_TOOLS_DIR)/zipalign
 
 ANDROID_LIB_NAMES = xcsoar
 
@@ -40,6 +43,8 @@ CLASS_SOURCE = $(subst .,/,$(CLASS_NAME)).java
 CLASS_CLASS = $(patsubst %.java,%.class,$(CLASS_SOURCE))
 
 NATIVE_CLASSES = NativeView EventBridge InternalGPS NonGPSSensors NativeInputListener DownloadUtil BatteryReceiver
+NATIVE_CLASSES += NativePortListener
+NATIVE_CLASSES += NativeLeScanCallback
 NATIVE_CLASSES += NativeBMP085Listener
 NATIVE_CLASSES += NativeI2CbaroListener
 NATIVE_CLASSES += NativeBaroListener
@@ -60,6 +65,8 @@ else
 ICON_SVG = $(topdir)/Data/graphics/logo.svg
 endif
 
+ICON_WHITE_SVG = $(topdir)/Data/graphics/logo_white.svg
+
 $(ANDROID_BUILD)/res/drawable-ldpi/icon.png: $(ICON_SVG) | $(ANDROID_BUILD)/res/drawable-ldpi/dirstamp
 	$(Q)rsvg-convert --width=36 $< -o $@
 
@@ -70,6 +77,27 @@ $(ANDROID_BUILD)/res/drawable-hdpi/icon.png: $(ICON_SVG) | $(ANDROID_BUILD)/res/
 	$(Q)rsvg-convert --width=72 $< -o $@
 
 $(ANDROID_BUILD)/res/drawable-xhdpi/icon.png: $(ICON_SVG) | $(ANDROID_BUILD)/res/drawable-xhdpi/dirstamp
+	$(Q)rsvg-convert --width=96 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable-xxhdpi/icon.png: $(ICON_SVG) | $(ANDROID_BUILD)/res/drawable-xxhdpi/dirstamp
+	$(Q)rsvg-convert --width=144 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable-xxxhdpi/icon.png: $(ICON_SVG) | $(ANDROID_BUILD)/res/drawable-xxxhdpi/dirstamp
+	$(Q)rsvg-convert --width=192 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable/notification_icon.png: $(ICON_WHITE_SVG) | $(ANDROID_BUILD)/res/drawable/dirstamp
+	$(Q)rsvg-convert --width=24 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable-hdpi/notification_icon.png: $(ICON_WHITE_SVG) | $(ANDROID_BUILD)/res/drawable-hdpi/dirstamp
+	$(Q)rsvg-convert --width=36 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable-xhdpi/notification_icon.png: $(ICON_WHITE_SVG) | $(ANDROID_BUILD)/res/drawable-xhdpi/dirstamp
+	$(Q)rsvg-convert --width=48 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable-xxhdpi/notification_icon.png: $(ICON_WHITE_SVG) | $(ANDROID_BUILD)/res/drawable-xxhdpi/dirstamp
+	$(Q)rsvg-convert --width=72 $< -o $@
+
+$(ANDROID_BUILD)/res/drawable-xxxhdpi/notification_icon.png: $(ICON_WHITE_SVG) | $(ANDROID_BUILD)/res/drawable-xxxhdpi/dirstamp
 	$(Q)rsvg-convert --width=96 $< -o $@
 
 OGGENC = oggenc --quiet --quality 1
@@ -114,7 +142,14 @@ PNG_FILES = $(PNG1) $(PNG1b) $(PNG2) $(PNG3) $(PNG4) $(PNG5) \
 	$(ANDROID_BUILD)/res/drawable-ldpi/icon.png \
 	$(ANDROID_BUILD)/res/drawable/icon.png \
 	$(ANDROID_BUILD)/res/drawable-hdpi/icon.png \
-	$(ANDROID_BUILD)/res/drawable-xhdpi/icon.png
+	$(ANDROID_BUILD)/res/drawable-xhdpi/icon.png \
+	$(ANDROID_BUILD)/res/drawable-xxhdpi/icon.png \
+	$(ANDROID_BUILD)/res/drawable-xxxhdpi/icon.png \
+	$(ANDROID_BUILD)/res/drawable/notification_icon.png \
+	$(ANDROID_BUILD)/res/drawable-hdpi/notification_icon.png \
+	$(ANDROID_BUILD)/res/drawable-xhdpi/notification_icon.png \
+	$(ANDROID_BUILD)/res/drawable-xxhdpi/notification_icon.png \
+	$(ANDROID_BUILD)/res/drawable-xxxhdpi/notification_icon.png
 
 ifeq ($(TESTING),y)
 MANIFEST = android/testing/AndroidManifest.xml
@@ -138,6 +173,8 @@ $(ANDROID_BUILD)/build.xml: $(MANIFEST) $(PNG_FILES) | $(TARGET_BIN_DIR)/dirstam
 	$(Q)ln -s ../../../../../../android/ioio/software/IOIOLib/target/android/src/ioio/lib/spi $(ANDROID_BUILD)/src/ioio/lib/spi2
 	$(Q)ln -s ../../../../../android/ioio/software/IOIOLib/target/android/src/ioio/lib/util/android/ContextWrapperDependent.java $(ANDROID_BUILD)/src/ioio/
 	$(Q)ln -s ../../../../../../../android/ioio/software/IOIOLibAccessory/src/ioio/lib/android/accessory $(ANDROID_BUILD)/src/ioio/lib/android/accessory
+	$(Q)ln -s ../../../../../../../android/ioio/software/IOIOLibBT/src/ioio/lib/android/bluetooth $(ANDROID_BUILD)/src/ioio/lib/android/bluetooth
+	$(Q)ln -s ../../../../../../../android/ioio/software/IOIOLibAndroidDevice/src/ioio/lib/android/device $(ANDROID_BUILD)/src/ioio/lib/android/device
 	$(Q)ln -s ../../../../android/res/values $(@D)/res/values
 	$(Q)ln -s ../../../../android/res/xml $(@D)/res/xml
 ifeq ($(HOST_IS_WIN32),y)
@@ -159,29 +196,39 @@ ifeq ($(FAT_BINARY),y)
 # generate a "fat" APK file with binaries for all ABIs
 
 ANDROID_LIB_BUILD =
+ANDROID_THIRDPARTY_STAMPS =
 
 # Example: $(eval $(call generate-abi,xcsoar,armeabi-v7a,ANDROID7))
 define generate-abi
 
 ANDROID_LIB_BUILD += $$(ANDROID_BUILD)/libs/$(2)/lib$(1).so
 
-$$(ANDROID_BUILD)/libs/$(2)/lib$(1).so: $$(OUT)/$(3)/bin/lib$(1).so | $$(ANDROID_BUILD)/libs/$(2)/dirstamp
+$$(ANDROID_BUILD)/libs/$(2)/lib$(1).so: $$(OUT)/$(3)/$$(XCSOAR_ABI)/bin/lib$(1).so | $$(ANDROID_BUILD)/libs/$(2)/dirstamp
 	$$(Q)cp $$< $$@
 
-$$(OUT)/$(3)/bin/lib$(1).so:
+ANDROID_THIRDPARTY_STAMPS += $$(OUT)/$(3)/thirdparty.stamp
+$$(OUT)/$(3)/thirdparty.stamp:
+	$$(Q)$$(MAKE) TARGET=$(3) DEBUG=$$(DEBUG) USE_CCACHE=$$(USE_CCACHE) libs
+
+$$(OUT)/$(3)/$$(XCSOAR_ABI)/bin/lib$(1).so: $$(OUT)/$(3)/thirdparty.stamp
 	$$(Q)$$(MAKE) TARGET=$(3) DEBUG=$$(DEBUG) USE_CCACHE=$$(USE_CCACHE) $$@
 
 endef
 
 # Example: $(eval $(call generate-abi,xcsoar))
 define generate-all-abis
-$(eval $(call generate-abi,$(1),armeabi,ANDROID))
 $(eval $(call generate-abi,$(1),armeabi-v7a,ANDROID7))
 $(eval $(call generate-abi,$(1),x86,ANDROID86))
 $(eval $(call generate-abi,$(1),mips,ANDROIDMIPS))
+$(eval $(call generate-abi,$(1),arm64-v8a,ANDROIDAARCH64))
+$(eval $(call generate-abi,$(1),x86_64,ANDROIDX64))
+# Not adding ANDROIDMIPS64, because this platform has not been tested yet.
 endef
 
 $(foreach NAME,$(ANDROID_LIB_NAMES),$(eval $(call generate-all-abis,$(NAME))))
+
+.PHONY: libs
+libs: $(ANDROID_THIRDPARTY_STAMPS)
 
 else # !FAT_BINARY
 
@@ -190,6 +237,8 @@ $(call SRC_TO_OBJ,$(SRC)/Android/Main.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/EventBridge.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/InternalSensors.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/Battery.cpp): $(NATIVE_HEADERS)
+$(call SRC_TO_OBJ,$(SRC)/Android/NativePortListener.cpp): $(NATIVE_HEADERS)
+$(call SRC_TO_OBJ,$(SRC)/Android/NativeLeScanCallback.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/NativeInputListener.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/DownloadManager.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/NativeBMP085Listener.cpp): $(NATIVE_HEADERS)
@@ -199,7 +248,7 @@ $(call SRC_TO_OBJ,$(SRC)/Android/NativeNunchuckListener.cpp): $(NATIVE_HEADERS)
 $(call SRC_TO_OBJ,$(SRC)/Android/NativeVoltageListener.cpp): $(NATIVE_HEADERS)
 
 ANDROID_LIB_BUILD = $(patsubst %,$(ANDROID_ABI_DIR)/lib%.so,$(ANDROID_LIB_NAMES))
-$(ANDROID_LIB_BUILD): $(ANDROID_ABI_DIR)/lib%.so: $(TARGET_BIN_DIR)/lib%.so $(ANDROID_ABI_DIR)/dirstamp
+$(ANDROID_LIB_BUILD): $(ANDROID_ABI_DIR)/lib%.so: $(ABI_BIN_DIR)/lib%.so | $(ANDROID_ABI_DIR)/dirstamp
 	$(Q)cp $< $@
 
 $(ANDROID_BUILD)/bin/classes/$(CLASS_CLASS): $(NATIVE_SOURCES) $(ANDROID_BUILD)/build.xml $(ANDROID_BUILD)/res/drawable/icon.png $(SOUND_FILES)
@@ -230,6 +279,6 @@ $(ANDROID_BIN)/XCSoar-release-unaligned.apk: $(ANDROID_BIN)/XCSoar-release-unsig
 
 $(ANDROID_BIN)/XCSoar.apk: $(ANDROID_BIN)/XCSoar-release-unaligned.apk
 	@$(NQ)echo "  ALIGN   $@"
-	$(Q)$(ANDROID_SDK)/tools/zipalign -f 4 $< $@
+	$(Q)$(ZIPALIGN) -f 4 $< $@
 
 endif

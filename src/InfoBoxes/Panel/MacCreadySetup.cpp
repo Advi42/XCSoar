@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,8 +24,7 @@ Copyright_License {
 #include "MacCreadySetup.hpp"
 #include "Screen/Layout.hpp"
 #include "Widget/WindowWidget.hpp"
-#include "Look/DialogLook.hpp"
-#include "Form/Button.hpp"
+#include "Form/CheckBox.hpp"
 #include "Form/ActionListener.hpp"
 #include "Interface.hpp"
 #include "UIGlobals.hpp"
@@ -34,22 +33,9 @@ Copyright_License {
 
 class MacCreadySetupPanel : public WindowWidget,
                             private ActionListener {
+  CheckBoxControl auto_mc;
+
 public:
-  WndButton &GetButton() {
-    return (WndButton &)GetWindow();
-  }
-
-  gcc_pure
-  static const TCHAR *GetCaption() {
-    return CommonInterface::GetComputerSettings().task.auto_mc
-      ? _("MANUAL")
-      : _("AUTO");
-  }
-
-  void UpdateCaption() {
-    GetButton().SetCaption(GetCaption());
-  }
-
   /* virtual methods from class Widget */
   virtual PixelSize GetMinimumSize() const override {
     return PixelSize{Layout::Scale(80u), Layout::Scale(30u)};
@@ -68,28 +54,26 @@ void
 MacCreadySetupPanel::OnAction(int id)
 {
   TaskBehaviour &task_behaviour = CommonInterface::SetComputerSettings().task;
-  task_behaviour.auto_mc = !task_behaviour.auto_mc;
+  task_behaviour.auto_mc = auto_mc.GetState();
   Profile::Set(ProfileKeys::AutoMc, task_behaviour.auto_mc);
-
-  UpdateCaption();
 }
 
 void
 MacCreadySetupPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
 {
-  ButtonWindowStyle style;
+  WindowStyle style;
   style.Hide();
   style.TabStop();
 
-  SetWindow(new WndButton(parent, UIGlobals::GetDialogLook().button,
-                          GetCaption(), rc,
-                          style, *this, 1));
+  auto_mc.Create(parent, UIGlobals::GetDialogLook(), _("Auto"), rc, style,
+                 *this, 1);
+  SetWindow(&auto_mc);
 }
 
 void
 MacCreadySetupPanel::Show(const PixelRect &rc)
 {
-  UpdateCaption();
+  auto_mc.SetState(CommonInterface::GetComputerSettings().task.auto_mc);
   WindowWidget::Show(rc);
 }
 

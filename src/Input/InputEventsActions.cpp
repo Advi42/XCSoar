@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -49,25 +49,23 @@ doc/html/advanced/input/ALL		http://xcsoar.sourceforge.net/advanced/input/
 #include "UIState.hpp"
 #include "Computer/Settings.hpp"
 #include "Dialogs/Dialogs.h"
-#include "Dialogs/Device/Vega/VoiceSettingsDialog.hpp"
+#include "Dialogs/Error.hpp"
 #include "Dialogs/Device/Vega/SwitchesDialog.hpp"
 #include "Dialogs/Airspace/Airspace.hpp"
 #include "Dialogs/Task/TaskDialogs.hpp"
 #include "Dialogs/Traffic/TrafficDialogs.hpp"
 #include "Dialogs/Waypoint/WaypointDialogs.hpp"
-#include "Dialogs/Weather/WeatherDialogs.hpp"
+#include "Dialogs/Weather/WeatherDialog.hpp"
 #include "Dialogs/Plane/PlaneDialogs.hpp"
+#include "Dialogs/ProfileListDialog.hpp"
 #include "Dialogs/dlgAnalysis.hpp"
 #include "Dialogs/FileManager.hpp"
 #include "Dialogs/ReplayDialog.hpp"
 #include "Message.hpp"
-#include "Markers/ProtectedMarkers.hpp"
-#include "InfoBoxes/InfoBoxLayout.hpp"
+#include "Markers/Markers.hpp"
 #include "MainWindow.hpp"
+#include "PopupMessage.hpp"
 #include "Projection/MapWindowProjection.hpp"
-#include "Profile/Profile.hpp"
-#include "Profile/ProfileKeys.hpp"
-#include "Util/StringUtil.hpp"
 #include "Audio/Sound.hpp"
 #include "UIActions.hpp"
 #include "Interface.hpp"
@@ -77,18 +75,40 @@ doc/html/advanced/input/ALL		http://xcsoar.sourceforge.net/advanced/input/
 #include "Logger/Logger.hpp"
 #include "Logger/NMEALogger.hpp"
 #include "Waypoint/Waypoints.hpp"
+#include "Waypoint/Factory.hpp"
+#include "Waypoint/WaypointGlue.hpp"
 #include "Task/ProtectedTaskManager.hpp"
 #include "UtilsSettings.hpp"
 #include "PageActions.hpp"
-#include "Hardware/AltairControl.hpp"
 #include "Compiler.h"
-#include "Weather/Features.hpp"
 #include "MapWindow/GlueMapWindow.hpp"
 #include "Simulator.hpp"
+#include "Formatter/TimeFormatter.hpp"
 
 #include <assert.h>
 #include <tchar.h>
 #include <algorithm>
+
+/**
+ * Determine the reference location of the current map display.
+ */
+gcc_pure
+static GeoPoint
+GetVisibleLocation()
+{
+  const auto &projection = CommonInterface::main_window->GetProjection();
+  if (projection.IsValid())
+    return projection.GetGeoLocation();
+
+  /* just in case the Projection is broken for whatever reason, fall
+     back to NMEAInfo::location */
+
+  const auto &basic = CommonInterface::Basic();
+  if (basic.location_available)
+    return basic.location;
+
+  return GeoPoint::Invalid();
+}
 
 static void
 trigger_redraw()
@@ -98,10 +118,37 @@ trigger_redraw()
   TriggerMapUpdate();
 }
 
+/**
+ * Wrapper for #ScopeSuspendAllThreads and Waypoints::Append().
+ *
+ * @return a reference to the #Waypoint stored in #Waypoints
+ */
+static WaypointPtr
+SuspendAppendWaypoint(Waypoint &&wp)
+{
+  ScopeSuspendAllThreads suspend;
+  auto ptr = way_points.Append(std::move(wp));
+  way_points.Optimise();
+  return ptr;
+}
+
+static WaypointPtr
+SuspendAppendSaveWaypoint(Waypoint &&wp)
+{
+  auto ptr = SuspendAppendWaypoint(std::move(wp));
+
+  try {
+    WaypointGlue::SaveWaypoint(*ptr);
+  } catch (const std::runtime_error &e) {
+    ShowError(e, _("Failed to save waypoints"));
+  }
+
+  return ptr;
+}
+
 // -----------------------------------------------------------------------
 // Execution - list of things you can do
 // -----------------------------------------------------------------------
-
 
 // TODO code: Keep marker text for use in log file etc.
 void
@@ -110,9 +157,30 @@ InputEvents::eventMarkLocation(const TCHAR *misc)
   const NMEAInfo &basic = CommonInterface::Basic();
 
   if (StringIsEqual(misc, _T("reset"))) {
-    protected_marks->Reset();
+    ScopeSuspendAllThreads suspend;
+    way_points.EraseUserMarkers();
   } else {
-    protected_marks->MarkLocation(basic.location, basic.date_time_utc);
+    const auto location = GetVisibleLocation();
+    if (!location.IsValid())
+      return;
+
+    MarkLocation(location, basic.date_time_utc);
+
+    const WaypointFactory factory(WaypointOrigin::USER, terrain);
+    Waypoint wp = factory.Create(location);
+    factory.FallbackElevation(wp);
+
+    TCHAR name[64] = _T("Marker");
+    if (basic.date_time_utc.IsPlausible()) {
+      auto *p = name + StringLength(name);
+      *p++ = _T(' ' );
+      FormatISO8601(p, basic.date_time_utc);
+    }
+
+    wp.name = name;
+    wp.type = Waypoint::Type::MARKER;
+
+    SuspendAppendSaveWaypoint(std::move(wp));
 
     if (CommonInterface::GetUISettings().sound.sound_modes_enabled)
       PlayResource(_T("IDR_WAV_CLEAR"));
@@ -167,7 +235,8 @@ void
 InputEvents::eventClearStatusMessages(gcc_unused const TCHAR *misc)
 {
   // TODO enhancement: allow selection of specific messages (here we are acknowledging all)
-  CommonInterface::main_window->popup.Acknowledge();
+  if (CommonInterface::main_window->popup != nullptr)
+    CommonInterface::main_window->popup->Acknowledge();
 }
 
 // Mode
@@ -232,7 +301,6 @@ InputEvents::eventAnalysis(gcc_unused const TCHAR *misc)
                        CommonInterface::main_window->GetLook(),
                        CommonInterface::Full(),
                        *glide_computer,
-                       protected_task_manager,
                        &airspace_database,
                        terrain);
 }
@@ -248,7 +316,10 @@ void
 InputEvents::eventWaypointDetails(const TCHAR *misc)
 {
   const NMEAInfo &basic = CommonInterface::Basic();
-  const Waypoint* wp = NULL;
+  WaypointPtr wp;
+
+  bool allow_navigation = true;
+  bool allow_edit = true;
 
   if (StringIsEqual(misc, _T("current"))) {
     if (protected_task_manager == NULL)
@@ -259,11 +330,25 @@ InputEvents::eventWaypointDetails(const TCHAR *misc)
       Message::AddMessage(_("No active waypoint!"));
       return;
     }
+
+    /* due to a code limitation, we can't currently manipulate
+       Waypoint instances taken from the task, because it would
+       require updating lots of internal task state, and the waypoint
+       editor doesn't know how to do that */
+    allow_navigation = false;
+    allow_edit = false;
   } else if (StringIsEqual(misc, _T("select"))) {
     wp = ShowWaypointListDialog(basic.location);
   }
   if (wp)
-    dlgWaypointDetailsShowModal(*wp);
+    dlgWaypointDetailsShowModal(std::move(wp),
+                                allow_navigation, allow_edit);
+}
+
+void
+InputEvents::eventWaypointEditor(const TCHAR *misc)
+{
+  dlgConfigWaypointsShowModal();
 }
 
 // StatusMessage
@@ -356,7 +441,7 @@ InputEvents::eventLogger(const TCHAR *misc)
     } else {
       Message::AddMessage(_("Logger off"));
     }
-  else if (_tcsncmp(misc, _T("note"), 4))
+  else if (StringIsEqual(misc, _T("note"), 4))
     // add note to logger file if available..
     logger->LoggerNote(misc + 4);
 }
@@ -369,45 +454,33 @@ InputEvents::eventRepeatStatusMessage(gcc_unused const TCHAR *misc)
 {
   // new interface
   // TODO enhancement: display only by type specified in misc field
-  CommonInterface::main_window->popup.Repeat();
+  if (CommonInterface::main_window->popup != nullptr)
+    CommonInterface::main_window->popup->Repeat();
 }
 
 // NearestWaypointDetails
 // Displays the waypoint details dialog
-//  aircraft: the waypoint nearest the aircraft
-//  pan: the waypoint nearest to the pan cursor
 void
-InputEvents::eventNearestWaypointDetails(const TCHAR *misc)
+InputEvents::eventNearestWaypointDetails(gcc_unused const TCHAR *misc)
 {
-  if (StringIsEqual(misc, _T("aircraft")))
-    // big range..
-    PopupNearestWaypointDetails(way_points, CommonInterface::Basic().location,
-                                1.0e5);
-  else if (StringIsEqual(misc, _T("pan"))) {
-    const Projection &projection =
-      CommonInterface::main_window->GetProjection();
+  const auto location = GetVisibleLocation();
+  if (!location.IsValid())
+    return;
 
-    // big range..
-    if (projection.IsValid())
-      PopupNearestWaypointDetails(way_points, projection.GetGeoLocation(),
-                                  1.0e5);
-  }
+  // big range..
+  PopupNearestWaypointDetails(way_points, location, 1.0e5);
 }
 
 // NearestMapItems
 // Displays the map item list dialog
-//  aircraft: the map items to nearest the aircraft
-//  pan: the map items nearest to the pan cursor
 void
-InputEvents::eventNearestMapItems(const TCHAR *misc)
+InputEvents::eventNearestMapItems(gcc_unused const TCHAR *misc)
 {
-  if (StringIsEqual(misc, _T("aircraft")))
-    CommonInterface::main_window->GetMap()->ShowMapItems(
-        CommonInterface::Basic().location);
+  const auto location = GetVisibleLocation();
+  if (!location.IsValid())
+    return;
 
-  else if (StringIsEqual(misc, _T("pan")))
-    CommonInterface::main_window->GetMap()->ShowMapItems(
-        CommonInterface::main_window->GetProjection().GetGeoLocation());
+  CommonInterface::main_window->GetMap()->ShowMapItems(location);
 }
 
 // Null
@@ -422,9 +495,7 @@ InputEvents::eventNull(gcc_unused const TCHAR *misc)
 void
 InputEvents::eventBeep(gcc_unused const TCHAR *misc)
 {
-  #if defined(GNAV)
-  altair_control.ShortBeep();
-#elif defined(WIN32)
+#ifdef WIN32
   MessageBeep(MB_ICONEXCLAMATION);
 #else
   PlayResource(_T("IDR_WAV_CLEAR"));
@@ -452,20 +523,20 @@ InputEvents::eventSetup(const TCHAR *misc)
   else if (StringIsEqual(misc, _T("Airspace")))
     dlgAirspaceShowModal(false);
   else if (StringIsEqual(misc, _T("Weather")))
-    dlgWeatherShowModal();
+    ShowWeatherDialog(_T("rasp"));
   else if (StringIsEqual(misc, _T("Replay"))) {
     if (!CommonInterface::MovementDetected())
       ShowReplayDialog();
   } else if (StringIsEqual(misc, _T("Switches")))
     dlgSwitchesShowModal();
-  else if (StringIsEqual(misc, _T("Voice")))
-    dlgVoiceShowModal();
   else if (StringIsEqual(misc, _T("Teamcode")))
     dlgTeamCodeShowModal();
   else if (StringIsEqual(misc, _T("Target")))
     dlgTargetShowModal();
   else if (StringIsEqual(misc, _T("Plane")))
     dlgPlanesShowModal();
+  else if (StringIsEqual(misc, _T("Profile")))
+    ProfileListDialog();
   else if (StringIsEqual(misc, _T("Alternates")))
     dlgAlternatesListShowModal();
 
@@ -486,7 +557,7 @@ InputEvents::eventRun(const TCHAR *misc)
 {
   #ifdef WIN32
   PROCESS_INFORMATION pi;
-  if (!::CreateProcess(misc, NULL, NULL, NULL, FALSE, 0, NULL, NULL, NULL, &pi))
+  if (!::CreateProcess(misc, NULL, NULL, NULL, false, 0, NULL, NULL, NULL, &pi))
     return;
 
   // wait for program to finish!
@@ -502,7 +573,7 @@ InputEvents::eventRun(const TCHAR *misc)
 void
 InputEvents::eventBrightness(gcc_unused const TCHAR *misc)
 {
-  dlgBrightnessShowModal();
+  // not implemented (was only implemented on Altair)
 }
 
 void
@@ -548,11 +619,8 @@ InputEvents::eventAddWaypoint(const TCHAR *misc)
       trigger_redraw();
       return;
     }
-    {
-      ScopeSuspendAllThreads suspend;
-      way_points.Append(std::move(edit_waypoint));
-      way_points.Optimise();
-    }
+
+    SuspendAppendSaveWaypoint(std::move(edit_waypoint));
   }
 
   trigger_redraw();
@@ -602,10 +670,7 @@ eventSounds			- Include Task and Modes sounds along with Vario
 void
 InputEvents::eventWeather(const TCHAR *misc)
 {
-#ifdef HAVE_NOAA
-  if (StringIsEqual(misc, _T("list")))
-    dlgNOAAListShowModal();
-#endif
+  ShowWeatherDialog(misc);
 }
 
 void

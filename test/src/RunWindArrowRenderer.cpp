@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,12 +21,11 @@ Copyright_License {
 }
 */
 
-#define ENABLE_SCREEN
+#define ENABLE_MAIN_WINDOW
+#define ENABLE_CLOSE_BUTTON
 
 #include "Main.hpp"
-#include "Screen/SingleWindow.hpp"
-#include "Screen/ButtonWindow.hpp"
-#include "Screen/Timer.hpp"
+#include "Event/LambdaTimer.hpp"
 #include "Screen/Canvas.hpp"
 #include "Look/WindArrowLook.hpp"
 #include "Renderer/WindArrowRenderer.hpp"
@@ -39,7 +38,7 @@ class WindWindow : public PaintWindow
 
 public:
   WindWindow(const WindArrowLook &look)
-    :renderer(look), wind(fixed(10), fixed(0)) {}
+    :renderer(look), wind(10, 0) {}
 
   SpeedVector GetWind() const {
     return wind;
@@ -55,10 +54,7 @@ protected:
     canvas.ClearWhite();
 
     const PixelRect rc = canvas.GetRect();
-
-    RasterPoint pt = {
-      (PixelScalar)(rc.right / 2), (PixelScalar)(rc.bottom / 2)
-    };
+    PixelPoint pt = rc.GetCenter();
 
     canvas.SelectBlackPen();
     canvas.SelectHollowBrush();
@@ -68,89 +64,32 @@ protected:
   }
 };
 
-class TestWindow : public SingleWindow
-{
-  ButtonWindow close_button;
-  WindWindow wind;
-
-  WindowTimer timer;
-
-  enum {
-    ID_START = 100,
-    ID_CLOSE
-  };
-
-public:
-  TestWindow(const WindArrowLook &look):wind(look), timer(*this)
-  {
-    timer.Schedule(250);
-  }
-
-  ~TestWindow() {
-    timer.Cancel();
-  }
-
-  void Create(PixelSize size) {
-    TopWindowStyle style;
-    style.Resizable();
-
-    SingleWindow::Create(_T("RunWindArrowRenderer"), size, style);
-
-    const PixelRect rc = GetClientRect();
-
-    WindowStyle with_border;
-    with_border.Border();
-
-    wind.Create(*this, rc, with_border);
-
-    PixelRect button_rc = rc;
-    button_rc.top = button_rc.bottom - 30;
-    close_button.Create(*this, _T("Close"), ID_CLOSE, button_rc);
-  }
-
-protected:
-  virtual bool OnCommand(unsigned id, unsigned code) override {
-    switch (id) {
-    case ID_CLOSE:
-      Close();
-      return true;
-    }
-
-    return SingleWindow::OnCommand(id, code);
-  }
-
-  virtual bool OnTimer(WindowTimer &_timer) override {
-    if (_timer == timer) {
-      SpeedVector _wind = wind.GetWind();
-
-      _wind.bearing = (_wind.bearing + Angle::Degrees(5)).AsBearing();
-      _wind.norm += fixed(1);
-      if (_wind.norm > fixed(15))
-        _wind.norm = fixed(0);
-
-      wind.SetWind(_wind);
-      return true;
-    }
-
-    return SingleWindow::OnTimer(_timer);
-  }
-
-  virtual void OnResize(PixelSize new_size) override {
-    SingleWindow::OnResize(new_size);
-    if (wind.IsDefined())
-      wind.Resize(new_size);
-  }
-};
-
 static void
 Main()
 {
   WindArrowLook wind_look;
   wind_look.Initialise(bold_font);
 
-  TestWindow window(wind_look);
-  window.Create({160, 160});
+  WindowStyle with_border;
+  with_border.Border();
 
-  window.Show();
-  window.RunEventLoop();
+  WindWindow wind(wind_look);
+  wind.Create(main_window, main_window.GetClientRect(), with_border);
+  main_window.SetFullWindow(wind);
+
+  auto timer = MakeLambdaTimer([&wind](){
+      SpeedVector _wind = wind.GetWind();
+
+      _wind.bearing = (_wind.bearing + Angle::Degrees(5)).AsBearing();
+      _wind.norm += 1;
+      if (_wind.norm > 15)
+        _wind.norm = 0;
+
+      wind.SetWind(_wind);
+    });
+  timer.Schedule(250);
+
+  main_window.RunEventLoop();
+
+  timer.Cancel();
 }

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ class ListPickerWidget : public ListWidget, public ActionListener,
                          private Timer {
   unsigned num_items;
   unsigned initial_value;
-  UPixelScalar row_height;
+  unsigned row_height;
 
   bool visible;
 
@@ -54,7 +54,7 @@ class ListPickerWidget : public ListWidget, public ActionListener,
 
 public:
   ListPickerWidget(unsigned _num_items, unsigned _initial_value,
-                   UPixelScalar _row_height,
+                   unsigned _row_height,
                    ListItemRenderer &_item_renderer,
                    ActionListener &_action_listener,
                    const TCHAR *_caption, const TCHAR *_help_text)
@@ -157,7 +157,8 @@ ListPicker(const TCHAR *caption,
            unsigned item_height,
            ListItemRenderer &item_renderer, bool update,
            const TCHAR *help_text,
-           ItemHelpCallback_t _itemhelp_callback)
+           ItemHelpCallback_t _itemhelp_callback,
+           const TCHAR *extra_caption)
 {
   assert(num_items <= 0x7fffffff);
   assert((num_items == 0 && initial_value == 0) || initial_value < num_items);
@@ -188,7 +189,12 @@ ListPicker(const TCHAR *caption,
   if (num_items > 0)
     dialog.AddButton(_("Select"), mrOK);
 
+  if (extra_caption != nullptr)
+    dialog.AddButton(extra_caption, -2);
+
   dialog.AddButton(_("Cancel"), mrCancel);
+
+  dialog.EnableCursorSelection();
 
   auto update_timer = MakeLambdaTimer([list_widget](){
       list_widget->GetList().Invalidate();
@@ -196,9 +202,11 @@ ListPicker(const TCHAR *caption,
   if (update)
     update_timer.Schedule(1000);
 
-  int result = dialog.ShowModal() == mrOK
-    ? (int)list_widget->GetList().GetCursorIndex()
-    : -1;
+  int result = dialog.ShowModal();
+  if (result == mrOK)
+    result = (int)list_widget->GetList().GetCursorIndex();
+  else if (result != -2)
+    result = -1;
 
   update_timer.Cancel();
   return result;

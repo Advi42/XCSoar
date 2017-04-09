@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,32 +25,42 @@ Copyright_License {
 #include "Engine/Airspace/AirspaceAltitude.hpp"
 #include "Units/Units.hpp"
 #include "Units/Descriptor.hpp"
+#include "Math/Util.hpp"
+#include "Util/StringFormat.hpp"
 
 #include <string.h>
-#include <stdio.h>
 
 void
 AirspaceFormatter::FormatAltitudeShort(TCHAR *buffer,
-                                       const AirspaceAltitude &altitude)
+                                       const AirspaceAltitude &altitude,
+                                       bool include_unit)
 {
   switch (altitude.reference) {
   case AltitudeReference::AGL:
-    if (!positive(altitude.altitude_above_terrain))
+    if (altitude.altitude_above_terrain <= 0)
       _tcscpy(buffer, _T("GND"));
     else
-      _stprintf(buffer, _T("%d %s AGL"),
-                iround(Units::ToUserAltitude(altitude.altitude_above_terrain)),
-                Units::GetAltitudeName());
+      if (include_unit)
+        StringFormatUnsafe(buffer, _T("%d %s AGL"),
+                           iround(Units::ToUserAltitude(altitude.altitude_above_terrain)),
+                           Units::GetAltitudeName());
+      else
+        StringFormatUnsafe(buffer, _T("%d AGL"),
+                           iround(Units::ToUserAltitude(altitude.altitude_above_terrain)));
     break;
 
   case AltitudeReference::STD:
-    _stprintf(buffer, _T("FL%d"), (int)altitude.flight_level);
+    StringFormatUnsafe(buffer, _T("FL%d"), iround(altitude.flight_level));
     break;
 
   case AltitudeReference::MSL:
-    _stprintf(buffer, _T("%d %s"),
-              iround(Units::ToUserAltitude(altitude.altitude)),
-              Units::GetAltitudeName());
+    if (include_unit)
+      StringFormatUnsafe(buffer, _T("%d %s"),
+                         iround(Units::ToUserAltitude(altitude.altitude)),
+                         Units::GetAltitudeName());
+    else
+      StringFormatUnsafe(buffer, _T("%d"),
+                         iround(Units::ToUserAltitude(altitude.altitude)));
     break;
 
   case AltitudeReference::NONE:
@@ -70,13 +80,13 @@ AirspaceFormatter::FormatAltitude(TCHAR *buffer,
       Units::GetUserAltitudeUnit() == Unit::METER)
     /* additionally show airspace altitude in feet, because aviation
        charts usually print altitudes in feet */
-    _stprintf(buffer + _tcslen(buffer), _T(" (%d %s)"),
-              iround(Units::ToUserUnit(altitude.altitude, Unit::FEET)),
-              Units::GetUnitName(Unit::FEET));
+    StringFormatUnsafe(buffer + _tcslen(buffer), _T(" (%d %s)"),
+                       iround(Units::ToUserUnit(altitude.altitude, Unit::FEET)),
+                       Units::GetUnitName(Unit::FEET));
 
   if (altitude.reference != AltitudeReference::MSL &&
-      positive(altitude.altitude))
-    _stprintf(buffer + _tcslen(buffer), _T(" %d %s"),
-              iround(Units::ToUserAltitude(altitude.altitude)),
-              Units::GetAltitudeName());
+      altitude.altitude > 0)
+    StringFormatUnsafe(buffer + _tcslen(buffer), _T(" %d %s"),
+                       iround(Units::ToUserAltitude(altitude.altitude)),
+                       Units::GetAltitudeName());
 }

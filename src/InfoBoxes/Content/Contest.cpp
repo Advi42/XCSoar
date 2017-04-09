@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -39,9 +39,8 @@ ShowAnalysis8()
   dlgAnalysisShowModal(UIGlobals::GetMainWindow(),
                        UIGlobals::GetLook(),
                        CommonInterface::Full(), *glide_computer,
-                       protected_task_manager,
                        &airspace_database,
-                       terrain, 8);
+                       terrain, AnalysisPage::OLC);
 }
 
 static Widget *
@@ -65,16 +64,21 @@ InfoBoxContentOLC::GetDialogContent()
 void
 InfoBoxContentOLC::Update(InfoBoxData &data)
 {
-  if (!CommonInterface::GetComputerSettings().contest.enable ||
-      !protected_task_manager) {
+  const ComputerSettings &settings_computer =
+    CommonInterface::GetComputerSettings();
+
+   if (!settings_computer.contest.enable || !protected_task_manager) {
     data.SetInvalid();
     return;
   }
 
-  const ContestResult& result_olc =
-    CommonInterface::Calculated().contest_stats.GetResult();
+  int result_index =
+    (settings_computer.contest.contest == Contest::OLC_LEAGUE) ? 0 : -1;
 
-  if (result_olc.score < fixed(1)) {
+  const ContestResult& result_olc =
+    CommonInterface::Calculated().contest_stats.GetResult(result_index);
+
+  if (result_olc.score < 1) {
     data.SetInvalid();
     return;
   }
@@ -94,22 +98,27 @@ InfoBoxContentOLCSpeed::GetDialogContent()
 void
 InfoBoxContentOLCSpeed::Update(InfoBoxData &data)
 {
-  if (!CommonInterface::GetComputerSettings().contest.enable ||
-      !protected_task_manager) {
+  const ComputerSettings &settings_computer =
+    CommonInterface::GetComputerSettings();
+
+  if (!settings_computer.contest.enable || !protected_task_manager) {
     data.SetInvalid();
     return;
   }
 
-  const ContestResult& result_olc =
-    CommonInterface::Calculated().contest_stats.GetResult();
+  int result_index =
+    (settings_computer.contest.contest == Contest::OLC_LEAGUE) ? 0 : -1;
 
-  if (result_olc.score < fixed(1)) {
+  const ContestResult& result_olc =
+    CommonInterface::Calculated().contest_stats.GetResult(result_index);
+
+  if (result_olc.score < 1) {
     data.SetInvalid();
     return;
   }
 
   // Set Value
-  data.SetValueFromSpeed(result_olc.GetSpeed());
+  data.SetValueFromTaskSpeed(result_olc.GetSpeed());
 
   data.UnsafeFormatComment(_T("%.1f pts"), (double)result_olc.score);
 }

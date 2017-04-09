@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -45,6 +45,7 @@ class WindowProjection;
 class LabelBlock;
 class XShape;
 struct GeoPoint;
+struct TopographyLook;
 
 /**
  * Class used to manage and render vector topography layers
@@ -55,6 +56,8 @@ class TopographyFileRenderer final
 #endif
 {
   const TopographyFile &file;
+
+  const TopographyLook &look;
 
 #ifndef ENABLE_OPENGL
   mutable ShapeRenderer shape_renderer;
@@ -79,7 +82,8 @@ class TopographyFileRenderer final
 #endif
 
 public:
-  explicit TopographyFileRenderer(const TopographyFile &file);
+  TopographyFileRenderer(const TopographyFile &file,
+                         const TopographyLook &look);
 
   TopographyFileRenderer(const TopographyFileRenderer &) = delete;
 

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@ Copyright_License {
 #include "Form/Button.hpp"
 #include "Form/DataField/Enum.hpp"
 #include "Form/DataField/Float.hpp"
-#include "Form/DataField/Boolean.hpp"
 #include "Interface.hpp"
 #include "Language/Language.hpp"
 #include "UIGlobals.hpp"
@@ -65,11 +64,9 @@ WindSettingsPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
           _("This allows switching on or off the automatic wind algorithm."),
           auto_wind_list, settings.GetLegacyAutoWindMode());
 
-  AddBoolean(_("Prefer external wind"),
-             _("If enabled, then the wind vector received from external devices overrides "
-                 "XCSoar's internal wind calculation."),
-             settings.use_external_wind,
-             this);
+  AddBoolean(_("External wind"),
+             _("Should XCSoar accept wind estimates from other instruments?"),
+             settings.external_wind);
 
   if (edit_trail_drift)
     AddBoolean(_("Trail drift"),
@@ -88,10 +85,10 @@ WindSettingsPanel::Prepare(ContainerWindow &parent, const PixelRect &rc)
     WndProperty *wp =
       AddFloat(_("Speed"), _("Manual adjustment of wind speed."),
                _T("%.0f %s"), _T("%.0f"),
-               fixed(0),
-               Units::ToUserWindSpeed(Units::ToSysUnit(fixed(200),
+               0,
+               Units::ToUserWindSpeed(Units::ToSysUnit(200,
                                                        Unit::KILOMETER_PER_HOUR)),
-               fixed(1), false,
+               1, false,
                Units::ToUserWindSpeed(manual_wind.norm),
                this);
     DataFieldFloat &df = *(DataFieldFloat *)wp->GetDataField();
@@ -145,8 +142,8 @@ WindSettingsPanel::Save(bool &_changed)
     changed = true;
   }
 
-  changed |= SaveValue(ExternalWind, ProfileKeys::ExternalWind,
-                       settings.use_external_wind);
+  changed |= SaveValue(EXTERNAL_WIND, ProfileKeys::ExternalWind,
+                       settings.external_wind);
 
   if (edit_trail_drift)
     changed |= SaveValue(TrailDrift, ProfileKeys::TrailDrift,
@@ -177,10 +174,7 @@ WindSettingsPanel::OnModified(DataField &df)
   const NMEAInfo &basic = CommonInterface::Basic();
   WindSettings &settings = CommonInterface::SetComputerSettings().wind;
 
-  if (&df == &GetDataField(ExternalWind)) {
-    DataFieldBoolean &dfb = (DataFieldBoolean &)df;
-    settings.use_external_wind = dfb.GetAsBoolean();
-  } else if (&df == &GetDataField(Speed) || &df == &GetDataField(Direction)) {
+  if (&df == &GetDataField(Speed) || &df == &GetDataField(Direction)) {
     settings.manual_wind.norm = Units::ToSysWindSpeed(GetValueFloat(Speed));
     settings.manual_wind.bearing = GetValueAngle(Direction);
     settings.manual_wind_available.Update(basic.clock);
@@ -211,8 +205,12 @@ WindSettingsPanel::UpdateVector()
     source = _("Manual");
     break;
 
-  case DerivedInfo::WindSource::AUTO:
-    source = _("Auto");
+  case DerivedInfo::WindSource::CIRCLING:
+    source = _("Circling");
+    break;
+
+  case DerivedInfo::WindSource::EKF:
+    source = _("ZigZag");
     break;
 
   case DerivedInfo::WindSource::EXTERNAL:

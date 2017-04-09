@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,41 +26,47 @@ Copyright_License {
 #include "WaypointReaderFS.hpp"
 #include "WaypointReaderOzi.hpp"
 #include "WaypointReaderCompeGPS.hpp"
+#include "OS/Path.hpp"
+#include "IO/FileLineReader.hpp"
 
-#include "OS/PathName.hpp"
-#include "IO/TextFile.hpp"
+#include <stdexcept>
 
-#include <memory>
+template<class R>
+gcc_pure
+static bool
+VerifyFormat(Path path)
+try {
+  FileLineReader reader(path, Charset::UTF8);
+  return R::VerifyFormat(reader);
+} catch (const std::runtime_error &) {
+  return false;
+}
 
 WaypointFileType
-DetermineWaypointFileType(const TCHAR *path)
+DetermineWaypointFileType(Path path)
 {
   // If WinPilot waypoint file -> save type and return true
-  if (MatchesExtension(path, _T(".dat")) ||
-      MatchesExtension(path, _T(".xcw")))
+  if (path.MatchesExtension(_T(".dat")) ||
+      path.MatchesExtension(_T(".xcw")))
     return WaypointFileType::WINPILOT;
 
   // If SeeYou waypoint file -> save type and return true
-  if (MatchesExtension(path, _T(".cup")))
+  if (path.MatchesExtension(_T(".cup")))
     return WaypointFileType::SEEYOU;
 
   // If Zander waypoint file -> save type and return true
-  if (MatchesExtension(path, _T(".wpz")))
+  if (path.MatchesExtension(_T(".wpz")))
     return WaypointFileType::ZANDER;
 
   // If FS waypoint file -> save type and return true
-  if (MatchesExtension(path, _T(".wpt"))) {
-
-    std::unique_ptr<TLineReader> reader(OpenTextFile(path));
-    if (reader && WaypointReaderFS::VerifyFormat(*reader))
+  if (path.MatchesExtension(_T(".wpt"))) {
+    if (VerifyFormat<WaypointReaderFS>(path))
       return WaypointFileType::FS;
 
-    reader.reset(OpenTextFile(path));
-    if (reader && WaypointReaderOzi::VerifyFormat(*reader))
+    if (VerifyFormat<WaypointReaderOzi>(path))
       return WaypointFileType::OZI_EXPLORER;
 
-    reader.reset(OpenTextFile(path));
-    if (reader && WaypointReaderCompeGPS::VerifyFormat(*reader))
+    if (VerifyFormat<WaypointReaderCompeGPS>(path))
       return WaypointFileType::COMPE_GPS;
   }
 

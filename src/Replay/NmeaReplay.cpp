@@ -2,7 +2,7 @@
   Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,20 +28,19 @@
 #include "Device/Register.hpp"
 #include "Device/Config.hpp"
 #include "NMEA/Info.hpp"
+#include "Util/StringCompare.hxx"
 
-#include <string.h>
-
-NmeaReplay::NmeaReplay(NLineReader *_reader, const DeviceConfig &config)
-  :reader(_reader),
+NmeaReplay::NmeaReplay(std::unique_ptr<NLineReader> &&_reader,
+                       const DeviceConfig &config)
+  :reader(std::move(_reader)),
    parser(new NMEAParser()),
-   device(NULL)
+   device(nullptr)
 {
   parser->SetReal(false);
-  parser->SetIgnoreChecksum(config.ignore_checksum);
 
   const struct DeviceRegister *driver = FindDriverByName(config.driver_name);
-  assert(driver != NULL);
-  if (driver->CreateOnPort != NULL) {
+  assert(driver != nullptr);
+  if (driver->CreateOnPort != nullptr) {
     DeviceConfig config;
     config.Clear();
     device = driver->CreateOnPort(config, port);
@@ -54,16 +53,15 @@ NmeaReplay::~NmeaReplay()
 {
   delete device;
   delete parser;
-  delete reader;
 }
 
 bool
 NmeaReplay::ParseLine(const char *line, NMEAInfo &data)
 {
-  data.clock = clock.NextClock(data.time_available ? data.time : fixed(-1));
+  data.clock = clock.NextClock(data.time_available ? data.time : -1);
 
-  if ((device != NULL && device->ParseNMEA(line, data)) ||
-      (parser != NULL && parser->ParseLine(line, data))) {
+  if ((device != nullptr && device->ParseNMEA(line, data)) ||
+      (parser != nullptr && parser->ParseLine(line, data))) {
     data.gps.replay = true;
     data.alive.Update(data.clock);
 
@@ -77,10 +75,12 @@ NmeaReplay::ReadUntilRMC(NMEAInfo &data)
 {
   char *buffer;
 
-  while ((buffer = reader->ReadLine()) != NULL) {
+  while ((buffer = reader->ReadLine()) != nullptr) {
     ParseLine(buffer, data);
 
-    if (StringStartsWith(buffer, "$GPRMC") ||
+    if ((StringLength(buffer) >= 6 &&
+         StringStartsWith(buffer, "$G") &&
+         StringStartsWith(buffer + 3, "RMC")) ||
         StringStartsWith(buffer, "$FLYSEN"))
       return true;
   }

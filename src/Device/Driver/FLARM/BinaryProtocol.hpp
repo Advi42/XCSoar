@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,15 +24,13 @@ Copyright_License {
 #ifndef XCSOAR_FLARM_BINARY_PROTOCOL_HPP
 #define XCSOAR_FLARM_BINARY_PROTOCOL_HPP
 
-#include "Util/AllocatedArray.hpp"
 #include "OS/ByteOrder.hpp"
 #include "Compiler.h"
-#include "tchar.h"
-#include "Device/Driver.hpp"
 
 #include <type_traits>
 
 #include <stdint.h>
+#include <stddef.h>
 
 class Port;
 struct Declaration;
@@ -59,7 +57,6 @@ namespace FLARM {
     MT_GETIGCDATA = 0x22,
   };
 
-#pragma pack(push, 1) // force 1-byte alignment
   /**
    * The binary transfer mode works with "frames". Each frame consists of a
    * start byte (0x73), an 8-byte frame header and an optional payload. The
@@ -71,7 +68,7 @@ namespace FLARM {
      * Length of the frame header (8) + length of the payload in bytes.
      * Use the Get/Set() functions to interact with this attribute!
      */
-    uint16_t length;
+    PackedLE16 length;
 
     /**
      * Protocol version. Frames with higher version number than implemented
@@ -83,7 +80,7 @@ namespace FLARM {
      * Sequence counter. Shall be increased by one for every frame sent.
      * Use the Get/Set() functions to interact with this attribute!
      */
-    uint16_t sequence_number;
+    PackedLE16 sequence_number;
 
     /** Message type */
     uint8_t type;
@@ -92,36 +89,12 @@ namespace FLARM {
      * CRC over the complete message, except CRC field.
      * Use the Get/Set() functions to interact with this attribute!
      */
-    uint16_t crc;
-
-    uint16_t GetLength() const {
-      return FromLE16(length);
-    }
-
-    void SetLength(uint16_t _length) {
-      length = ToLE16(_length);
-    }
-
-    uint16_t GetSequenceNumber() const {
-      return ReadUnalignedLE16(&sequence_number);
-    }
-
-    void SetSequenceNumber(uint16_t _sequence_number) {
-      WriteUnalignedLE16(&sequence_number, _sequence_number);
-    }
-
-    uint16_t GetCRC() const {
-      return FromLE16(crc);
-    }
-
-    void SetCRC(uint16_t _crc) {
-      crc = ToLE16(_crc);
-    }
-  } gcc_packed;
-#pragma pack(pop)
+    PackedLE16 crc;
+  };
 
   static_assert(sizeof(FrameHeader) == 8,
                 "The FrameHeader struct needs to have a size of 8 bytes");
+  static_assert(alignof(FrameHeader) == 1, "Wrong alignment");
   static_assert(std::is_trivial<FrameHeader>::value, "type is not trivial");
 
   /**
@@ -135,7 +108,8 @@ namespace FLARM {
    */
   FrameHeader PrepareFrameHeader(unsigned sequence_number,
                                  MessageType message_type,
-                                 const void *data = NULL, size_t length = 0);
+                                 const void *data = nullptr,
+                                 size_t length = 0);
 
   /**
    * Sends the specified data stream to the FLARM using the escaping algorithm

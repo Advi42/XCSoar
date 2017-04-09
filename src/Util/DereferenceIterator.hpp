@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Max Kellermann <max@duempel.org>
+ * Copyright (C) 2012 Max Kellermann <max.kellermann@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,11 +39,13 @@
  */
 template<typename IT, typename VT=std::remove_pointer<typename IT::value_type>>
 class DereferenceIterator {
+  typedef std::iterator_traits<IT> Traits;
+
   IT original;
 
 public:
-  typedef typename IT::iterator_category iterator_category;
-  typedef typename IT::difference_type difference_type;
+  typedef typename Traits::iterator_category iterator_category;
+  typedef typename Traits::difference_type difference_type;
   typedef VT value_type;
   typedef VT *pointer;
   typedef VT &reference;

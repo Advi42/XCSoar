@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,33 +23,24 @@ Copyright_License {
 
 #include "VarioBarLook.hpp"
 #include "Screen/Layout.hpp"
-
-static Color
-ColorWithAlpha(const Color &c, uint8_t a)
-{
-#ifdef ENABLE_OPENGL
-  return c.WithAlpha(a);
-#else
-  return c;
-#endif
-}
-
+#include "Look/Colors.hpp"
 
 void
 VarioBarLook::Initialise(const Font &_font)
 {
-  const uint8_t alpha = 0xA0;
+  const uint8_t alpha = ALPHA_OVERLAY;
 
-  brush_sink.Set(ColorWithAlpha(COLOR_RED, alpha));
-  brush_sink_avg.Set(ColorWithAlpha(LightColor(COLOR_RED), alpha));
-  pen_sink.Set(Layout::ScalePenWidth(1), DarkColor(COLOR_RED));
+  brush_sink.Create(ColorWithAlpha(COLOR_RED, alpha));
+  brush_sink_avg.Create(ColorWithAlpha(LightColor(COLOR_RED), alpha));
+  pen_sink.Create(Layout::ScalePenWidth(1), DarkColor(COLOR_RED));
 
-  brush_climb.Set(ColorWithAlpha(COLOR_GREEN, alpha));
-  brush_climb_avg.Set(ColorWithAlpha((LightColor(LightColor(COLOR_GREEN))), alpha));
-  pen_climb.Set(Layout::ScalePenWidth(1), DarkColor(COLOR_GREEN));
+  brush_climb.Create(ColorWithAlpha(COLOR_GREEN, alpha));
+  brush_climb_avg.Create(ColorWithAlpha((LightColor(LightColor(COLOR_GREEN))),
+                                        alpha));
+  pen_climb.Create(Layout::ScalePenWidth(1), DarkColor(COLOR_GREEN));
 
-  brush_mc.Set(ColorWithAlpha(COLOR_GRAY, alpha));
-  pen_mc.Set(Layout::ScalePenWidth(1), DarkColor(COLOR_GRAY));
+  brush_mc.Create(ColorWithAlpha(COLOR_GRAY, alpha));
+  pen_mc.Create(Layout::ScalePenWidth(1), DarkColor(COLOR_GRAY));
 
   font = &_font;
 }

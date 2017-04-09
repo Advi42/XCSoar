@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,7 +22,7 @@ Copyright_License {
 */
 
 #define ENABLE_LOOK
-#define ENABLE_XML_DIALOG
+#define ENABLE_DIALOG
 #define ENABLE_CMDLINE
 #define ENABLE_PROFILE
 #define USAGE "DRIVER FILE"
@@ -32,10 +32,8 @@ Copyright_License {
 #include "Screen/BufferCanvas.hpp"
 #include "InfoBoxes/InfoBoxLayout.hpp"
 #include "Logger/Logger.hpp"
-#include "Terrain/RasterWeather.hpp"
 #include "Terrain/RasterTerrain.hpp"
 #include "Waypoint/WaypointGlue.hpp"
-#include "Dialogs/XML.hpp"
 #include "Dialogs/dlgAnalysis.hpp"
 #include "Dialogs/Task/TaskDialogs.hpp"
 #include "Dialogs/Dialogs.h"
@@ -52,6 +50,7 @@ Copyright_License {
 #include "Computer/BasicComputer.hpp"
 #include "Computer/GlideComputer.hpp"
 #include "Computer/GlideComputerInterface.hpp"
+#include "Task/DefaultTask.hpp"
 #include "Task/ProtectedTaskManager.hpp"
 #include "Task/ProtectedRoutePlanner.hpp"
 #include "Task/TaskFile.hpp"
@@ -77,13 +76,15 @@ void dlgBasicSettingsShowModal() {}
 void ShowWindSettingsDialog() {}
 
 void
-dlgAirspaceWarningsShowModal(SingleWindow &parent,
-                             ProtectedAirspaceWarningManager &warnings,
+dlgAirspaceWarningsShowModal(ProtectedAirspaceWarningManager &warnings,
                              bool auto_close)
 {
 }
 
-void dlgTaskManagerShowModal() {}
+void
+dlgStatusShowModal(int page)
+{
+}
 
 void
 ConditionMonitorsUpdate(const NMEAInfo &basic, const DerivedInfo &calculated,
@@ -152,7 +153,7 @@ Main()
 
   InterfaceBlackboard blackboard;
   blackboard.SetComputerSettings().SetDefaults();
-  blackboard.SetComputerSettings().polar.glide_polar_task = GlidePolar(fixed(1));
+  blackboard.SetComputerSettings().polar.glide_polar_task = GlidePolar(1);
   blackboard.SetUISettings().SetDefaults();
 
   TaskBehaviour task_behaviour;
@@ -171,19 +172,17 @@ Main()
 
   LoadFiles(airspace_database);
 
-  const TaskFactoryType task_type_default =
-    blackboard.GetComputerSettings().task.task_type_default;
-  OrderedTask *task =
-    protected_task_manager.TaskCreateDefault(&way_points, task_type_default);
+  OrderedTask *task = LoadDefaultTask(blackboard.GetComputerSettings().task,
+                                      &way_points);
   if (task != nullptr) {
     protected_task_manager.TaskCommit(*task);
     delete task;
   }
 
-  GlideComputer glide_computer(way_points, airspace_database,
+  GlideComputer glide_computer(blackboard.GetComputerSettings(),
+                               way_points, airspace_database,
                                protected_task_manager,
                                task_events);
-  glide_computer.ReadComputerSettings(blackboard.GetComputerSettings());
   glide_computer.SetTerrain(terrain);
   glide_computer.SetContestIncremental(false);
   glide_computer.Initialise();
@@ -196,7 +195,6 @@ Main()
                      {640, 480});
 
   dlgAnalysisShowModal(main_window, *look, blackboard, glide_computer,
-                       &protected_task_manager,
                        &airspace_database,
                        terrain);
 

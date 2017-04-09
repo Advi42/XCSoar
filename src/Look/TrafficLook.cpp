@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,6 +25,11 @@ Copyright_License {
 #include "Screen/Layout.hpp"
 #include "Resources.hpp"
 
+constexpr Color TrafficLook::team_color_green;
+constexpr Color TrafficLook::team_color_magenta;
+constexpr Color TrafficLook::team_color_blue;
+constexpr Color TrafficLook::team_color_yellow;
+
 void
 TrafficLook::Initialise(const Font &_font)
 {
@@ -32,15 +37,15 @@ TrafficLook::Initialise(const Font &_font)
   warning_color = Color(0xfe,0x84,0x38);
   alarm_color = Color(0xfb,0x35,0x2f);
 
-  safe_brush.Set(safe_color);
-  warning_brush.Set(warning_color);
-  alarm_brush.Set(alarm_color);
+  safe_brush.Create(safe_color);
+  warning_brush.Create(warning_color);
+  alarm_brush.Create(alarm_color);
 
-  UPixelScalar width = Layout::ScalePenWidth(2);
-  team_pen_green.Set(width, Color(0x74, 0xFF, 0));
-  team_pen_blue.Set(width, Color(0, 0x90, 0xFF));
-  team_pen_yellow.Set(width, Color(0xFF, 0xE8, 0));
-  team_pen_magenta.Set(width, Color(0xFF, 0, 0xCB));
+  unsigned width = Layout::ScalePenWidth(2);
+  team_pen_green.Create(width, team_color_green);
+  team_pen_blue.Create(width, team_color_blue);
+  team_pen_yellow.Create(width, team_color_yellow);
+  team_pen_magenta.Create(width, team_color_magenta);
 
   teammate_icon.LoadResource(IDB_TEAMMATE_POS, IDB_TEAMMATE_POS_HD);
 

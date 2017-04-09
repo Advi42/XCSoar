@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,7 +21,7 @@ Copyright_License {
 }
 */
 
-#include "Device/Driver/LX/Protocol.hpp"
+#include "Protocol.hpp"
 #include "Operation/Operation.hpp"
 
 #include <assert.h>
@@ -68,22 +68,29 @@ LX::SendPacket(Port &port, Command command,
 bool
 LX::ReceivePacket(Port &port, Command command,
                   void *data, size_t length, OperationEnvironment &env,
-                  unsigned timeout_ms)
+                  unsigned first_timeout_ms, unsigned subsequent_timeout_ms,
+                  unsigned total_timeout_ms)
 {
   port.Flush();
   return SendCommand(port, command) &&
-    ReadCRC(port, data, length, env, timeout_ms);
+    ReadCRC(port, data, length, env,
+            first_timeout_ms, subsequent_timeout_ms, total_timeout_ms);
 }
 
 bool
 LX::ReceivePacketRetry(Port &port, Command command,
                        void *data, size_t length, OperationEnvironment &env,
-                       unsigned timeout_ms, unsigned n_retries)
+                       unsigned first_timeout_ms,
+                       unsigned subsequent_timeout_ms,
+                       unsigned total_timeout_ms,
+                       unsigned n_retries)
 {
   assert(n_retries > 0);
 
   while (true) {
-    if (ReceivePacket(port, command, data, length, env, timeout_ms))
+    if (ReceivePacket(port, command, data, length, env,
+                      first_timeout_ms, subsequent_timeout_ms,
+                      total_timeout_ms))
       return true;
 
     if (n_retries-- == 0)
@@ -126,11 +133,16 @@ LX::calc_crc(const void *p0, size_t len, uint8_t crc)
 
 bool
 LX::ReadCRC(Port &port, void *buffer, size_t length, OperationEnvironment &env,
-            unsigned timeout_ms)
+            unsigned first_timeout_ms, unsigned subsequent_timeout_ms,
+            unsigned total_timeout_ms)
 {
   uint8_t crc;
 
-  return port.FullRead(buffer, length, env, timeout_ms) &&
-    port.FullRead(&crc, sizeof(crc), env, timeout_ms) &&
+  return port.FullRead(buffer, length, env,
+                       first_timeout_ms, subsequent_timeout_ms,
+                       total_timeout_ms) &&
+    port.FullRead(&crc, sizeof(crc), env,
+                  subsequent_timeout_ms, subsequent_timeout_ms,
+                  subsequent_timeout_ms) &&
     calc_crc(buffer, length, 0xff) == crc;
 }

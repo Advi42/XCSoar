@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -95,7 +95,7 @@ XCSoarInterface::ExchangeDeviceBlackboard()
 void
 ActionInterface::SendGetComputerSettings()
 {
-  assert(calculation_thread != NULL);
+  assert(calculation_thread != nullptr);
 
   main_window->SetComputerSettings(GetComputerSettings());
 
@@ -104,17 +104,17 @@ ActionInterface::SendGetComputerSettings()
 }
 
 void
-ActionInterface::SetBallast(fixed ballast, bool to_devices)
+ActionInterface::SetBallast(double ballast, bool to_devices)
 {
   // write ballast into settings
   GlidePolar &polar = SetComputerSettings().polar.glide_polar_task;
   polar.SetBallast(ballast);
 
   // send to calculation thread and trigger recalculation
-  if (protected_task_manager != NULL)
+  if (protected_task_manager != nullptr)
     protected_task_manager->SetGlidePolar(polar);
 
-  if (calculation_thread != NULL) {
+  if (calculation_thread != nullptr) {
     calculation_thread->SetComputerSettings(GetComputerSettings());
     calculation_thread->ForceTrigger();
   }
@@ -122,8 +122,8 @@ ActionInterface::SetBallast(fixed ballast, bool to_devices)
   // send to external devices
   if (to_devices) {
     const Plane &plane = GetComputerSettings().plane;
-    if (positive(plane.dry_mass)) {
-      fixed overload = (plane.dry_mass + ballast * plane.max_ballast) /
+    if (plane.dry_mass > 0) {
+      auto overload = (plane.dry_mass + ballast * plane.max_ballast) /
         plane.dry_mass;
 
       MessageOperationEnvironment env;
@@ -133,17 +133,17 @@ ActionInterface::SetBallast(fixed ballast, bool to_devices)
 }
 
 void
-ActionInterface::SetBugs(fixed bugs, bool to_devices)
+ActionInterface::SetBugs(double bugs, bool to_devices)
 {
   // Write Bugs into settings
   CommonInterface::SetComputerSettings().polar.SetBugs(bugs);
   GlidePolar &polar = SetComputerSettings().polar.glide_polar_task;
 
   // send to calculation thread and trigger recalculation
-  if (protected_task_manager != NULL)
+  if (protected_task_manager != nullptr)
     protected_task_manager->SetGlidePolar(polar);
 
-  if (calculation_thread != NULL) {
+  if (calculation_thread != nullptr) {
     calculation_thread->SetComputerSettings(GetComputerSettings());
     calculation_thread->ForceTrigger();
   }
@@ -156,14 +156,14 @@ ActionInterface::SetBugs(fixed bugs, bool to_devices)
 }
 
 void
-ActionInterface::SetMacCready(fixed mc, bool to_devices)
+ActionInterface::SetMacCready(double mc, bool to_devices)
 {
   // Repeated adjustment of MC with the +/- UI elements could result in
   // an MC which is slightly larger than 0. Since the calculations
   // fundamentally change depending on  "MC == 0" or "MC <> 0" force
-  // a fixed(0) for small MC values.
-  if (mc < fixed(0.01))
-    mc = fixed(0);
+  // a 0 for small MC values.
+  if (mc < 0.01)
+    mc = 0;
 
   /* update interface settings */
 
@@ -176,10 +176,10 @@ ActionInterface::SetMacCready(fixed mc, bool to_devices)
 
   /* send to calculation thread and trigger recalculation */
 
-  if (protected_task_manager != NULL)
+  if (protected_task_manager != nullptr)
     protected_task_manager->SetGlidePolar(polar);
 
-  if (calculation_thread != NULL) {
+  if (calculation_thread != nullptr) {
     calculation_thread->SetComputerSettings(GetComputerSettings());
     calculation_thread->ForceTrigger();
   }
@@ -192,7 +192,7 @@ ActionInterface::SetMacCready(fixed mc, bool to_devices)
   }
 }
 
-void ActionInterface::SetManualMacCready(fixed mc, bool to_devices)
+void ActionInterface::SetManualMacCready(double mc, bool to_devices)
 {
   TaskBehaviour &task_behaviour = CommonInterface::SetComputerSettings().task;
   if (task_behaviour.auto_mc) {
@@ -204,15 +204,15 @@ void ActionInterface::SetManualMacCready(fixed mc, bool to_devices)
 }
 
 void
-ActionInterface::OffsetManualMacCready(fixed offset, bool to_devices)
+ActionInterface::OffsetManualMacCready(double offset, bool to_devices)
 {
   const GlidePolar &polar = GetComputerSettings().polar.glide_polar_task;
-  const fixed old_mc = polar.GetMC();
-  fixed mc = old_mc + offset;
-  if (negative(mc))
-    mc = fixed(0);
-  else if (mc > fixed(5))
-    mc = fixed(5);
+  const auto old_mc = polar.GetMC();
+  auto mc = old_mc + offset;
+  if (mc < 0)
+    mc = 0;
+  else if (mc > 5)
+    mc = 5;
 
   if (mc != old_mc)
     SetManualMacCready(mc, to_devices);
@@ -221,9 +221,6 @@ ActionInterface::OffsetManualMacCready(fixed offset, bool to_devices)
 void
 ActionInterface::SendMapSettings(const bool trigger_draw)
 {
-  // trigger_draw: asks for an immediate exchange of blackboard data
-  // (via ProcessTimer()) rather than waiting for the idle timer every 500ms
-
   if (trigger_draw) {
     main_window->UpdateGaugeVisibility();
     InfoBoxManager::ProcessTimer();
@@ -241,6 +238,15 @@ ActionInterface::SendMapSettings(const bool trigger_draw)
   }
 
   // TODO: trigger refresh if the settings are changed
+}
+
+void
+ActionInterface::SendUIState(const bool trigger_draw)
+{
+  main_window->SetUIState(GetUIState());
+
+  if (trigger_draw)
+    main_window->FullRedraw();
 }
 
 gcc_pure

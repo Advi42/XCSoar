@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -25,6 +25,7 @@
 #include "Airspace/AirspaceIntersectionVisitor.hpp"
 #include "Airspace/AbstractAirspace.hpp"
 #include "Airspace/Predicate/AirspacePredicateHeightRange.hpp"
+#include "Airspace/Predicate/AirspacePredicate.hpp"
 #include "Geo/Flat/FlatRay.hpp"
 
 // Airspace query helpers
@@ -38,24 +39,22 @@ public:
 
 private:
   const RouteLink &link;
-  fixed min_distance;
-  const TaskProjection &proj;
+  double min_distance;
+  const FlatProjection &proj;
   const RoutePolars &rpolar;
-  const GeoPoint origin;
   AIVResult nearest;
 
 public:
   AIV(const RouteLink &_e,
-      const TaskProjection &_proj,
+      const FlatProjection &_proj,
       const RoutePolars &_rpolar)
    :link(_e),
     min_distance(-1),
     proj(_proj),
     rpolar(_rpolar),
-    origin(proj.Unproject(_e.first)),
     nearest((const AbstractAirspace *)nullptr, _e.first) {}
 
-  virtual void Visit(const AbstractAirspace &as) override {
+  void Visit(const AbstractAirspace &as) override {
     assert(!intersections.empty());
 
     GeoPoint point = intersections[0].first;
@@ -66,11 +65,11 @@ public:
                                              link.second.altitude),
                                   proj);
 
-    if (l.second.altitude < RoughAltitude(as.GetBase().altitude) ||
-        l.second.altitude > RoughAltitude(as.GetTop().altitude))
+    if (l.second.altitude < as.GetBase().altitude ||
+        l.second.altitude > as.GetTop().altitude)
       return;
 
-    if (negative(min_distance) || (l.d < min_distance)) {
+    if (min_distance < 0 || l.d < min_distance) {
       min_distance = l.d;
       nearest = std::make_pair(&as, l.second);
     }
@@ -81,29 +80,12 @@ public:
   }
 };
 
-
-class AirspaceInsideOtherVisitor final : public AirspaceVisitor {
-  const AbstractAirspace *m_found;
-
-public:
-  AirspaceInsideOtherVisitor():m_found(nullptr) {};
-
-  const AbstractAirspace *GetFound() const {
-    return m_found;
-  }
-
-protected:
-  virtual void Visit(const AbstractAirspace &as) override {
-    m_found = &as;
-  }
-};
-
 AirspaceRoute::RouteAirspaceIntersection
 AirspaceRoute::FirstIntersecting(const RouteLink &e) const
 {
-  const GeoPoint origin(task_projection.Unproject(e.first));
-  const GeoPoint dest(task_projection.Unproject(e.second));
-  AIV visitor(e, task_projection, rpolars_route);
+  const GeoPoint origin(projection.Unproject(e.first));
+  const GeoPoint dest(projection.Unproject(e.second));
+  AIV visitor(e, projection, rpolars_route);
   m_airspaces.VisitIntersecting(origin, dest, visitor);
   const AIV::AIVResult res(visitor.GetNearest());
   ++count_airspace;
@@ -113,10 +95,12 @@ AirspaceRoute::FirstIntersecting(const RouteLink &e) const
 const AbstractAirspace *
 AirspaceRoute::InsideOthers(const AGeoPoint &origin) const
 {
-  AirspaceInsideOtherVisitor visitor;
-  m_airspaces.VisitWithinRange(origin, fixed(1), visitor);
   ++count_airspace;
-  return visitor.GetFound();
+
+  for (const auto &i : m_airspaces.QueryWithinRange(origin, 1))
+    return &i.GetAirspace();
+
+  return nullptr;
 }
 
 
@@ -148,7 +132,7 @@ AirspaceRoute::FindClearingPair(const SearchPointVector &spv,
         continue;
       }
     } else {
-      AGeoPoint gborder(task_projection.Unproject(pborder), dest.altitude); // @todo alt!
+      AGeoPoint gborder(projection.Unproject(pborder), dest.altitude); // @todo alt!
       if (!check_others || !InsideOthers(gborder)) {
         if (j == 0) {
           p.first = pborder;
@@ -223,17 +207,19 @@ AirspaceRoute::Synchronise(const Airspaces &master,
 {
   // @todo: also synchronise with AirspaceWarningManager to filter out items that are
   // acknowledged.
-  h_min = std::min(origin.altitude, std::min(destination.altitude, h_min));
-  h_max = std::max(origin.altitude, std::max(destination.altitude, h_max));
+  h_min = std::min((int)origin.altitude, std::min((int)destination.altitude, h_min));
+  h_max = std::max((int)origin.altitude, std::max((int)destination.altitude, h_max));
 
   // @todo: have margin for h_max to allow for climb
   AirspacePredicateHeightRangeExcludeTwo h_condition(h_min, h_max, origin, destination);
 
-  AndAirspacePredicate condition(h_condition, _condition);
+  const auto and_condition = MakeAndPredicate(h_condition,
+                                              AirspacePredicateRef(_condition));
+  const auto predicate = WrapAirspacePredicate(and_condition);
 
   if (m_airspaces.SynchroniseInRange(master, origin.Middle(destination),
-                                     Half(origin.Distance(destination)),
-                                     condition)) {
+                                     0.5 * origin.Distance(destination),
+                                     predicate)) {
     if (!m_airspaces.IsEmpty())
       dirty = true;
   }
@@ -311,10 +297,9 @@ void
 AirspaceRoute::OnSolve(const AGeoPoint &origin, const AGeoPoint &destination)
 {
   if (m_airspaces.IsEmpty()) {
-    task_projection.Reset(origin);
-    task_projection.Update();
+    projection.SetCenter(origin);
   } else {
-    task_projection = m_airspaces.GetProjection();
+    projection = m_airspaces.GetProjection();
   }
 }
 

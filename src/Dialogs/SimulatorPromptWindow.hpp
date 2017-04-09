@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,10 +29,11 @@ Copyright_License {
 #ifdef SIMULATOR_AVAILABLE
 
 #include "Screen/ContainerWindow.hpp"
+#include "Screen/Bitmap.hpp"
 #include "Gauge/LogoView.hpp"
-#include "Look/DialogLook.hpp"
-#include "Form/SymbolButton.hpp"
+#include "Form/Button.hpp"
 
+struct DialogLook;
 class ActionListener;
 
 class SimulatorPromptWindow final : public ContainerWindow {
@@ -43,9 +44,12 @@ class SimulatorPromptWindow final : public ContainerWindow {
   LogoView logo_view;
   PixelRect logo_rect;
 
-  WndButton quit_button;
-  WndSymbolButton fly_button, sim_button;
-  RasterPoint label_position;
+  Button quit_button;
+
+  Bitmap fly_bitmap, sim_bitmap;
+  Button fly_button, sim_button;
+
+  PixelPoint label_position;
 
 public:
   enum Buttons {
@@ -58,9 +62,7 @@ public:
                         ActionListener &_action_listener,
                         bool _quit)
     :look(_look), action_listener(_action_listener),
-     have_quit_button(_quit),
-     quit_button(look.button),
-     fly_button(look.button), sim_button(look.button) {}
+     have_quit_button(_quit) {}
 
 protected:
   /* virtual methods from class Window */

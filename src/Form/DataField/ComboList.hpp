@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,82 +24,92 @@ Copyright_License {
 #ifndef XCSOAR_DATA_FIELD_COMBO_LIST_HPP
 #define XCSOAR_DATA_FIELD_COMBO_LIST_HPP
 
-#include "Util/NonCopyable.hpp"
-#include "Util/StaticArray.hpp"
+#include "Util/AllocatedString.hxx"
+
+#include <vector>
 
 #include <tchar.h>
 
-class ComboList : private NonCopyable {
+class ComboList {
 public:
-  struct Item : private NonCopyable {
-    enum {
-      NEXT_PAGE = -800001,
-      PREVIOUS_PAGE = -800002,
-    };
+  struct Item {
+    static constexpr int NEXT_PAGE = -800001;
+    static constexpr int PREVIOUS_PAGE = -800002;
+    static constexpr int DOWNLOAD = -800003;
 
-    int DataFieldIndex;
-    TCHAR *StringValue;
-    TCHAR *StringValueFormatted;
-    TCHAR *StringHelp;
+    int int_value;
+    AllocatedString<TCHAR> string_value;
+    AllocatedString<TCHAR> display_string;
+    AllocatedString<TCHAR> help_text;
 
-    Item(int _DataFieldIndex, const TCHAR *_StringValue,
-         const TCHAR *_StringValueFormatted, const TCHAR *_StringHelp = NULL);
-    ~Item();
+    Item(int _int_value, const TCHAR *_string_value,
+         const TCHAR *_display_string, const TCHAR *_help_text = nullptr);
 
     Item(const Item &other) = delete;
     Item &operator=(const Item &other) = delete;
+
+    Item(Item &&src) = default;
+    Item &operator=(Item &&src) = default;
   };
 
-#ifdef _WIN32_WCE
-  static constexpr unsigned MAX_SIZE = 300;
-#else
   static constexpr unsigned MAX_SIZE = 512;
-#endif
 
-  int ComboPopupItemSavedIndex;
+  int current_index;
 
 private:
-  StaticArray<Item*, MAX_SIZE> items;
+  std::vector<Item> items;
 
 public:
   ComboList()
-    :ComboPopupItemSavedIndex(0) {}
+    :current_index(0) {}
 
-  ComboList(ComboList &&other);
-
-  ~ComboList() {
-    Clear();
-  }
+  ComboList(ComboList &&other) = default;
 
   ComboList(const ComboList &other) = delete;
   ComboList &operator=(const ComboList &other) = delete;
+
+  bool empty() const {
+    return items.empty();
+  }
 
   unsigned size() const {
     return items.size();
   }
 
   const Item& operator[](unsigned i) const {
-    return *items[i];
+    return items[i];
   }
 
-  void Clear();
-
-  unsigned Append(Item *item);
-
-  unsigned Append(int DataFieldIndex,
-                  const TCHAR *StringValue,
-                  const TCHAR *StringValueFormatted,
-                  const TCHAR *StringHelp = NULL) {
-    return Append(new Item(DataFieldIndex,
-                           StringValue, StringValueFormatted, StringHelp));
+  void Clear() {
+    items.clear();
   }
 
-  unsigned Append(int DataFieldIndex, const TCHAR *StringValue) {
-    return Append(DataFieldIndex, StringValue, StringValue);
+  unsigned Append(int int_value,
+                  const TCHAR *string_value,
+                  const TCHAR *display_string,
+                  const TCHAR *help_text = nullptr) {
+    unsigned i = items.size();
+    items.emplace_back(int_value,
+                       string_value, display_string, help_text);
+    return i;
+  }
+
+  unsigned Append(const TCHAR *string_value,
+                  const TCHAR *display_string,
+                  const TCHAR *help_text = nullptr) {
+    return Append(items.size(), string_value, display_string, help_text);
+  }
+
+  unsigned Append(int int_value, const TCHAR *string_value) {
+    return Append(int_value, string_value, string_value);
+  }
+
+  unsigned Append(const TCHAR *string_value) {
+    return Append(string_value, string_value);
   }
 
   void Sort();
-  unsigned LookUp(int DataFieldIndex);
+  unsigned LookUp(int int_value);
 };
 
 #endif

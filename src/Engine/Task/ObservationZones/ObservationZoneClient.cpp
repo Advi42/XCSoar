@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -42,12 +42,12 @@ ObservationZoneClient::CanStartThroughTop() const
 }
 
 GeoPoint
-ObservationZoneClient::GetRandomPointInSector(const fixed mag) const
+ObservationZoneClient::GetRandomPointInSector(const double mag) const
 {
   return oz_point->GetRandomPointInSector(mag);
 }
 
-fixed
+double
 ObservationZoneClient::ScoreAdjustment() const
 {
   return oz_point->ScoreAdjustment();
@@ -66,10 +66,10 @@ ObservationZoneClient::TransitionConstraint(const GeoPoint &location,
   return oz_point->TransitionConstraint(location, last_location);
 }
 
-void 
+void
 ObservationZoneClient::SetLegs(const TaskPoint *previous,
                                const TaskPoint *next)
 {
-  oz_point->SetLegs(previous != NULL ? &previous->GetLocation() : NULL,
-                    next != NULL ? &next->GetLocation() : NULL);
+  oz_point->SetLegs(previous != nullptr ? &previous->GetLocation() : nullptr,
+                    next != nullptr ? &next->GetLocation() : nullptr);
 }

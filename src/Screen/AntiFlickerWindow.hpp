@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ Copyright_License {
 
 #if defined(ENABLE_OPENGL) || defined(USE_MEMORY_CANVAS)
 
-#include "PaintWindow.hpp"
+#include "FakeBufferWindow.hpp"
 
 /**
  * A #PaintWindow implementation that avoids flickering.  Some
@@ -40,22 +40,7 @@ Copyright_License {
  * redraws when this is expensive.  Use it only when flicker avoidance
  * is the goal.
  */
-class AntiFlickerWindow : public PaintWindow {
-protected:
-  /**
-   * Determines whether this class maintains a persistent buffer which
-   * allows incremental drawing in each frame.
-   */
-  static bool IsPersistent() {
-    return false;
-  }
-
-  virtual void OnPaintBuffer(Canvas &canvas) = 0;
-
-  /* virtual methods from class Window */
-  virtual void OnPaint(Canvas &canvas) override {
-    OnPaintBuffer(canvas);
-  }
+class AntiFlickerWindow : public FakeBufferWindow {
 };
 
 #else

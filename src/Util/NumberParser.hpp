@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -42,12 +42,36 @@ ParseDouble(const char *p, char **endptr=nullptr)
 
 #ifdef _UNICODE
 static inline double
-ParseDouble(const TCHAR *p, TCHAR **endptr=nullptr)
+ParseDouble(const TCHAR *p, TCHAR **endptr)
 {
   assert(p != nullptr);
 
   return (double)wcstod(p, endptr);
 }
+
+#ifdef WIN32
+#include <windef.h>
+#ifdef __MINGW64_VERSION_MAJOR
+#if __MINGW64_VERSION_MAJOR == 3 && __MINGW64_VERSION_MINOR == 1
+#define BUGGY_WCSTOD
+#endif
+#endif
+#endif
+
+static inline double
+ParseDouble(const TCHAR *p)
+{
+  assert(p != nullptr);
+
+#ifdef BUGGY_WCSTOD
+  /* workaround for mingw64 3.1 bug to avoid nullptr dereference */
+  TCHAR *dummy;
+  return ParseDouble(p, &dummy);
+#else
+  return ParseDouble(p, nullptr);
+#endif
+}
+
 #endif
 
 static inline unsigned

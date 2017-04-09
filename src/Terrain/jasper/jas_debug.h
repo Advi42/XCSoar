@@ -7,9 +7,9 @@
  * 
  * JasPer License Version 2.0
  * 
+ * Copyright (c) 2001-2006 Michael David Adams
  * Copyright (c) 1999-2000 Image Power, Inc.
  * Copyright (c) 1999-2000 The University of British Columbia
- * Copyright (c) 2001-2003 Michael David Adams
  * 
  * All rights reserved.
  * 
@@ -90,13 +90,14 @@ extern "C" {
 
 /* Output debugging information to standard error provided that the debug
   level is set sufficiently high. */
-#ifndef NDEBUG
+#ifdef ENABLE_JASPER_LOG
 #define	JAS_DBGLOG(n, x) \
-  (void)((jas_getdbglevel() >= (n)) ? (jas_eprintf x) : 0)
+	((jas_getdbglevel() >= (n)) ? (jas_eprintf x) : 0)
 #else
 #define	JAS_DBGLOG(n, x)
 #endif
 
+#ifdef ENABLE_JASPER_LOG
 /* Get the library debug level. */
 gcc_const
 int jas_getdbglevel(void);
@@ -106,6 +107,10 @@ int jas_setdbglevel(int dbglevel);
 
 /* Perform formatted output to standard error. */
 int jas_eprintf(const char *fmt, ...);
+#else
+#define jas_getdbglevel() 0
+#define jas_eprintf(...)
+#endif
 
 /* Dump memory to a stream. */
 int jas_memdump(FILE *out, void *data, size_t len);

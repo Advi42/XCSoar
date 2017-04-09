@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -49,7 +49,7 @@ public:
 
   virtual ~FAITaskFactory() {};
 
-  virtual void UpdateOrderedTaskSettings(OrderedTaskSettings& to) override;
+  void UpdateOrderedTaskSettings(OrderedTaskSettings& to) override;
 
   /**
    * Check whether task is complete and valid according to factory rules
@@ -57,8 +57,7 @@ public:
    *
    * @return True if task is valid according to factory rules
    */
-  virtual bool Validate();
-
+  bool Validate() override;
 
   /**
    * swaps non FAI OZs with either FAI OZs
@@ -67,14 +66,12 @@ public:
    * @return: point type compatible with current factory, most
    * similar to type of tp
    */
-  virtual gcc_pure
-  TaskPointFactoryType GetMutatedPointType(const OrderedTaskPoint &tp) const;
-
+  TaskPointFactoryType GetMutatedPointType(const OrderedTaskPoint &tp) const override;
 
   /**
-   * @param start_radius: either fixed(-1) or a valid value
-   * @param turnpoint_radius: either fixed(-1) or a valid value
-   * @param finish_radius: either fixed(-1) or a valid value
+   * @param start_radius: either -1 or a valid value
+   * @param turnpoint_radius: either -1 or a valid value
+   * @param finish_radius: either -1 or a valid value
    *
    * only affects start cylinder/line, finish cylinder/line and
    * turnpoint sector
@@ -82,11 +79,10 @@ public:
    *
    * sets radiuses FAI defaults
    */
-  virtual gcc_pure
   void GetPointDefaultSizes(const TaskPointFactoryType type,
-                                            fixed &start_radius,
-                                            fixed &turnpoint_radius,
-                                            fixed &finish_radius) const;
+                            double &start_radius,
+                            double &turnpoint_radius,
+                            double &finish_radius) const override;
 };
 
 #endif

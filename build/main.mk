@@ -5,10 +5,11 @@ PROGRAM_NAME = XCSoar
 endif
 
 DIALOG_SOURCES = \
-	$(SRC)/Dialogs/XML.cpp \
 	$(SRC)/Dialogs/Inflate.cpp \
 	$(SRC)/Dialogs/Message.cpp \
+	$(SRC)/Dialogs/Error.cpp \
 	$(SRC)/Dialogs/ListPicker.cpp \
+	$(SRC)/Dialogs/ProgressDialog.cpp \
 	$(SRC)/Dialogs/JobDialog.cpp \
 	$(SRC)/Dialogs/WidgetDialog.cpp \
 	$(SRC)/Dialogs/FileManager.cpp \
@@ -19,6 +20,7 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Device/CAI302/UnitsEditor.cpp \
 	$(SRC)/Dialogs/Device/CAI302/WaypointUploader.cpp \
 	$(SRC)/Dialogs/Device/ManageFlarmDialog.cpp \
+	$(SRC)/Dialogs/Device/BlueFly/BlueFlyConfigurationDialog.cpp \
 	$(SRC)/Dialogs/Device/LX/ManageV7Dialog.cpp \
 	$(SRC)/Dialogs/Device/LX/V7ConfigWidget.cpp \
 	$(SRC)/Dialogs/Device/LX/ManageNanoDialog.cpp \
@@ -27,7 +29,6 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Device/Vega/VegaParametersWidget.cpp \
 	$(SRC)/Dialogs/Device/Vega/VegaConfigurationDialog.cpp \
 	$(SRC)/Dialogs/Device/Vega/VegaDemoDialog.cpp \
-	$(SRC)/Dialogs/Device/Vega/VoiceSettingsDialog.cpp \
 	$(SRC)/Dialogs/Device/Vega/SwitchesDialog.cpp \
 	$(SRC)/Dialogs/Device/FLARM/ConfigWidget.cpp \
 	$(SRC)/Dialogs/MapItemListDialog.cpp \
@@ -50,8 +51,8 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Traffic/FlarmTrafficDetails.cpp \
 	$(SRC)/Dialogs/Traffic/TeamCodeDialog.cpp \
 	$(SRC)/Dialogs/dlgAnalysis.cpp \
-	$(SRC)/Dialogs/dlgBrightness.cpp \
 	$(SRC)/Dialogs/dlgChecklist.cpp \
+	$(SRC)/Dialogs/ProfileListDialog.cpp \
 	$(SRC)/Dialogs/Plane/PlaneListDialog.cpp \
 	$(SRC)/Dialogs/Plane/PlaneDetailsDialog.cpp \
 	$(SRC)/Dialogs/Plane/PlanePolarDialog.cpp \
@@ -64,7 +65,8 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/ReplayDialog.cpp \
 	$(SRC)/Dialogs/dlgSimulatorPrompt.cpp \
 	$(SRC)/Dialogs/SimulatorPromptWindow.cpp \
-	$(SRC)/Dialogs/dlgStartup.cpp \
+	$(SRC)/Dialogs/StartupDialog.cpp \
+	$(SRC)/Dialogs/ProfilePasswordDialog.cpp \
 	\
 	$(SRC)/Dialogs/dlgStatus.cpp \
 	$(SRC)/Dialogs/StatusPanels/StatusPanel.cpp \
@@ -83,7 +85,6 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Waypoint/NearestWaypoint.cpp \
 	\
 	$(SRC)/Dialogs/Settings/Panels/AirspaceConfigPanel.cpp \
-	$(SRC)/Dialogs/Settings/Panels/ExperimentalConfigPanel.cpp \
 	$(SRC)/Dialogs/Settings/Panels/GaugesConfigPanel.cpp \
 	$(SRC)/Dialogs/Settings/Panels/VarioConfigPanel.cpp \
 	$(SRC)/Dialogs/Settings/Panels/GlideComputerConfigPanel.cpp \
@@ -106,13 +107,15 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Settings/Panels/TimeConfigPanel.cpp \
 	$(SRC)/Dialogs/Settings/Panels/WaypointDisplayConfigPanel.cpp \
 	$(SRC)/Dialogs/Settings/Panels/TrackingConfigPanel.cpp \
+	$(SRC)/Dialogs/Settings/Panels/CloudConfigPanel.cpp \
+	$(SRC)/Dialogs/Settings/Panels/WeatherConfigPanel.cpp \
 	\
 	$(SRC)/Dialogs/Task/Widgets/ObservationZoneEditWidget.cpp \
 	$(SRC)/Dialogs/Task/Widgets/CylinderZoneEditWidget.cpp \
 	$(SRC)/Dialogs/Task/Widgets/LineSectorZoneEditWidget.cpp \
 	$(SRC)/Dialogs/Task/Widgets/SectorZoneEditWidget.cpp \
 	$(SRC)/Dialogs/Task/Widgets/KeyholeZoneEditWidget.cpp \
-	$(SRC)/Dialogs/Task/Manager/TaskMapWindow.cpp \
+	$(SRC)/Dialogs/Task/Manager/TaskMapButtonRenderer.cpp \
 	$(SRC)/Dialogs/Task/Manager/TaskManagerDialog.cpp \
 	$(SRC)/Dialogs/Task/Manager/TaskClosePanel.cpp \
 	$(SRC)/Dialogs/Task/Manager/TaskEditPanel.cpp \
@@ -120,7 +123,6 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Task/Manager/TaskMiscPanel.cpp \
 	$(SRC)/Dialogs/Task/Manager/TaskActionsPanel.cpp \
 	$(SRC)/Dialogs/Task/Manager/TaskListPanel.cpp \
-	$(SRC)/Dialogs/Task/Manager/TaskCalculatorPanel.cpp \
 	$(SRC)/Dialogs/Task/OptionalStartsDialog.cpp \
 	$(SRC)/Dialogs/Task/TaskPointDialog.cpp \
 	$(SRC)/Dialogs/Task/MutateTaskPointDialog.cpp \
@@ -128,39 +130,50 @@ DIALOG_SOURCES = \
 	$(SRC)/Dialogs/Task/TargetDialog.cpp \
 	$(SRC)/Dialogs/Task/AlternatesListDialog.cpp \
 	\
+	$(SRC)/Dialogs/Tracking/CloudEnableDialog.cpp \
+	\
 	$(SRC)/Dialogs/NumberEntry.cpp \
 	$(SRC)/Dialogs/TextEntry.cpp \
 	$(SRC)/Dialogs/KnobTextEntry.cpp \
 	$(SRC)/Dialogs/TouchTextEntry.cpp \
 	$(SRC)/Dialogs/TimeEntry.cpp \
 	$(SRC)/Dialogs/GeoPointEntry.cpp \
+	$(SRC)/Dialogs/Weather/WeatherDialog.cpp \
 	$(SRC)/Dialogs/Weather/RASPDialog.cpp \
 	$(SRC)/Dialogs/dlgCredits.cpp \
 	$(SRC)/Dialogs/dlgQuickMenu.cpp \
 
 ifeq ($(HAVE_PCM_PLAYER),y)
-DIALOG_SOURCES += $(SRC)/Dialogs/Settings/Panels/AudioVarioConfigPanel.cpp
+DIALOG_SOURCES += \
+	$(SRC)/Dialogs/Settings/Panels/AudioVarioConfigPanel.cpp \
+	$(SRC)/Dialogs/Settings/Panels/AudioConfigPanel.cpp
 endif
 
 ifeq ($(HAVE_HTTP),y)
 DIALOG_SOURCES += \
+	$(SRC)/Dialogs/Weather/PCMetDialog.cpp \
 	$(SRC)/Dialogs/Weather/NOAAList.cpp \
 	$(SRC)/Dialogs/Weather/NOAADetails.cpp
 endif
 
 XCSOAR_SOURCES := \
+	$(IO_SRC_DIR)/MapFile.cpp \
 	$(IO_SRC_DIR)/ConfiguredFile.cpp \
 	$(IO_SRC_DIR)/DataFile.cpp \
 	$(SRC)/Airspace/ProtectedAirspaceWarningManager.cpp \
 	$(SRC)/Airspace/ActivePredicate.cpp \
 	$(SRC)/Task/Serialiser.cpp \
 	$(SRC)/Task/Deserialiser.cpp \
+	$(SRC)/Task/SaveFile.cpp \
+	$(SRC)/Task/LoadFile.cpp \
 	$(SRC)/Task/TaskFile.cpp \
 	$(SRC)/Task/TaskFileXCSoar.cpp \
 	$(SRC)/Task/TaskFileIGC.cpp \
 	$(SRC)/Task/TaskFileSeeYou.cpp \
+	$(SRC)/Task/DefaultTask.cpp \
 	$(SRC)/Task/MapTaskManager.cpp \
 	$(SRC)/Task/ProtectedTaskManager.cpp \
+	$(SRC)/Task/FileProtectedTaskManager.cpp \
 	$(SRC)/Task/RoutePlannerGlue.cpp \
 	$(SRC)/Task/ProtectedRoutePlanner.cpp \
 	$(SRC)/Task/TaskStore.cpp \
@@ -175,7 +188,13 @@ XCSOAR_SOURCES := \
 	$(SRC)/Engine/Trace/Trace.cpp \
 	$(SRC)/Engine/Trace/Vector.cpp \
 	$(SRC)/Engine/Util/Gradient.cpp \
+	$(SRC)/Engine/ThermalBand/ThermalBand.cpp \
+    $(SRC)/Engine/ThermalBand/ThermalSlice.cpp \
+	$(SRC)/Engine/ThermalBand/ThermalEncounterBand.cpp \
+	$(SRC)/Engine/ThermalBand/ThermalEncounterCollection.cpp \
 	$(SRC)/HorizonWidget.cpp \
+	$(SRC)/Renderer/TextRowRenderer.cpp \
+	$(SRC)/Renderer/TwoTextRowsRenderer.cpp \
 	$(SRC)/Renderer/HorizonRenderer.cpp \
 	$(SRC)/Renderer/GradientRenderer.cpp \
 	$(SRC)/Renderer/GlassRenderer.cpp \
@@ -185,7 +204,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Renderer/TraceHistoryRenderer.cpp \
 	$(SRC)/Renderer/ThermalBandRenderer.cpp \
 	$(SRC)/Renderer/TaskProgressRenderer.cpp \
-	$(SRC)/Renderer/MarkerRenderer.cpp \
+	$(SRC)/Renderer/ClimbPercentRenderer.cpp \
 	\
 	$(SRC)/Airspace/AirspaceGlue.cpp \
 	$(SRC)/Airspace/AirspaceParser.cpp \
@@ -193,6 +212,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Airspace/AirspaceComputerSettings.cpp \
 	$(SRC)/Airspace/NearestAirspace.cpp \
 	$(SRC)/Renderer/AirspaceRendererSettings.cpp \
+	$(SRC)/Renderer/GeoBitmapRenderer.cpp \
 	\
 	$(SRC)/Operation/Operation.cpp \
 	$(SRC)/Operation/ProxyOperationEnvironment.cpp \
@@ -210,7 +230,6 @@ XCSOAR_SOURCES := \
 	$(SRC)/Computer/ConditionMonitor/ConditionMonitorFinalGlide.cpp \
 	$(SRC)/Computer/ConditionMonitor/ConditionMonitorGlideTerrain.cpp \
 	$(SRC)/Computer/ConditionMonitor/ConditionMonitorLandableReachable.cpp \
-	$(SRC)/Computer/ConditionMonitor/ConditionMonitorStartRules.cpp \
 	$(SRC)/Computer/ConditionMonitor/ConditionMonitorSunset.cpp \
 	$(SRC)/Computer/ConditionMonitor/ConditionMonitorWind.cpp \
 	$(SRC)/Computer/ConditionMonitor/ConditionMonitors.cpp \
@@ -246,6 +265,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Computer/GlideComputer.cpp \
 	$(SRC)/Computer/GlideComputerBlackboard.cpp \
 	$(SRC)/Computer/GlideComputerAirData.cpp \
+	$(SRC)/Computer/WaveComputer.cpp \
 	$(SRC)/Computer/StatsComputer.cpp \
 	$(SRC)/Computer/RouteComputer.cpp \
 	$(SRC)/Computer/TaskComputer.cpp \
@@ -262,6 +282,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/IGC/IGCFix.cpp \
 	$(SRC)/IGC/IGCWriter.cpp \
 	$(SRC)/IGC/IGCString.cpp \
+	$(SRC)/IGC/Generator.cpp \
 	$(SRC)/Logger/MD5.cpp \
 	$(SRC)/Logger/NMEALogger.cpp \
 	$(SRC)/Logger/ExternalLogger.cpp \
@@ -277,7 +298,6 @@ XCSOAR_SOURCES := \
 	$(SRC)/NMEA/VarioInfo.cpp \
 	$(SRC)/NMEA/ClimbInfo.cpp \
 	$(SRC)/NMEA/CirclingInfo.cpp \
-	$(SRC)/NMEA/ThermalBand.cpp \
 	$(SRC)/NMEA/ThermalLocator.cpp \
 	$(SRC)/NMEA/ClimbHistory.cpp \
 	$(SRC)/NMEA/SwitchState.cpp \
@@ -299,6 +319,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Waypoint/WaypointListBuilder.cpp \
 	$(SRC)/Waypoint/WaypointFilter.cpp \
 	$(SRC)/Waypoint/WaypointGlue.cpp \
+	$(SRC)/Waypoint/SaveGlue.cpp \
 	$(SRC)/Waypoint/LastUsed.cpp \
 	$(SRC)/Waypoint/HomeGlue.cpp \
 	$(SRC)/Waypoint/WaypointFileType.cpp \
@@ -310,7 +331,8 @@ XCSOAR_SOURCES := \
 	$(SRC)/Waypoint/WaypointReaderSeeYou.cpp \
 	$(SRC)/Waypoint/WaypointReaderZander.cpp \
 	$(SRC)/Waypoint/WaypointReaderCompeGPS.cpp \
-	$(SRC)/Waypoint/WaypointWriter.cpp \
+	$(SRC)/Waypoint/CupWriter.cpp \
+	$(SRC)/Waypoint/Factory.cpp \
 	$(SRC)/Computer/Wind/CirclingWind.cpp \
 	$(SRC)/Computer/Wind/MeasurementList.cpp \
 	$(SRC)/Computer/Wind/Store.cpp \
@@ -330,7 +352,6 @@ XCSOAR_SOURCES := \
 	$(SRC)/Gauge/BigThermalAssistantWidget.cpp \
 	$(SRC)/Gauge/FlarmTrafficWindow.cpp \
 	$(SRC)/Gauge/BigTrafficWidget.cpp \
-	$(SRC)/Look/FlarmTrafficLook.cpp \
 	$(SRC)/Gauge/GaugeFLARM.cpp \
 	$(SRC)/Gauge/GaugeThermalAssistant.cpp \
 	$(SRC)/Gauge/VarioSettings.cpp \
@@ -345,6 +366,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Menu/MenuBar.cpp \
 	$(SRC)/Menu/ButtonLabel.cpp \
 	$(SRC)/Menu/ExpandMacros.cpp \
+	$(SRC)/Menu/ShowMenuButton.cpp \
 	$(SRC)/InfoBoxes/Content/Factory.cpp \
 	$(SRC)/InfoBoxes/Content/Alternate.cpp \
 	$(SRC)/InfoBoxes/Content/Base.cpp \
@@ -385,7 +407,6 @@ XCSOAR_SOURCES := \
 	$(SRC)/Input/InputEventsActions.cpp \
 	$(SRC)/Input/InputEventsDevice.cpp \
 	$(SRC)/Input/InputEventsVega.cpp \
-	$(SRC)/Input/InputEventsInfoBox.cpp \
 	$(SRC)/Input/InputEventsMap.cpp \
 	$(SRC)/Input/InputEventsPage.cpp \
 	$(SRC)/Input/InputEventsAirspace.cpp \
@@ -393,6 +414,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Input/InputEventsSettings.cpp \
 	$(SRC)/Input/InputEventsThermalAssistant.cpp \
 	$(SRC)/Input/InputEventsTraffic.cpp \
+	$(SRC)/Input/InputEventsLua.cpp \
 	$(SRC)/Input/InputQueue.cpp \
 	$(SRC)/Input/InputLookup.cpp \
 	$(SRC)/Input/InputKeys.cpp \
@@ -422,6 +444,8 @@ XCSOAR_SOURCES := \
 	$(SRC)/Renderer/AirspaceRenderer.cpp \
 	$(SRC)/Renderer/AirspaceRendererGL.cpp \
 	$(SRC)/Renderer/AirspaceRendererOther.cpp \
+	$(SRC)/Renderer/AirspaceLabelList.cpp \
+	$(SRC)/Renderer/AirspaceLabelRenderer.cpp \
 	$(SRC)/Renderer/AirspaceListRenderer.cpp \
 	$(SRC)/Renderer/AirspacePreviewRenderer.cpp \
 	$(SRC)/Renderer/BestCruiseArrowRenderer.cpp \
@@ -440,10 +464,16 @@ XCSOAR_SOURCES := \
 	$(SRC)/Renderer/WaypointRendererSettings.cpp \
 	$(SRC)/Renderer/WaypointLabelList.cpp \
 	$(SRC)/Renderer/WindArrowRenderer.cpp \
+	$(SRC)/Renderer/NextArrowRenderer.cpp \
+	$(SRC)/Renderer/WaveRenderer.cpp \
 	$(SRC)/Projection/ChartProjection.cpp \
 	$(SRC)/MapWindow/Items/MapItem.cpp \
+	$(SRC)/MapWindow/Items/OverlayMapItem.cpp \
 	$(SRC)/MapWindow/Items/List.cpp \
 	$(SRC)/MapWindow/Items/Builder.cpp \
+	$(SRC)/MapWindow/Items/AirspaceBuilder.cpp \
+	$(SRC)/MapWindow/Items/TrafficBuilder.cpp \
+	$(SRC)/MapWindow/Items/WeatherBuilder.cpp \
 	$(SRC)/MapWindow/MapWindow.cpp \
 	$(SRC)/MapWindow/MapWindowEvents.cpp \
 	$(SRC)/MapWindow/MapWindowGlideRange.cpp \
@@ -467,6 +497,12 @@ XCSOAR_SOURCES := \
 	$(SRC)/UIUtil/GestureManager.cpp \
 	$(SRC)/UIUtil/TrackingGestureManager.cpp \
 	$(SRC)/DrawThread.cpp \
+	\
+	$(SRC)/Weather/Rasp/RaspStore.cpp \
+	$(SRC)/Weather/Rasp/RaspCache.cpp \
+	$(SRC)/Weather/Rasp/RaspRenderer.cpp \
+	$(SRC)/Weather/Rasp/RaspStyle.cpp \
+	$(SRC)/Weather/Rasp/Providers.cpp \
 	\
 	$(SRC)/Computer/BasicComputer.cpp \
 	$(SRC)/Computer/GroundSpeedComputer.cpp \
@@ -501,11 +537,11 @@ XCSOAR_SOURCES := \
 	$(SRC)/Topography/TopographyStore.cpp \
 	$(SRC)/Topography/TopographyFileRenderer.cpp \
 	$(SRC)/Topography/TopographyRenderer.cpp \
+	$(SRC)/Topography/Thread.cpp \
 	$(SRC)/Topography/TopographyGlue.cpp \
 	$(SRC)/Topography/XShape.cpp \
 	$(SRC)/Topography/CachedTopographyRenderer.cpp \
 	$(SRC)/Markers/Markers.cpp \
-	$(SRC)/Markers/ProtectedMarkers.cpp \
 	\
 	$(SRC)/FlightStatistics.cpp \
 	$(SRC)/FlightInfo.cpp \
@@ -513,16 +549,21 @@ XCSOAR_SOURCES := \
 	$(SRC)/Renderer/BarographRenderer.cpp \
 	$(SRC)/Renderer/ClimbChartRenderer.cpp \
 	$(SRC)/Renderer/GlidePolarRenderer.cpp \
+	$(SRC)/Renderer/GlidePolarInfoRenderer.cpp \
 	$(SRC)/Renderer/WindChartRenderer.cpp \
 	$(SRC)/Renderer/CuRenderer.cpp \
+	$(SRC)/Renderer/MacCreadyRenderer.cpp \
+    $(SRC)/Renderer/VarioHistogramRenderer.cpp \
+	$(SRC)/Renderer/TaskLegRenderer.cpp \
+	$(SRC)/Renderer/TaskSpeedRenderer.cpp \
+	$(SRC)/Renderer/MapScaleRenderer.cpp \
 	\
 	$(SRC)/Simulator.cpp \
 	$(SRC)/Asset.cpp \
 	$(SRC)/Hardware/CPU.cpp \
-	$(SRC)/Hardware/Display.cpp \
 	$(SRC)/Hardware/RotateDisplay.cpp \
 	$(SRC)/Hardware/DisplayDPI.cpp \
-	$(SRC)/Hardware/BlankDisplay.cpp \
+	$(SRC)/Hardware/DisplaySize.cpp \
 	$(SRC)/Hardware/DisplayGlue.cpp \
 	$(SRC)/Hardware/Vibrator.cpp \
 	$(SRC)/Language/MOFile.cpp \
@@ -552,6 +593,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Units/Descriptor.cpp \
 	$(SRC)/Units/System.cpp \
 	$(SRC)/Units/Settings.cpp \
+	$(SRC)/Units/Temperature.cpp \
 	$(SRC)/Formatter/AngleFormatter.cpp \
 	$(SRC)/FLARM/FlarmDetails.cpp \
 	$(SRC)/FLARM/NameDatabase.cpp \
@@ -562,13 +604,11 @@ XCSOAR_SOURCES := \
 	$(SRC)/OS/LogError.cpp \
 	$(SRC)/Version.cpp \
 	$(SRC)/Audio/Sound.cpp \
-	$(SRC)/Audio/VegaVoice.cpp \
-	$(SRC)/Audio/VegaVoiceSettings.cpp \
 	$(SRC)/Compatibility/fmode.c \
 	$(SRC)/Profile/Profile.cpp \
-	$(SRC)/Profile/Earth.cpp \
 	$(SRC)/Profile/Screen.cpp \
 	$(SRC)/Profile/TrackingProfile.cpp \
+	$(SRC)/Profile/WeatherProfile.cpp \
 	$(SRC)/Profile/SystemProfile.cpp \
 	$(SRC)/Profile/ComputerProfile.cpp \
 	$(SRC)/Profile/RouteProfile.cpp \
@@ -578,9 +618,7 @@ XCSOAR_SOURCES := \
 	$(SRC)/Profile/MapProfile.cpp \
 	$(SRC)/Profile/PageProfile.cpp \
 	$(SRC)/Profile/UIProfile.cpp \
-	$(SRC)/Profile/ProfileGlue.cpp \
-	$(SRC)/Profile/ProfileKeys.cpp \
-	$(SRC)/Profile/FontConfig.cpp \
+	$(SRC)/Profile/Settings.cpp \
 	$(SRC)/Profile/UnitsConfig.cpp \
 	$(SRC)/Profile/DeviceConfig.cpp \
 	$(SRC)/Profile/InfoBoxConfig.cpp \
@@ -606,42 +644,14 @@ XCSOAR_SOURCES := \
 	$(SRC)/Math/Screen.cpp \
 	$(SRC)/Math/SunEphemeris.cpp \
 	\
-	$(SRC)/Screen/Blank.cpp \
 	$(SRC)/Screen/Layout.cpp \
-	$(SRC)/Screen/UnitSymbol.cpp \
 	$(SRC)/Screen/Ramp.cpp \
 	$(SRC)/Screen/TerminalWindow.cpp \
 	\
+	$(SRC)/Look/FontDescription.cpp \
 	$(SRC)/Look/GlobalFonts.cpp \
 	$(SRC)/Look/AutoFont.cpp \
 	$(SRC)/Look/DefaultFonts.cpp \
-	$(SRC)/Look/Look.cpp \
-	$(SRC)/Look/DialogLook.cpp \
-	$(SRC)/Look/ButtonLook.cpp \
-	$(SRC)/Look/TerminalLook.cpp \
-	$(SRC)/Look/VarioLook.cpp \
-	$(SRC)/Look/ChartLook.cpp \
-	$(SRC)/Look/MapLook.cpp \
-	$(SRC)/Look/WindArrowLook.cpp \
-	$(SRC)/Look/ThermalBandLook.cpp \
-	$(SRC)/Look/TraceHistoryLook.cpp \
-	$(SRC)/Look/AirspaceLook.cpp \
-	$(SRC)/Look/TrailLook.cpp \
-	$(SRC)/Look/CrossSectionLook.cpp \
-	$(SRC)/Look/GestureLook.cpp \
-	$(SRC)/Look/HorizonLook.cpp \
-	$(SRC)/Look/TaskLook.cpp \
-	$(SRC)/Look/TrafficLook.cpp \
-	$(SRC)/Look/InfoBoxLook.cpp \
-	$(SRC)/Look/WaypointLook.cpp \
-	$(SRC)/Look/AircraftLook.cpp \
-	$(SRC)/Look/MarkerLook.cpp \
-	$(SRC)/Look/NOAALook.cpp \
-	$(SRC)/Look/FinalGlideBarLook.cpp \
-	$(SRC)/Look/VarioBarLook.cpp \
-	$(SRC)/Look/IconLook.cpp \
-	$(SRC)/Look/UnitsLook.cpp \
-	$(SRC)/Look/ThermalAssistantLook.cpp \
 	\
 	$(SRC)/Polar/PolarGlue.cpp \
 	$(SRC)/Polar/PolarFileGlue.cpp \
@@ -658,23 +668,25 @@ XCSOAR_SOURCES := \
 	$(SRC)/MainWindow.cpp \
 	$(SRC)/Startup.cpp \
 	$(SRC)/Components.cpp \
+	$(SRC)/DataGlobals.cpp \
 	\
-	$(SRC)/Device/Driver.cpp \
 	$(SRC)/Device/Declaration.cpp \
-	$(SRC)/Device/Register.cpp \
-	$(SRC)/Device/List.cpp \
+	$(SRC)/Device/MultipleDevices.cpp \
 	$(SRC)/Device/device.cpp \
 	$(SRC)/Device/Port/ConfiguredPort.cpp \
 	$(SRC)/Device/Descriptor.cpp \
 	$(SRC)/Device/Dispatcher.cpp \
-	$(SRC)/Device/All.cpp \
 	$(SRC)/Device/Parser.cpp \
 	$(SRC)/Device/Simulator.cpp \
-	$(SRC)/Device/Port/LineSplitter.cpp \
-	$(SRC)/Device/Internal.cpp \
+	$(SRC)/Device/Util/LineSplitter.cpp \
+	$(SRC)/Device/Util/NMEAWriter.cpp \
+	$(SRC)/Device/Util/NMEAReader.cpp \
 	$(SRC)/Device/Config.cpp \
 	$(DIALOG_SOURCES) \
 	\
+	$(SRC)/Monitor/WindMonitor.cpp \
+	$(SRC)/Monitor/AirspaceWarningMonitor.cpp \
+	$(SRC)/Monitor/TaskConstraintsMonitor.cpp \
 	$(SRC)/Monitor/TaskAdvanceMonitor.cpp \
 	$(SRC)/Monitor/MatTaskMonitor.cpp \
 	$(SRC)/Monitor/AllMonitors.cpp \
@@ -683,41 +695,48 @@ XCSOAR_SOURCES := \
 
 $(call SRC_TO_OBJ,$(SRC)/Dialogs/Inflate.cpp): CPPFLAGS += $(ZLIB_CPPFLAGS)
 
-ifeq ($(HAVE_CE),y)
+ifeq ($(OPENGL),y)
 XCSOAR_SOURCES += \
-	$(SRC)/Device/Windows/Enumerator.cpp
+	$(SRC)/Dialogs/Weather/MapOverlayWidget.cpp \
+	$(SRC)/MapWindow/OverlayBitmap.cpp
 endif
 
 ifeq ($(TARGET_IS_DARWIN),y)
 XCSOAR_SOURCES += \
-	$(SRC)/Apple/InternalSensors.mm
+	$(SRC)/Apple/InternalSensors.cpp
 endif
 
 ifeq ($(TARGET),ANDROID)
 XCSOAR_SOURCES += \
-	$(SRC)/Java/Global.cpp \
-	$(SRC)/Java/String.cpp \
-	$(SRC)/Java/File.cpp \
-	$(SRC)/Java/InputStream.cpp \
-	$(SRC)/Java/URL.cpp \
+	$(SRC)/Dialogs/Device/ScanBluetoothLeDialog.cpp \
+	$(SRC)/Java/Global.cxx \
+	$(SRC)/Java/Object.cxx \
+	$(SRC)/Java/String.cxx \
+	$(SRC)/Java/Exception.cxx \
+	$(SRC)/Java/File.cxx \
+	$(SRC)/Java/InputStream.cxx \
+	$(SRC)/Java/URL.cxx \
 	$(SRC)/Device/Port/AndroidPort.cpp \
 	$(SRC)/Device/Port/AndroidBluetoothPort.cpp \
 	$(SRC)/Device/Port/AndroidIOIOUartPort.cpp \
+	$(SRC)/Android/NativeView.cpp \
 	$(SRC)/Android/Environment.cpp \
+	$(SRC)/Android/Bitmap.cpp \
 	$(SRC)/Android/Product.cpp \
 	$(SRC)/Android/Nook.cpp \
 	$(SRC)/Android/InternalSensors.cpp \
 	$(SRC)/Android/SoundUtil.cpp \
 	$(SRC)/Android/TextUtil.cpp \
 	$(SRC)/Android/EventBridge.cpp \
+	$(SRC)/Android/NativePortListener.cpp \
 	$(SRC)/Android/NativeInputListener.cpp \
 	$(SRC)/Android/PortBridge.cpp \
 	$(SRC)/Android/BluetoothHelper.cpp \
+	$(SRC)/Android/NativeLeScanCallback.cpp \
 	$(SRC)/Android/Battery.cpp \
 	$(SRC)/Android/DownloadManager.cpp \
 	$(SRC)/Android/Vibrator.cpp \
 	$(SRC)/Android/Context.cpp \
-	$(SRC)/Android/LogCat.cpp \
 	$(SRC)/Android/NativeBMP085Listener.cpp \
 	$(SRC)/Android/BMP085Device.cpp \
 	$(SRC)/Android/NativeI2CbaroListener.cpp \
@@ -742,18 +761,18 @@ XCSOAR_SOURCES += \
 	$(SRC)/XCSoar.cpp
 endif
 
-ifeq ($(TARGET),ALTAIR)
-XCSOAR_SOURCES += $(SRC)/Hardware/AltairControl.cpp
-else
+ifeq ($(TARGET_IS_KOBO),y)
 XCSOAR_SOURCES += \
-	$(SRC)/Look/CustomFonts.cpp \
-	$(SRC)/Dialogs/Settings/dlgConfigFonts.cpp \
-	$(SRC)/Dialogs/Settings/FontEdit.cpp
+	$(SRC)/Kobo/Model.cpp
 endif
 
 ifeq ($(HAVE_HTTP),y)
 XCSOAR_SOURCES += \
+	$(SRC)/Dialogs/DownloadFilePicker.cpp \
+	$(SRC)/Repository/Glue.cpp \
 	$(SRC)/Renderer/NOAAListRenderer.cpp \
+	$(SRC)/Weather/PCMet/Images.cpp \
+	$(SRC)/Weather/PCMet/Overlays.cpp \
 	$(SRC)/Weather/NOAAGlue.cpp \
 	$(SRC)/Weather/METARParser.cpp \
 	$(SRC)/Weather/NOAAFormatter.cpp \
@@ -767,6 +786,8 @@ endif
 
 XCSOAR_SOURCES += \
 	$(SRC)/Tracking/SkyLines/Client.cpp \
+	$(SRC)/Tracking/SkyLines/Assemble.cpp \
+	$(SRC)/Tracking/SkyLines/Key.cpp \
 	$(SRC)/Tracking/SkyLines/Glue.cpp \
 	$(SRC)/Tracking/TrackingGlue.cpp
 
@@ -777,13 +798,19 @@ endif
 XCSOAR_DEPENDS = GETTEXT PROFILE \
 	TERRAIN \
 	WIDGET FORM DATA_FIELD \
+	LOOK \
 	AUDIO SCREEN EVENT \
 	RESOURCE DATA \
 	DRIVER PORT \
 	IO ASYNC TASK CONTEST ROUTE GLIDE WAYPOINT AIRSPACE \
+	LUA \
 	SHAPELIB ZZIP \
 	LIBNET TIME OS THREAD \
 	UTIL GEO MATH
+
+ifeq ($(TARGET_IS_DARWIN),y)
+XCSOAR_LDLIBS += -framework CoreLocation
+endif
 
 XCSOAR_STRIP = y
 

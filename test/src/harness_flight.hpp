@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,11 +23,12 @@
 #ifndef HARNESS_FLIGHT_HPP
 #define HARNESS_FLIGHT_HPP
 
-#include "test_debug.hpp"
 #include "harness_aircraft.hpp"
 #include "harness_airspace.hpp"
 #include "harness_waypoints.hpp"
 #include "harness_task.hpp"
+
+struct AutopilotParameters;
 
 struct TestFlightComponents
 {
@@ -76,7 +77,7 @@ TestFlightResult test_flight(int test_num, int n_wind,
 
 bool test_flight_times(int test_num, int n_wind);
 
-fixed
+double
 aat_min_time(int test_num);
 
 #endif

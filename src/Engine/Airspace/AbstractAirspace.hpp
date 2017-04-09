@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -42,8 +42,8 @@ struct AltitudeState;
 class AtmosphericPressure;
 class AirspaceAircraftPerformance;
 struct AirspaceInterceptSolution;
-class FlatBoundingBox;
-class TaskProjection;
+struct FlatBoundingBox;
+class FlatProjection;
 class AirspaceIntersectionVector;
 
 /** Abstract base class for airspace regions */
@@ -96,12 +96,14 @@ public:
    * Compute bounding box enclosing the airspace.  Rounds up/down
    * so discretisation ensures bounding box is indeed enclosing.
    *
-   * @param task_projection Projection used for flat-earth representation
+   * @param projection Projection used for flat-earth representation
    *
    * @return Enclosing bounding box
    */
-  const FlatBoundingBox GetBoundingBox(const TaskProjection &task_projection);
+  gcc_pure
+  const FlatBoundingBox GetBoundingBox(const FlatProjection &projection);
 
+  gcc_pure
   GeoBounds GetGeoBounds() const;
 
   /**
@@ -109,6 +111,14 @@ public:
    * overall center location of all airspaces
    *
    * @return Location of reference point
+   */
+  gcc_pure
+  virtual const GeoPoint GetReferenceLocation() const = 0;
+
+  /**
+   * Get geometric center of airspace.
+   *
+   * @return center
    */
   gcc_pure
   virtual const GeoPoint GetCenter() const = 0;
@@ -123,6 +133,12 @@ public:
    */
   gcc_pure
   virtual bool Inside(const GeoPoint &loc) const = 0;
+
+  /**
+   * Checks whether an observer is inside the airspace altitude range.
+   */
+  gcc_pure
+  bool Inside(const AltitudeState &state) const;
 
   /**
    * Checks whether an observer is inside the airspace (altitude is taken into account)
@@ -147,7 +163,7 @@ public:
   gcc_pure
   virtual AirspaceIntersectionVector Intersects(const GeoPoint &g1,
                                                 const GeoPoint &end,
-                                                const TaskProjection &projection) const = 0;
+                                                const FlatProjection &projection) const = 0;
 
   /**
    * Find location of closest point on boundary to a reference
@@ -158,14 +174,14 @@ public:
    */
   gcc_pure
   virtual GeoPoint ClosestPoint(const GeoPoint &loc,
-                                const TaskProjection &projection) const = 0;
+                                const FlatProjection &projection) const = 0;
 
   /**
    * Set terrain altitude for AGL-referenced airspace altitudes
    *
    * @param alt Height above MSL of terrain (m) at center
    */
-  void SetGroundLevel(const fixed alt);
+  void SetGroundLevel(double alt);
 
   /**
    * Is it necessary to call SetGroundLevel() for this AbstractAirspace?
@@ -223,9 +239,9 @@ public:
     days_of_operation = mask;
   }
 
-  /** 
+  /**
    * Get type of airspace
-   * 
+   *
    * @return Type/class of airspace
    */
   AirspaceClass GetType() const {
@@ -249,7 +265,7 @@ public:
    *
    * @return Altitude AMSL (m) of base
    */
-  fixed GetBaseAltitude(const AltitudeState &state) const {
+  double GetBaseAltitude(const AltitudeState &state) const {
     return altitude_base.GetAltitude(state);
   }
 
@@ -258,7 +274,7 @@ public:
    *
    * @return Altitude AMSL (m) of top
    */
-  fixed GetTopAltitude(const AltitudeState &state) const {
+  double GetTopAltitude(const AltitudeState &state) const {
     return altitude_top.GetAltitude(state);
   }
 
@@ -276,11 +292,11 @@ public:
    * @param loc_end Location of last point on/in airspace to query (if provided)
    * @return True if intercept found
    */
-  bool Intercept(const AircraftState &state,
-                 const AirspaceAircraftPerformance &perf,
-                 AirspaceInterceptSolution &solution,
-                 const GeoPoint &loc_start,
-                 const GeoPoint &loc_end) const;
+  gcc_pure
+  AirspaceInterceptSolution Intercept(const AircraftState &state,
+                                      const AirspaceAircraftPerformance &perf,
+                                      const GeoPoint &loc_start,
+                                      const GeoPoint &loc_end) const;
 
   /**
    * Find time/distance/height to airspace from an observer given a
@@ -295,11 +311,11 @@ public:
    * @param solution Solution of intercept (set if intercept possible, else untouched)
    * @return True if intercept found
    */
-  bool Intercept(const AircraftState &state,
-                 const GeoPoint &end,
-                 const TaskProjection &projection,
-                 const AirspaceAircraftPerformance &perf,
-                 AirspaceInterceptSolution &solution) const;
+  gcc_pure
+  AirspaceInterceptSolution Intercept(const AircraftState &state,
+                                      const GeoPoint &end,
+                                      const FlatProjection &projection,
+                                      const AirspaceAircraftPerformance &perf) const;
 
 #ifdef DO_PRINT
   friend std::ostream &operator<<(std::ostream &f,
@@ -346,7 +362,7 @@ public:
    * from within a visit method.
    */
   gcc_pure
-  const SearchPointVector &GetClearance(const TaskProjection &projection) const;
+  const SearchPointVector &GetClearance(const FlatProjection &projection) const;
   void ClearClearance() const;
 
   gcc_pure
@@ -356,7 +372,7 @@ public:
 
 protected:
   /** Project border */
-  void Project(const TaskProjection &tp);
+  void Project(const FlatProjection &tp);
 
 private:
   /**
@@ -373,7 +389,7 @@ private:
   gcc_pure
   AirspaceInterceptSolution InterceptVertical(const AircraftState &state,
                                               const AirspaceAircraftPerformance &perf,
-                                              fixed distance) const;
+                                              double distance) const;
 
   /**
    * Find time/distance to specified horizontal boundary from an observer
@@ -391,8 +407,8 @@ private:
   gcc_pure
   AirspaceInterceptSolution InterceptHorizontal(const AircraftState &state,
                                                 const AirspaceAircraftPerformance &perf,
-                                                fixed distance_start,
-                                                fixed distance_end,
+                                                double distance_start,
+                                                double distance_end,
                                                 const bool lower = true) const;
 };
 

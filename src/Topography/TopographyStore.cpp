@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,10 +23,10 @@ Copyright_License {
 
 #include "Topography/TopographyStore.hpp"
 #include "Topography/TopographyFile.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/StringAPI.hxx"
+#include "Util/StringCompare.hxx"
 #include "Util/ConvertString.hpp"
 #include "IO/LineReader.hpp"
-#include "OS/PathName.hpp"
 #include "Operation/Operation.hpp"
 #include "Compatibility/path.h"
 #include "Asset.hpp"
@@ -58,8 +58,6 @@ static constexpr LOOKUP_ICON icon_list[] = {
   { "town", IDB_TOWN, IDB_TOWN_HD },
   { "mark", IDB_MARK, IDB_MARK_HD },
   { "terrainwarning", IDB_TERRAINWARNING, IDB_TERRAINWARNING_HD },
-  { "logger", IDB_LOGGER, IDB_LOGGER_HD },
-  { "loggeroff", IDB_LOGGEROFF, IDB_LOGGEROFF_HD },
   { "airport_reachable", IDB_AIRPORT_REACHABLE, IDB_AIRPORT_REACHABLE_HD },
   { "airport_unreachable",
     IDB_AIRPORT_UNREACHABLE, IDB_AIRPORT_UNREACHABLE_HD },
@@ -94,6 +92,19 @@ static constexpr LOOKUP_ICON icon_list[] = {
   { nullptr, ResourceId::Null(), ResourceId::Null() }
 };
 
+double
+TopographyStore::GetNextScaleThreshold(double map_scale) const
+{
+  double result(-1);
+  for (auto *file : files) {
+    double threshold = file->GetNextScaleThreshold(map_scale);
+    if (threshold > result)
+      result = threshold;
+  }
+
+  return result;
+}
+
 unsigned
 TopographyStore::ScanVisibility(const WindowProjection &m_projection,
                               unsigned max_update)
@@ -104,8 +115,8 @@ TopographyStore::ScanVisibility(const WindowProjection &m_projection,
   // we will make sure we update at least one cache per call
   // to make sure eventually everything gets refreshed
   unsigned num_updated = 0;
-  for (auto it = files.begin(), end = files.end(); it != end; ++it) {
-    if ((*it)->Update(m_projection)) {
+  for (auto *file : files) {
+    if (file->Update(m_projection)) {
       ++num_updated;
       if (num_updated >= max_update)
         break;
@@ -119,8 +130,10 @@ TopographyStore::ScanVisibility(const WindowProjection &m_projection,
 void
 TopographyStore::LoadAll()
 {
-  for (const auto &i : files)
-    i->LoadAll();
+  for (const auto &i : files) {
+    TopographyFile &file = *i;
+    file.LoadAll();
+  }
 }
 
 TopographyStore::~TopographyStore()
@@ -187,7 +200,7 @@ TopographyStore::Load(OperationEnvironment &operation, NLineReader &reader,
     strcpy(shape_filename_end + (p - line), ".shp");
 
     // Parse shape range
-    fixed shape_range = fixed(strtod(p + 1, &p)) * 1000;
+    auto shape_range = strtod(p + 1, &p) * 1000;
     if (*p != _T(','))
       continue;
 
@@ -241,14 +254,14 @@ TopographyStore::Load(OperationEnvironment &operation, NLineReader &reader,
     }
 
     // Parse range for displaying labels
-    fixed label_range = shape_range;
+    auto label_range = shape_range;
     if (*p == _T(','))
-      label_range = fixed(strtod(p + 1, &p)) * 1000;
+      label_range = strtod(p + 1, &p) * 1000;
 
     // Parse range for displaying labels with "important" rendering style
-    fixed labelImportantRange = fixed(0);
+    double labelImportantRange = 0;
     if (*p == _T(','))
-      labelImportantRange = fixed(strtod(p + 1, &p)) * 1000;
+      labelImportantRange = strtod(p + 1, &p) * 1000;
 
     // Handle alpha component
     // If not present at all (i.e. v6.6 or earlier file), default to 100% opaque
@@ -292,8 +305,8 @@ TopographyStore::Load(OperationEnvironment &operation, NLineReader &reader,
 void
 TopographyStore::Reset()
 {
-  for (auto it = files.begin(), end = files.end(); it != end; ++it)
-    delete *it;
+  for (auto *file : files)
+    delete file;
 
   files.clear();
 }

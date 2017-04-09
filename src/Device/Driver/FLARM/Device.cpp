@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -24,9 +24,11 @@ Copyright_License {
 #include "Device.hpp"
 #include "Device/Port/Port.hpp"
 #include "Util/ConvertString.hpp"
-#include "Util/StaticString.hpp"
+#include "Util/StaticString.hxx"
+#include "Util/TruncateString.hpp"
 #include "Util/Macros.hpp"
 #include "Util/NumberParser.hpp"
+#include "Util/StringCompare.hxx"
 #include "NMEA/Checksum.hpp"
 
 void
@@ -61,11 +63,11 @@ FlarmDevice::SetStealthMode(bool enabled, OperationEnvironment &env)
 bool
 FlarmDevice::GetRange(unsigned &range, OperationEnvironment &env)
 {
-  TCHAR buffer[12];
+  char buffer[12];
   if (!GetConfig("RANGE", buffer, ARRAY_SIZE(buffer), env))
     return false;
 
-  TCHAR *end_ptr;
+  char *end_ptr;
   unsigned value = ParseUnsigned(buffer, &end_ptr, 10);
   if (end_ptr == buffer)
     return false;
@@ -85,11 +87,11 @@ FlarmDevice::SetRange(unsigned range, OperationEnvironment &env)
 bool
 FlarmDevice::GetBaudRate(unsigned &baud_id, OperationEnvironment &env)
 {
-  TCHAR buffer[12];
+  char buffer[12];
   if (!GetConfig("BAUD", buffer, ARRAY_SIZE(buffer), env))
     return false;
 
-  TCHAR *end_ptr;
+  char *end_ptr;
   unsigned value = ParseUnsigned(buffer, &end_ptr, 10);
   if (end_ptr == buffer)
     return false;
@@ -190,12 +192,12 @@ bool
 FlarmDevice::GetConfig(const char *setting, char *buffer, size_t length,
                        OperationEnvironment &env)
 {
-  NarrowString<256> request;
+  NarrowString<90> request;
   request.Format("PFLAC,R,%s", setting);
 
-  NarrowString<256> expected_answer(request);
+  NarrowString<90> expected_answer(request);
   expected_answer[6u] = 'A';
-  expected_answer += ',';
+  expected_answer.push_back(',');
 
   Send(request, env);
   return Receive(expected_answer, buffer, length, env, 2000);
@@ -220,10 +222,10 @@ bool
 FlarmDevice::SetConfig(const char *setting, const char *value,
                        OperationEnvironment &env)
 {
-  NarrowString<256> buffer;
+  NarrowString<90> buffer;
   buffer.Format("PFLAC,S,%s,%s", setting, value);
 
-  NarrowString<256> expected_answer(buffer);
+  NarrowString<90> expected_answer(buffer);
   expected_answer[6u] = 'A';
 
   Send(buffer, env);
@@ -237,8 +239,8 @@ bool
 FlarmDevice::GetConfig(const char *setting, TCHAR *buffer, size_t length,
                        OperationEnvironment &env)
 {
-  char narrow_buffer[length * 2];
-  if (!GetConfig(setting, narrow_buffer, length * 2, env))
+  char narrow_buffer[90];
+  if (!GetConfig(setting, narrow_buffer, ARRAY_SIZE(narrow_buffer), env))
     return false;
 
   if (StringIsEmpty(narrow_buffer)) {
@@ -250,7 +252,7 @@ FlarmDevice::GetConfig(const char *setting, TCHAR *buffer, size_t length,
   if (!wide.IsValid())
     return false;
 
-  CopyString(buffer, wide, length);
+  CopyTruncateString(buffer, length, wide);
   return true;
 }
 

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@ Copyright_License {
   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 }
 */
-
 #include "AirspaceRendererSettings.hpp"
 #include "Asset.hpp"
 
@@ -50,6 +49,7 @@ AirspaceRendererSettings::SetDefaults()
 #endif
 
   fill_mode = FillMode::DEFAULT;
+  label_selection = LabelSelection::NONE;
 
   for (auto it = classes; it != classes + AIRSPACECLASSCOUNT; ++it)
     it->SetDefaults();
@@ -67,6 +67,7 @@ AirspaceRendererSettings::SetDefaults()
   classes[AATASK].brush = 3;
   classes[CLASSE].brush = 3;
   classes[CLASSF].brush = 3;
+  classes[RMZ].brush = 3;
 #endif
 
   classes[OTHER].SetColors(RGB8_CYAN);
@@ -79,4 +80,5 @@ AirspaceRendererSettings::SetDefaults()
   classes[AATASK].SetColors(HasColors() ? RGB8_YELLOW : RGB8_MAGENTA);
   classes[CLASSE].SetColors(RGB8_GREEN.Darken());
   classes[CLASSF].SetColors(RGB8_GREEN.Darken());
+  classes[RMZ].SetColors(RGB8_MAGENTA.Darken());
 }

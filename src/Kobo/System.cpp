@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -22,11 +22,12 @@ Copyright_License {
 */
 
 #include "System.hpp"
+#include "Model.hpp"
 #include "OS/FileUtil.hpp"
 #include "OS/PathName.hpp"
 #include "OS/Process.hpp"
 #include "OS/Sleep.h"
-#include "Util/StaticString.hpp"
+#include "Util/StaticString.hxx"
 
 #include <unistd.h>
 #include <sys/stat.h>
@@ -34,11 +35,13 @@ Copyright_License {
 #ifdef KOBO
 
 #include <sys/mount.h>
+#include <errno.h>
 
+template<typename... Args>
 static bool
-InsMod(const char *path)
+InsMod(const char *path, Args... args)
 {
-  return Run("/sbin/insmod", path);
+  return Run("/sbin/insmod", path, args...);
 }
 
 static bool
@@ -89,10 +92,78 @@ KoboPowerOff()
 }
 
 bool
+KoboUmountData()
+{
+#ifdef KOBO
+  return umount("/mnt/onboard") == 0 || errno == EINVAL;
+#else
+  return true;
+#endif
+}
+
+bool
+KoboMountData()
+{
+#ifdef KOBO
+  Run("/bin/dosfsck", "-a", "-w", "/dev/mmcblk0p3");
+  return mount("/dev/mmcblk0p3", "/mnt/onboard", "vfat",
+               MS_NOATIME|MS_NODEV|MS_NOEXEC|MS_NOSUID,
+               "iocharset=utf8");
+#else
+  return true;
+#endif
+}
+
+bool
+KoboExportUSBStorage()
+{
+#ifdef KOBO
+  bool result = false;
+
+  RmMod("g_ether");
+  RmMod("g_file_storage");
+
+  switch (DetectKoboModel())
+  {
+  case KoboModel::UNKNOWN: // Let unknown try the old device
+  case KoboModel::MINI:
+  case KoboModel::TOUCH:
+  case KoboModel::AURA:
+  case KoboModel::GLO: // TODO: is this correct?
+    InsMod("/drivers/ntx508/usb/gadget/arcotg_udc.ko");
+    result = InsMod("/drivers/ntx508/usb/gadget/g_file_storage.ko",
+                    "file=/dev/mmcblk0p3", "stall=0");
+    break;
+
+  case KoboModel::TOUCH2:
+  case KoboModel::GLO_HD:
+  case KoboModel::AURA2:
+    InsMod("/drivers/mx6sl-ntx/usb/gadget/arcotg_udc.ko");
+    result = InsMod("/drivers/mx6sl-ntx/usb/gadget/g_file_storage.ko",
+                    "file=/dev/mmcblk0p3", "stall=0");
+    break;
+  }
+  return result;
+#else
+  return true;
+#endif
+}
+
+void
+KoboUnexportUSBStorage()
+{
+#ifdef KOBO
+  RmMod("g_ether");
+  RmMod("g_file_storage");
+  RmMod("arcotg_udc");
+#endif
+}
+
+bool
 IsKoboWifiOn()
 {
 #ifdef KOBO
-  return Directory::Exists("/sys/class/net/eth0");
+  return Directory::Exists(Path("/sys/class/net/eth0"));
 #else
   return false;
 #endif
@@ -102,12 +173,34 @@ bool
 KoboWifiOn()
 {
 #ifdef KOBO
-  InsMod("/drivers/ntx508/wifi/sdio_wifi_pwr.ko");
-  InsMod("/drivers/ntx508/wifi/dhd.ko");
+
+  switch (DetectKoboModel())
+  {
+  case KoboModel::UNKNOWN: // Let unknown try the old device
+  case KoboModel::MINI:
+  case KoboModel::TOUCH:
+  case KoboModel::AURA:
+  case KoboModel::GLO: // TODO: is this correct?
+    InsMod("/drivers/ntx508/wifi/sdio_wifi_pwr.ko");
+    InsMod("/drivers/ntx508/wifi/dhd.ko");
+    break;
+
+  case KoboModel::TOUCH2:
+  case KoboModel::GLO_HD:
+    InsMod("/drivers/mx6sl-ntx/wifi/sdio_wifi_pwr.ko");
+    InsMod("/drivers/mx6sl-ntx/wifi/dhd.ko");
+    break;
+
+  case KoboModel::AURA2:
+    InsMod("/drivers/mx6sl-ntx/wifi/sdio_wifi_pwr.ko");
+    InsMod("/drivers/mx6sl-ntx/wifi/8189fs.ko");
+    break;
+  }
 
   Sleep(2000);
 
   Run("/sbin/ifconfig", "eth0", "up");
+  Run("/sbin/iwconfig", "eth0", "power", "off");
   Run("/bin/wlarm_le", "-i", "eth0", "up");
   Run("/bin/wpa_supplicant", "-i", "eth0",
       "-c", "/etc/wpa_supplicant/wpa_supplicant.conf",
@@ -134,6 +227,7 @@ KoboWifiOff()
   Run("/sbin/ifconfig", "eth0", "down");
 
   RmMod("dhd");
+  RmMod("8189fs");
   RmMod("sdio_wifi_pwr");
 
   return true;
@@ -150,7 +244,7 @@ KoboExecNickel()
      exists */
   mkdir("/mnt/onboard/XCSoarData", 0777);
   mkdir("/mnt/onboard/XCSoarData/kobo", 0777);
-  File::CreateExclusive("/mnt/onboard/XCSoarData/kobo/start_nickel");
+  File::CreateExclusive(Path("/mnt/onboard/XCSoarData/kobo/start_nickel"));
 
   /* unfortunately, a bug in the Kobo applications forces us to reboot
      the Kobo at this point */

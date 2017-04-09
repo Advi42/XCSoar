@@ -16,35 +16,34 @@
 ***********************************************************************/
 
 #include "vlapihlp.h"
-#include "utils.h"
 #include "Util/StringUtil.hpp"
 #include "Util/Macros.hpp"
 
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+
+gcc_const
+static bool
+IsAllowedIGCChar(char ch)
+{
+  static constexpr char alphabet[] =
+    " \"#%&\'()+-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_\140abcdefghijklmnopqrstuvwxyz{|}";
+  static constexpr size_t alphabet_l = ARRAY_SIZE(alphabet) - 1;
+
+  return memchr(alphabet, ch, alphabet_l) != nullptr;
+}
 
 /*
 Filtern einer Zeile:
   - Umwandeln von nicht-IGC-Zeichen in Leerzeichen
-  - Entfernen von Leer- und Sonderzeichen am Ende (TrimRight)
+  - Entfernen von Leer- und Sonderzeichen am Ende
 */
 char *igc_filter(char *st) {
- static constexpr char alphabet[] =
-   " \"#%&\'()+-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_\140abcdefghijklmnopqrstuvwxyz{|}";
- static constexpr int alphabet_l = ARRAY_SIZE(alphabet) - 1;
- int l = strlen(st);
- int i,j;
- int found;
-  for(i=0; i<l; i++) {
-    found = 0;
-    for(j=0; j<alphabet_l; j++)
-      if (st[i] == alphabet[j])
-	found = 1;
-    if (!found) st[i] = ' ';
-  }
-  TrimRight(st);
+  for (char *p = st; *p != 0; ++p)
+    if (!IsAllowedIGCChar(*p))
+      *p = ' ';
+  StripRight(st);
   return st;
 }
 
@@ -52,19 +51,11 @@ char *igc_filter(char *st) {
 void
 wordtoserno(char *Seriennummer, unsigned Binaer)
 {
- char SerNStr[4];
- int i,l;
-  // limitation
-  if (Binaer > 46655L)
-    Binaer = 46655L;
-  utoa(Binaer,SerNStr,36);
-  sprintf(Seriennummer,"%3s",SerNStr);
-  // generate leading zeroes
-  l = strlen(Seriennummer);
-  for (i=0; i<l; i++) {
-    if (Seriennummer[i] == ' ')
-      Seriennummer[i] = '0';
-  };
+  static constexpr char base36[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  Seriennummer[0] = base36[(Binaer / 36 / 36) % 36];
+  Seriennummer[1] = base36[(Binaer / 36) % 36];
+  Seriennummer[2] = base36[Binaer % 36];
+  Seriennummer[3] = 0;
 }
 
 

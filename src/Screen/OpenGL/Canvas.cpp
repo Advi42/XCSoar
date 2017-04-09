@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -31,10 +31,12 @@ Copyright_License {
 #include "FallbackBuffer.hpp"
 #include "Features.hpp"
 #include "VertexPointer.hpp"
+#include "ExactPixelPoint.hpp"
 #include "Screen/Custom/Cache.hpp"
 #include "Screen/Bitmap.hpp"
 #include "Screen/Util.hpp"
-#include "Util/AllocatedArray.hpp"
+#include "Math/Angle.hpp"
+#include "Util/AllocatedArray.hxx"
 #include "Util/Macros.hpp"
 
 #ifdef USE_GLSL
@@ -47,13 +49,40 @@ Copyright_License {
 #include "Compatibility.hpp"
 #endif
 
+#ifdef UNICODE
+#include "Util/ConvertString.hpp"
+#endif
+
 #ifndef NDEBUG
 #include "Util/UTF8.hpp"
 #endif
 
 #include <assert.h>
 
-AllocatedArray<RasterPoint> Canvas::vertex_buffer;
+AllocatedArray<BulkPixelPoint> Canvas::vertex_buffer;
+
+void
+Canvas::InvertRectangle(PixelRect r)
+{
+  /** Inverts rectangle using GL blending effects (hardware accelerated):
+   *
+   * Drawing white (Draw_color=1,1,1) rectangle over the image with GL_ONE_MINUS_DST_COLOR
+   * blending function yields New_DST_color= Draw_Color*(1-Old_DST_Color)
+   *
+   */
+
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE); // Make sure alpha channel is not damaged
+
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO); // DST is overwritten part of image = old_DST_color
+
+  const Color cwhite(0xff, 0xff, 0xff); // Draw color white (source channel of blender)
+
+  DrawFilledRectangle(r, cwhite);
+
+  glDisable(GL_BLEND);
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
 
 void
 Canvas::DrawFilledRectangle(int left, int top, int right, int bottom,
@@ -63,10 +92,10 @@ Canvas::DrawFilledRectangle(int left, int top, int right, int bottom,
   OpenGL::solid_shader->Use();
 #endif
 
-  color.Set();
+  color.Bind();
 
 #ifdef HAVE_GLES
-  const RasterPoint vertices[] = {
+  const BulkPixelPoint vertices[] = {
     { left, top },
     { right, top },
     { left, bottom },
@@ -83,11 +112,11 @@ Canvas::DrawFilledRectangle(int left, int top, int right, int bottom,
 void
 Canvas::OutlineRectangleGL(int left, int top, int right, int bottom)
 {
-  const ExactRasterPoint vertices[] = {
-    RasterPoint{left, top},
-    RasterPoint{right, top},
-    RasterPoint{right, bottom},
-    RasterPoint{left, bottom},
+  const ExactPixelPoint vertices[] = {
+    PixelPoint{left, top},
+    PixelPoint{right, top},
+    PixelPoint{right, bottom},
+    PixelPoint{left, bottom},
   };
 
   const ScopeVertexPointer vp(vertices);
@@ -97,7 +126,7 @@ Canvas::OutlineRectangleGL(int left, int top, int right, int bottom)
 void
 Canvas::FadeToWhite(GLubyte alpha)
 {
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
   const Color color(0xff, 0xff, 0xff, alpha);
   Clear(color);
 }
@@ -105,7 +134,7 @@ Canvas::FadeToWhite(GLubyte alpha)
 void
 Canvas::FadeToWhite(PixelRect rc, GLubyte alpha)
 {
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
   const Color color(0xff, 0xff, 0xff, alpha);
   DrawFilledRectangle(rc.left, rc.right, rc.right, rc.bottom, color);
 }
@@ -130,7 +159,7 @@ Canvas::DrawRaisedEdge(PixelRect &rc)
 }
 
 void
-Canvas::DrawPolyline(const RasterPoint *points, unsigned num_points)
+Canvas::DrawPolyline(const BulkPixelPoint *points, unsigned num_points)
 {
 #ifdef USE_GLSL
   OpenGL::solid_shader->Use();
@@ -145,7 +174,7 @@ Canvas::DrawPolyline(const RasterPoint *points, unsigned num_points)
 }
 
 void
-Canvas::DrawPolygon(const RasterPoint *points, unsigned num_points)
+Canvas::DrawPolygon(const BulkPixelPoint *points, unsigned num_points)
 {
   if (brush.IsHollow() && !pen.IsDefined())
     return;
@@ -157,7 +186,7 @@ Canvas::DrawPolygon(const RasterPoint *points, unsigned num_points)
   ScopeVertexPointer vp(points);
 
   if (!brush.IsHollow() && num_points >= 3) {
-    brush.Set();
+    brush.Bind();
 
     static AllocatedArray<GLushort> triangle_buffer;
     unsigned idx_count = PolygonToTriangles(points, num_points,
@@ -186,7 +215,7 @@ Canvas::DrawPolygon(const RasterPoint *points, unsigned num_points)
 }
 
 void
-Canvas::DrawTriangleFan(const RasterPoint *points, unsigned num_points)
+Canvas::DrawTriangleFan(const BulkPixelPoint *points, unsigned num_points)
 {
   if (brush.IsHollow() && !pen.IsDefined())
     return;
@@ -198,7 +227,7 @@ Canvas::DrawTriangleFan(const RasterPoint *points, unsigned num_points)
   ScopeVertexPointer vp(points);
 
   if (!brush.IsHollow() && num_points >= 3) {
-    brush.Set();
+    brush.Bind();
     glDrawArrays(GL_TRIANGLE_FAN, 0, num_points);
   }
 
@@ -223,9 +252,9 @@ Canvas::DrawTriangleFan(const RasterPoint *points, unsigned num_points)
 void
 Canvas::DrawHLine(int x1, int x2, int y, Color color)
 {
-  color.Set();
+  color.Bind();
 
-  const RasterPoint v[] = {
+  const BulkPixelPoint v[] = {
     { GLvalue(x1), GLvalue(y) },
     { GLvalue(x2), GLvalue(y) },
   };
@@ -243,7 +272,7 @@ Canvas::DrawLine(int ax, int ay, int bx, int by)
 
   pen.Bind();
 
-  const RasterPoint v[] = {
+  const BulkPixelPoint v[] = {
     { GLvalue(ax), GLvalue(ay) },
     { GLvalue(bx), GLvalue(by) },
   };
@@ -263,7 +292,7 @@ Canvas::DrawExactLine(int ax, int ay, int bx, int by)
 
   pen.Bind();
 
-  const ExactRasterPoint v[] = {
+  const ExactPixelPoint v[] = {
     { ToGLexact(ax), ToGLexact(ay) },
     { ToGLexact(bx), ToGLexact(by) },
   };
@@ -279,7 +308,7 @@ Canvas::DrawExactLine(int ax, int ay, int bx, int by)
  * gaps between consecutive lines.
  */
 void
-Canvas::DrawLinePiece(const RasterPoint a, const RasterPoint b)
+Canvas::DrawLinePiece(const PixelPoint a, const PixelPoint b)
 {
 #ifdef USE_GLSL
   OpenGL::solid_shader->Use();
@@ -287,7 +316,7 @@ Canvas::DrawLinePiece(const RasterPoint a, const RasterPoint b)
 
   pen.Bind();
 
-  const RasterPoint v[] = { {a.x, a.y}, {b.x, b.y} };
+  const BulkPixelPoint v[] = { {a.x, a.y}, {b.x, b.y} };
   if (pen.GetWidth() > 2) {
     unsigned strip_len = LineToTriangles(v, 2, vertex_buffer, pen.GetWidth(),
                                          false, true);
@@ -312,7 +341,7 @@ Canvas::DrawTwoLines(int ax, int ay, int bx, int by, int cx, int cy)
 
   pen.Bind();
 
-  const RasterPoint v[] = {
+  const BulkPixelPoint v[] = {
     { GLvalue(ax), GLvalue(ay) },
     { GLvalue(bx), GLvalue(by) },
     { GLvalue(cx), GLvalue(cy) },
@@ -333,7 +362,7 @@ Canvas::DrawTwoLinesExact(int ax, int ay, int bx, int by, int cx, int cy)
 
   pen.Bind();
 
-  const ExactRasterPoint v[] = {
+  const ExactPixelPoint v[] = {
     { ToGLexact(ax), ToGLexact(ay) },
     { ToGLexact(bx), ToGLexact(by) },
     { ToGLexact(cx), ToGLexact(cy) },
@@ -359,7 +388,7 @@ Canvas::DrawCircle(int x, int y, unsigned radius)
                              radius + pen.GetWidth() / 2);
     if (!brush.IsHollow()) {
       vertices.BindInnerCircle(vp);
-      brush.Set();
+      brush.Bind();
       glDrawArrays(GL_TRIANGLE_FAN, 0, vertices.CIRCLE_SIZE);
     }
     vertices.Bind(vp);
@@ -374,7 +403,7 @@ Canvas::DrawCircle(int x, int y, unsigned radius)
       ? OpenGL::SMALL_CIRCLE_SIZE
       : OpenGL::CIRCLE_SIZE;
 
-    const FloatPoint *const points = (const FloatPoint *)buffer.BeginRead();
+    const auto points = (const FloatPoint2D *)buffer.BeginRead();
     const ScopeVertexPointer vp(points);
 
 #ifdef USE_GLSL
@@ -397,7 +426,7 @@ Canvas::DrawCircle(int x, int y, unsigned radius)
 #endif
 
     if (!brush.IsHollow()) {
-      brush.Set();
+      brush.Bind();
       glDrawArrays(GL_TRIANGLE_FAN, 0, n);
     }
 
@@ -419,10 +448,17 @@ Canvas::DrawCircle(int x, int y, unsigned radius)
 }
 
 void
-Canvas::DrawSegment(int x, int y, unsigned radius,
+Canvas::DrawSegment(PixelPoint center, unsigned radius,
                     Angle start, Angle end, bool horizon)
 {
-  ::Segment(*this, x, y, radius, start, end, horizon);
+  ::Segment(*this, center, radius, start, end, horizon);
+}
+
+void
+Canvas::DrawArc(PixelPoint center, unsigned radius,
+                Angle start, Angle end)
+{
+  ::Arc(*this, center, radius, start, end);
 }
 
 gcc_const
@@ -463,7 +499,7 @@ AngleToDonutVertices(Angle start, Angle end)
 }
 
 void
-Canvas::DrawAnnulus(int x, int y,
+Canvas::DrawAnnulus(PixelPoint center,
                     unsigned small_radius, unsigned big_radius,
                     Angle start, Angle end)
 {
@@ -472,19 +508,19 @@ Canvas::DrawAnnulus(int x, int y,
        TRAC #2221, caused by rounding error of start/end radial;
        should reimplement GLDonutVertices to use the exact start/end
        radial */
-    ::Annulus(*this, x, y, big_radius, start, end, small_radius);
+    ::Annulus(*this, center, big_radius, start, end, small_radius);
     return;
   }
 
   ScopeVertexPointer vp;
-  GLDonutVertices vertices(x, y, small_radius, big_radius);
+  GLDonutVertices vertices(center.x, center.y, small_radius, big_radius);
 
   const std::pair<unsigned,unsigned> i = AngleToDonutVertices(start, end);
   const unsigned istart = i.first;
   const unsigned iend = i.second;
 
   if (!brush.IsHollow()) {
-    brush.Set();
+    brush.Bind();
     vertices.Bind(vp);
 
     if (istart > iend) {
@@ -533,11 +569,11 @@ Canvas::DrawAnnulus(int x, int y,
 }
 
 void
-Canvas::DrawKeyhole(int x, int y,
+Canvas::DrawKeyhole(PixelPoint center,
                     unsigned small_radius, unsigned big_radius,
                     Angle start, Angle end)
 {
-  ::KeyHole(*this, x, y, big_radius, start, end, small_radius);
+  ::KeyHole(*this, center, big_radius, start, end, small_radius);
 }
 
 void
@@ -550,7 +586,10 @@ const PixelSize
 Canvas::CalcTextSize(const TCHAR *text) const
 {
   assert(text != nullptr);
-#ifndef UNICODE
+#ifdef UNICODE
+  const WideToUTF8Converter text2(text);
+#else
+  const char* text2 = text;
   assert(ValidateUTF8(text));
 #endif
 
@@ -560,11 +599,11 @@ Canvas::CalcTextSize(const TCHAR *text) const
     return size;
 
   /* see if the TextCache can handle this request */
-  size = TextCache::LookupSize(*font, text);
+  size = TextCache::LookupSize(*font, text2);
   if (size.cy > 0)
     return size;
 
-  return TextCache::GetSize(*font, text);
+  return TextCache::GetSize(*font, text2);
 }
 
 /**
@@ -575,9 +614,9 @@ PrepareColoredAlphaTexture(Color color)
 {
 #ifdef USE_GLSL
   OpenGL::alpha_shader->Use();
-  color.Set();
+  color.Bind();
 #else
-  color.Set();
+  color.Bind();
 
   if (color == COLOR_BLACK) {
     /* GL_ALPHA textures have black RGB - this is easy */
@@ -605,7 +644,12 @@ void
 Canvas::DrawText(int x, int y, const TCHAR *text)
 {
   assert(text != nullptr);
+#ifdef UNICODE
+  const WideToUTF8Converter text2(text);
+#else
+  const char* text2 = text;
   assert(ValidateUTF8(text));
+#endif
 
 #ifdef HAVE_GLES
   assert(offset == OpenGL::translate);
@@ -614,7 +658,7 @@ Canvas::DrawText(int x, int y, const TCHAR *text)
   if (font == nullptr)
     return;
 
-  GLTexture *texture = TextCache::Get(*font, text);
+  GLTexture *texture = TextCache::Get(*font, text2);
   if (texture == nullptr)
     return;
 
@@ -626,20 +670,25 @@ Canvas::DrawText(int x, int y, const TCHAR *text)
   PrepareColoredAlphaTexture(text_color);
 
 #ifndef USE_GLSL
-  GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
 #endif
 
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
 
   texture->Bind();
-  texture->Draw(x, y);
+  texture->Draw(PixelPoint(x, y));
 }
 
 void
 Canvas::DrawTransparentText(int x, int y, const TCHAR *text)
 {
   assert(text != nullptr);
+#ifdef UNICODE
+  const WideToUTF8Converter text2(text);
+#else
+  const char* text2 = text;
   assert(ValidateUTF8(text));
+#endif
 
 #ifdef HAVE_GLES
   assert(offset == OpenGL::translate);
@@ -648,20 +697,20 @@ Canvas::DrawTransparentText(int x, int y, const TCHAR *text)
   if (font == nullptr)
     return;
 
-  GLTexture *texture = TextCache::Get(*font, text);
+  GLTexture *texture = TextCache::Get(*font, text2);
   if (texture == nullptr)
     return;
 
   PrepareColoredAlphaTexture(text_color);
 
 #ifndef USE_GLSL
-  GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
 #endif
 
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
 
   texture->Bind();
-  texture->Draw(x, y);
+  texture->Draw(PixelPoint(x, y));
 }
 
 void
@@ -670,7 +719,12 @@ Canvas::DrawClippedText(int x, int y,
                         const TCHAR *text)
 {
   assert(text != nullptr);
+#ifdef UNICODE
+  const WideToUTF8Converter text2(text);
+#else
+  const char* text2 = text;
   assert(ValidateUTF8(text));
+#endif
 
 #ifdef HAVE_GLES
   assert(offset == OpenGL::translate);
@@ -679,7 +733,7 @@ Canvas::DrawClippedText(int x, int y,
   if (font == nullptr)
     return;
 
-  GLTexture *texture = TextCache::Get(*font, text);
+  GLTexture *texture = TextCache::Get(*font, text2);
   if (texture == nullptr)
     return;
 
@@ -691,13 +745,14 @@ Canvas::DrawClippedText(int x, int y,
   PrepareColoredAlphaTexture(text_color);
 
 #ifndef USE_GLSL
-  GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
 #endif
 
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
 
   texture->Bind();
-  texture->Draw(x, y, width, height, 0, 0, width, height);
+  texture->Draw(PixelRect(PixelPoint(x, y), PixelSize(width, height)),
+                PixelRect(0, 0, width, height));
 }
 
 void
@@ -715,8 +770,10 @@ Canvas::Stretch(int dest_x, int dest_y,
   OpenGL::texture_shader->Use();
 #endif
 
-  texture.Draw(dest_x, dest_y, dest_width, dest_height,
-               src_x, src_y, src_width, src_height);
+  texture.Draw(PixelRect(PixelPoint(dest_x, dest_y),
+                         PixelSize(dest_width, dest_height)),
+               PixelRect(PixelPoint(src_x, src_y),
+                         PixelSize(src_width, src_height)));
 }
 
 void
@@ -751,7 +808,7 @@ Canvas::StretchNot(const Bitmap &src)
 #ifdef USE_GLSL
   OpenGL::invert_shader->Use();
 #else
-  const GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
 
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
 
@@ -767,8 +824,8 @@ Canvas::StretchNot(const Bitmap &src)
 #endif
 
   GLTexture &texture = *src.GetNative();
-  texture.Draw(0, 0, GetWidth(), GetHeight(),
-               0, 0, src.GetWidth(), src.GetHeight());
+  texture.Bind();
+  texture.Draw(GetRect(), PixelRect(src.GetSize()));
 }
 
 void
@@ -785,14 +842,16 @@ Canvas::Stretch(int dest_x, int dest_y,
 #ifdef USE_GLSL
   OpenGL::texture_shader->Use();
 #else
-  const GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 #endif
 
   GLTexture &texture = *src.GetNative();
   texture.Bind();
-  texture.Draw(dest_x, dest_y, dest_width, dest_height,
-               src_x, src_y, src_width, src_height);
+  texture.Draw(PixelRect(PixelPoint(dest_x, dest_y),
+                         PixelSize(dest_width, dest_height)),
+               PixelRect(PixelPoint(src_x, src_y),
+                         PixelSize(src_width, src_height)));
 }
 
 void
@@ -808,14 +867,16 @@ Canvas::Stretch(int dest_x, int dest_y,
 #ifdef USE_GLSL
   OpenGL::texture_shader->Use();
 #else
-  const GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 #endif
 
   GLTexture &texture = *src.GetNative();
   texture.Bind();
-  texture.Draw(dest_x, dest_y, dest_width, dest_height,
-               0, 0, src.GetWidth(), src.GetHeight());
+
+  texture.Draw(PixelRect(PixelPoint(dest_x, dest_y),
+                         PixelSize(dest_width, dest_height)),
+               PixelRect(src.GetSize()));
 }
 
 void
@@ -834,9 +895,9 @@ Canvas::StretchMono(int dest_x, int dest_y,
 
 #ifdef USE_GLSL
   OpenGL::alpha_shader->Use();
-  fg_color.Set();
+  fg_color.Bind();
 #else
-  const GLEnable scope(GL_TEXTURE_2D);
+  const GLEnable<GL_TEXTURE_2D> scope;
 
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
 
@@ -852,12 +913,14 @@ Canvas::StretchMono(int dest_x, int dest_y,
   OpenGL::glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 #endif
 
-  const GLBlend blend(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  const ScopeAlphaBlend alpha_blend;
 
   GLTexture &texture = *src.GetNative();
   texture.Bind();
-  texture.Draw(dest_x, dest_y, dest_width, dest_height,
-               src_x, src_y, src_width, src_height);
+  texture.Draw(PixelRect(PixelPoint(dest_x, dest_y),
+                         PixelSize(dest_width, dest_height)),
+               PixelRect(PixelPoint(src_x, src_y),
+                         PixelSize(src_width, src_height)));
 }
 
 void
@@ -871,8 +934,7 @@ Canvas::CopyToTexture(GLTexture &texture, PixelRect src_rc) const
   glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
                       OpenGL::translate.x + src_rc.left,
                       OpenGL::viewport_size.y - OpenGL::translate.y - src_rc.bottom,
-                      src_rc.right - src_rc.left,
-                      src_rc.bottom - src_rc.top);
+                      src_rc.GetWidth(), src_rc.GetHeight());
 
 }
 

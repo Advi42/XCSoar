@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -37,8 +37,10 @@ public:
   bool running;
   unsigned baud_rate;
 
-  FaultInjectionPort(DataHandler &_handler)
-    :Port(_handler), running(true), baud_rate(DEFAULT_BAUD_RATE) {}
+  FaultInjectionPort(PortListener *_listener, DataHandler &_handler)
+    :Port(_listener, _handler),
+     running(true),
+     baud_rate(DEFAULT_BAUD_RATE) {}
 
   /* virtual methods from class Port */
   virtual PortState GetState() const override {
@@ -80,7 +82,9 @@ public:
     if (inject_port_fault == 0)
       return -1;
 
-    --inject_port_fault;
+    if (--inject_port_fault == 0)
+      StateChanged();
+
     char *p = (char *)Buffer;
     std::fill_n(p, Size, ' ');
     return Size;
@@ -92,82 +96,3 @@ public:
       : WaitResult::FAILED;
   }
 };
-
-Port::Port(DataHandler &_handler)
-  :handler(_handler) {}
-
-Port::~Port() {}
-
-bool
-Port::WaitConnected(OperationEnvironment &env)
-{
-  return GetState() == PortState::READY;
-}
-
-size_t
-Port::Write(const char *s)
-{
-  return Write(s, strlen(s));
-}
-
-bool
-Port::FullWrite(const void *buffer, size_t length,
-                OperationEnvironment &env, unsigned timeout_ms)
-{
-  return Write(buffer, length) == length;
-}
-
-bool
-Port::FullWriteString(const char *s,
-                      OperationEnvironment &env, unsigned timeout_ms)
-{
-  return FullWrite(s, strlen(s), env, timeout_ms);
-}
-
-int
-Port::GetChar()
-{
-  unsigned char ch;
-  return Read(&ch, sizeof(ch)) == sizeof(ch)
-    ? ch
-    : EOF;
-}
-
-bool
-Port::FullFlush(OperationEnvironment &env, unsigned timeout_ms,
-                unsigned total_timeout_ms)
-{
-  Flush();
-  return true;
-}
-
-bool
-Port::FullRead(void *buffer, size_t length, OperationEnvironment &env,
-               unsigned timeout_ms)
-{
-  return Read(buffer, length) == (int)length;
-}
-
-Port::WaitResult
-Port::WaitRead(OperationEnvironment &env, unsigned timeout_ms)
-{
-  return WaitRead(timeout_ms);
-}
-
-bool
-Port::ExpectString(const char *token,
-                   OperationEnvironment &env, unsigned timeout_ms)
-{
-  if (inject_port_fault == 0)
-    return false;
-
-  --inject_port_fault;
-  return true;
-}
-
-Port::WaitResult
-Port::WaitForChar(const char token, OperationEnvironment &env,
-                  unsigned timeout_ms)
-{
-  return inject_port_fault > 0 ? WaitResult::READY : WaitResult::FAILED;
-}

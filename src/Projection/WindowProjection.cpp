@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -26,11 +26,11 @@ Copyright_License {
 bool
 WindowProjection::GeoVisible(const GeoPoint &loc) const
 {
-  return screenbounds_latlon.IsInside(loc);
+  return screen_bounds.IsInside(loc);
 }
 
 bool
-WindowProjection::GeoToScreenIfVisible(const GeoPoint &loc, RasterPoint &sc) const
+WindowProjection::GeoToScreenIfVisible(const GeoPoint &loc, PixelPoint &sc) const
 {
   if (GeoVisible(loc)) {
     sc = GeoToScreen(loc);
@@ -41,27 +41,27 @@ WindowProjection::GeoToScreenIfVisible(const GeoPoint &loc, RasterPoint &sc) con
 }
 
 bool
-WindowProjection::ScreenVisible(const RasterPoint &P) const
+WindowProjection::ScreenVisible(const PixelPoint &P) const
 {
   assert(screen_size_initialised);
 
-  return P.x >= 0 && (unsigned)P.x < screen_width &&
-    P.y >= 0 && (unsigned)P.y < screen_height;
+  return P.x >= 0 && (unsigned)P.x < screen_size.x &&
+    P.y >= 0 && (unsigned)P.y < screen_size.y;
 }
 
 void
-WindowProjection::SetScaleFromRadius(fixed radius)
+WindowProjection::SetScaleFromRadius(double radius)
 {
-  SetScale(fixed(GetMinScreenDistance()) / (radius * 2));
+  SetScale(double(GetMinScreenDistance()) / (radius * 2));
 }
 
-fixed
+double
 WindowProjection::GetMapScale() const
 {
   return DistancePixelsToMeters(GetMapResolutionFactor());
 }
 
-fixed
+double
 WindowProjection::GetScreenDistanceMeters() const
 {
   return DistancePixelsToMeters(GetScreenDistance());
@@ -82,9 +82,9 @@ WindowProjection::UpdateScreenBounds()
     return;
 
   GeoBounds sb(ScreenToGeo(0, 0));
-  sb.Extend(ScreenToGeo(screen_width, 0));
-  sb.Extend(ScreenToGeo(screen_width, screen_height));
-  sb.Extend(ScreenToGeo(0, screen_height));
+  sb.Extend(ScreenToGeo(screen_size.x, 0));
+  sb.Extend(ScreenToGeo(screen_size.x, screen_size.y));
+  sb.Extend(ScreenToGeo(0, screen_size.y));
 
-  screenbounds_latlon = sb;
+  screen_bounds = sb;
 }

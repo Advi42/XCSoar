@@ -1,7 +1,7 @@
 /* Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -45,13 +45,14 @@ public:
   AirspacePolygon(const std::vector<GeoPoint> &pts, const bool prune = false);
 
   /* virtual methods from class AbstractAirspace */
-  virtual const GeoPoint GetCenter() const override;
-  virtual bool Inside(const GeoPoint &loc) const override;
-  virtual AirspaceIntersectionVector Intersects(const GeoPoint &g1,
-                                                const GeoPoint &end,
-                                                const TaskProjection &projection) const override;
-  virtual GeoPoint ClosestPoint(const GeoPoint &loc,
-                                const TaskProjection &projection) const override;
+  const GeoPoint GetReferenceLocation() const override;
+  const GeoPoint GetCenter() const override;
+  bool Inside(const GeoPoint &loc) const override;
+  AirspaceIntersectionVector Intersects(const GeoPoint &g1,
+                                        const GeoPoint &end,
+                                        const FlatProjection &projection) const override;
+  GeoPoint ClosestPoint(const GeoPoint &loc,
+                        const FlatProjection &projection) const override;
 
 public:
 #ifdef DO_PRINT

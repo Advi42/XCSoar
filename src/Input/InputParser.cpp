@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -27,19 +27,19 @@ Copyright_License {
 #include "InputLookup.hpp"
 #include "IO/LineReader.hpp"
 #include "Util/StringUtil.hpp"
-#include "Util/StaticString.hpp"
+#include "Util/StringAPI.hxx"
+#include "Util/StaticString.hxx"
 #include "Util/EscapeBackslash.hpp"
 #include "Util/NumberParser.hpp"
 #include "LogFile.hpp"
 
-#include <string.h>
 #include <tchar.h>
 #include <stdio.h>
 
 static bool
 parse_assignment(TCHAR *buffer, const TCHAR *&key, const TCHAR *&value)
 {
-  TCHAR *separator = _tcschr(buffer, '=');
+  TCHAR *separator = StringFind(buffer, '=');
   if (separator == NULL || separator == buffer)
     return false;
 
@@ -104,17 +104,9 @@ struct EventBuilder {
       if (type.equals(_T("key"))) {
         // Get the int key (eg: APP1 vs 'a')
         unsigned key = ParseKeyCode(data);
-        if (key > 0) {
-          unsigned key_code_idx = key;
-          auto key_2_event = config.Key2Event;
-#if defined(ENABLE_SDL) && (SDL_MAJOR_VERSION >= 2)
-          if (key_code_idx & SDLK_SCANCODE_MASK) {
-            key_2_event = config.Key2EventNonChar;
-            key_code_idx &= ~SDLK_SCANCODE_MASK;
-          }
-#endif
-          key_2_event[mode_id][key_code_idx] = event_id;
-        } else
+        if (key > 0)
+          config.SetKeyEvent(mode_id, key, event_id);
+        else
           LogFormat(_T("Invalid key data: %s at %u"), data.c_str(), line);
 
         // Make gce (Glide Computer Event)
@@ -183,7 +175,7 @@ ParseInputFile(InputConfig &config, TLineReader &reader)
   // Read from the file
   TCHAR *buffer;
   while ((buffer = reader.ReadLine()) != NULL) {
-    TrimRight(buffer);
+    StripRight(buffer);
     line++;
 
     const TCHAR *key, *value;
@@ -220,12 +212,12 @@ ParseInputFile(InputConfig &config, TLineReader &reader)
           #if defined(__BORLANDC__)
           memset(d_event, 0, sizeof(d_event));
           memset(d_misc, 0, sizeof(d_event));
-          if (_tcschr(value, ' ') == NULL) {
+          if (StringFind(value, ' ') == nullptr) {
             _tcscpy(d_event, value);
           } else {
           #endif
 
-          ef = _stscanf(value, _T("%[^ ] %[A-Za-z0-9 \\/().,]"), d_event,
+          ef = _stscanf(value, _T("%[^ ] %[A-Za-z0-9_ \\/().,]"), d_event,
               d_misc);
 
           #if defined(__BORLANDC__)

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -32,21 +32,18 @@ Copyright_License {
 
 #include "Device/Driver/PosiGraph.hpp"
 #include "Device/Driver/LX/Internal.hpp"
-#include "Device/Parser.hpp"
 #include "Device/Driver.hpp"
 #include "Device/Config.hpp"
 #include "NMEA/Info.hpp"
 #include "NMEA/InputLine.hpp"
-
-#include <string.h>
 
 class PGDevice : public LXDevice {
 public:
   PGDevice(Port &_port, unsigned baud_rate, unsigned bulk_baud_rate)
     :LXDevice(_port, baud_rate, bulk_baud_rate) {}
 
-public:
-  virtual bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
+  /* virtual methods from class Device */
+  bool ParseNMEA(const char *line, struct NMEAInfo &info) override;
 };
 
 static bool
@@ -54,7 +51,7 @@ GPWIN(NMEAInputLine &line, NMEAInfo &info)
 {
   line.Skip(2);
 
-  fixed value;
+  double value;
   if (line.ReadChecked(value))
     info.ProvidePressureAltitude(value / 10);
 
@@ -85,6 +82,7 @@ PGCreateOnPort(const DeviceConfig &config, Port &com_port)
 const struct DeviceRegister posigraph_driver = {
   _T("PosiGraph Logger"),
   _T("PosiGraph Logger"),
-  DeviceRegister::DECLARE | DeviceRegister::BULK_BAUD_RATE,
+  DeviceRegister::DECLARE | DeviceRegister::BULK_BAUD_RATE |
+  DeviceRegister::LOGGER,
   PGCreateOnPort,
 };

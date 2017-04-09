@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -23,7 +23,7 @@ Copyright_License {
 
 #include "InputEvents.hpp"
 #include "InputConfig.hpp"
-#include "Screen/Key.h"
+#include "Event/KeyCode.hpp"
 #include "Asset.hpp"
 #include "Util/Macros.hpp"
 
@@ -48,7 +48,7 @@ struct flat_event_map {
 #else
   unsigned short key;
 #endif
-#elif defined(USE_CONSOLE) || defined(NON_INTERACTIVE)
+#elif defined(USE_POLL_EVENT)
   uint16_t key;
 #else
   unsigned char key;
@@ -101,8 +101,8 @@ apply_defaults(InputConfig &input_config,
     input_config.AppendMode(*default_modes++);
 
   input_config.events.resize(num_default_events + 1);
-  std::copy(default_events, default_events + num_default_events,
-            input_config.events.begin() + 1);
+  std::copy_n(default_events, num_default_events,
+              input_config.events.begin() + 1);
 
   while (default_gesture2event->event > 0) {
     input_config.Gesture2Event.Add(default_gesture2event->data,
@@ -111,16 +111,9 @@ apply_defaults(InputConfig &input_config,
   }
   
   while (default_key2event->event > 0) {
-    unsigned key_code_idx = default_key2event->key;
-    auto key_2_event = input_config.Key2Event;
-#if defined(ENABLE_SDL) && (SDL_MAJOR_VERSION >= 2)
-    if (default_key2event->key & SDLK_SCANCODE_MASK) {
-      key_2_event = input_config.Key2EventNonChar;
-      key_code_idx &= ~SDLK_SCANCODE_MASK;
-    }
-#endif
-    key_2_event[default_key2event->mode][key_code_idx] =
-      default_key2event->event;
+    input_config.SetKeyEvent(default_key2event->mode,
+                             default_key2event->key,
+                             default_key2event->event);
     ++default_key2event;
   }
 
@@ -152,23 +145,12 @@ InputEvents::LoadDefaults(InputConfig &input_config)
   // Get defaults
   input_config.SetDefaults();
 
-  if (IsAltair()) {
-#include "InputEvents_altair.cpp"
-    apply_defaults(input_config,
-                   default_modes,
-                   default_events,
-                   ARRAY_SIZE(default_events),
-                   default_gesture2event,
-                   default_key2event, default_gc2event, default_n2event,
-                   default_labels);
-  } else {
 #include "InputEvents_default.cpp"
-    apply_defaults(input_config,
-                   default_modes,
-                   default_events,
-                   ARRAY_SIZE(default_events),
-                   default_gesture2event,
-                   default_key2event, default_gc2event, default_n2event,
-                   default_labels);
-  }
+  apply_defaults(input_config,
+                 default_modes,
+                 default_events,
+                 ARRAY_SIZE(default_events),
+                 default_gesture2event,
+                 default_key2event, default_gc2event, default_n2event,
+                 default_labels);
 }

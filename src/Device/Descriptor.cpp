@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -21,35 +21,35 @@ Copyright_License {
 }
 */
 
-#include "Device/Descriptor.hpp"
-#include "Device/Driver.hpp"
-#include "Device/Parser.hpp"
+#include "Descriptor.hpp"
+#include "Driver.hpp"
+#include "Parser.hpp"
+#include "Util/NMEAWriter.hpp"
+#include "Register.hpp"
 #include "Driver/FLARM/Device.hpp"
 #include "Driver/LX/Internal.hpp"
-#include "Device/Internal.hpp"
-#include "Device/Register.hpp"
 #include "Blackboard/DeviceBlackboard.hpp"
 #include "Components.hpp"
 #include "Port/ConfiguredPort.hpp"
 #include "Port/DumpPort.hpp"
 #include "NMEA/Info.hpp"
 #include "Thread/Mutex.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/StringAPI.hxx"
+#include "Util/ConvertString.hpp"
 #include "Logger/NMEALogger.hpp"
 #include "Language/Language.hpp"
 #include "Operation/Operation.hpp"
-#include "OS/Clock.hpp"
+#include "OS/Path.hpp"
 #include "../Simulator.hpp"
 #include "Input/InputQueue.hpp"
 #include "LogFile.hpp"
 #include "Job/Job.hpp"
 
 #ifdef ANDROID
-#include "Java/Object.hpp"
-#include "Java/Global.hpp"
+#include "Java/Object.hxx"
+#include "Java/Global.hxx"
 #include "Android/InternalSensors.hpp"
 #include "Android/Main.hpp"
-#include "Android/NativeView.hpp"
 #include "Android/Product.hpp"
 #include "Android/IOIOHelper.hpp"
 #include "Android/BMP085Device.hpp"
@@ -62,6 +62,8 @@ Copyright_License {
 #ifdef __APPLE__
 #include "Apple/InternalSensors.hpp"
 #endif
+
+#include <stdexcept>
 
 #include <assert.h>
 
@@ -97,13 +99,16 @@ public:
   };
 };
 
-DeviceDescriptor::DeviceDescriptor(unsigned _index)
-  :index(_index),
-   open_job(NULL),
-   port(NULL), monitor(NULL), dispatcher(NULL),
-   driver(NULL), device(NULL),
-#if defined(ANDROID) || defined(__APPLE__)
-   internal_sensors(NULL),
+DeviceDescriptor::DeviceDescriptor(boost::asio::io_service &_io_service,
+                                   unsigned _index,
+                                   PortListener *_port_listener)
+  :io_service(_io_service), index(_index),
+   port_listener(_port_listener),
+   open_job(nullptr),
+   port(nullptr), monitor(nullptr), dispatcher(nullptr),
+   driver(nullptr), device(nullptr), second_device(nullptr),
+#ifdef HAVE_INTERNAL_GPS
+   internal_sensors(nullptr),
 #endif
 #ifdef ANDROID
    droidsoar_v2(nullptr),
@@ -132,9 +137,16 @@ DeviceDescriptor::SetConfig(const DeviceConfig &_config)
 
   if (config.UsesDriver()) {
     driver = FindDriverByName(config.driver_name);
-    assert(driver != NULL);
-  } else
-    driver = NULL;
+    assert(driver != nullptr);
+    second_driver = nullptr;
+    if (driver->HasPassThrough() && config.use_second_device){
+      second_driver = FindDriverByName(config.driver2_name);
+      assert(second_driver != nullptr);
+    }
+  } else{
+    driver = nullptr;
+    second_driver = nullptr;
+  }
 }
 
 void
@@ -152,7 +164,7 @@ DeviceDescriptor::GetState() const
   if (port != nullptr)
     return port->GetState();
 
-#if defined(ANDROID) || defined(__APPLE__)
+#ifdef HAVE_INTERNAL_GPS
   if (internal_sensors != nullptr)
     return PortState::READY;
 #endif
@@ -210,7 +222,7 @@ DeviceDescriptor::IsCalibrable() const
 }
 
 void
-DeviceDescriptor::Calibrate(fixed value)
+DeviceDescriptor::Calibrate(double value)
 {
   if (baro[0] != nullptr)
     baro[0]->Calibrate(value);
@@ -219,7 +231,7 @@ DeviceDescriptor::Calibrate(fixed value)
 bool
 DeviceDescriptor::ShouldReopenDriverOnTimeout() const
 {
-  return driver == NULL || driver->HasTimeout();
+  return driver == nullptr || driver->HasTimeout();
 }
 
 void
@@ -230,31 +242,37 @@ DeviceDescriptor::CancelAsync()
   if (!async.IsBusy())
     return;
 
-  assert(open_job != NULL);
+  assert(open_job != nullptr);
 
   async.Cancel();
-  async.Wait();
+
+  try {
+    async.Wait();
+  } catch (const std::runtime_error &e) {
+    LogError(e);
+  }
 
   delete open_job;
-  open_job = NULL;
+  open_job = nullptr;
 }
 
 bool
 DeviceDescriptor::OpenOnPort(DumpPort *_port, OperationEnvironment &env)
 {
-  assert(_port != NULL);
-  assert(port == NULL);
-  assert(device == NULL);
-  assert(driver != NULL);
+  assert(port == nullptr);
+  assert(device == nullptr);
+  assert(second_device == nullptr);
+  assert(driver != nullptr);
   assert(!ticker);
   assert(!IsBorrowed());
 
   reopen_clock.Update();
 
-  device_blackboard->mutex.Lock();
-  device_blackboard->SetRealState(index).Reset();
-  device_blackboard->ScheduleMerge();
-  device_blackboard->mutex.Unlock();
+  {
+    const ScopeLock lock(device_blackboard->mutex);
+    device_blackboard->SetRealState(index).Reset();
+    device_blackboard->ScheduleMerge();
+  }
 
   settings_sent.Clear();
   settings_received.Clear();
@@ -263,8 +281,7 @@ DeviceDescriptor::OpenOnPort(DumpPort *_port, OperationEnvironment &env)
   port = _port;
 
   parser.Reset();
-  parser.SetReal(_tcscmp(driver->name, _T("Condor")) != 0);
-  parser.SetIgnoreChecksum(config.ignore_checksum);
+  parser.SetReal(!StringIsEqual(driver->name, _T("Condor")));
   if (config.IsDriver(_T("Condor")))
     parser.DisableGeoid();
 
@@ -273,6 +290,9 @@ DeviceDescriptor::OpenOnPort(DumpPort *_port, OperationEnvironment &env)
 
     const ScopeLock protect(mutex);
     device = new_device;
+
+    if (driver->HasPassThrough() && config.use_second_device)
+      second_device = second_driver->CreateOnPort(config, *port);
   } else
     port->StartRxThread();
 
@@ -283,6 +303,8 @@ DeviceDescriptor::OpenOnPort(DumpPort *_port, OperationEnvironment &env)
     port = nullptr;
     delete device;
     device = nullptr;
+    delete second_device;
+    second_device = nullptr;
     return false;
   }
 
@@ -292,7 +314,7 @@ DeviceDescriptor::OpenOnPort(DumpPort *_port, OperationEnvironment &env)
 bool
 DeviceDescriptor::OpenInternalSensors()
 {
-#if defined(ANDROID) || defined(__APPLE__)
+#ifdef HAVE_INTERNAL_GPS
   if (is_simulator())
     return true;
 
@@ -301,11 +323,11 @@ DeviceDescriptor::OpenInternalSensors()
       InternalSensors::create(Java::GetEnv(), context, GetIndex());
   if (internal_sensors) {
     // TODO: Allow user to specify whether they want certain sensors.
-    internal_sensors->subscribeToSensor(InternalSensors::TYPE_MAGNETIC_FIELD);
+    internal_sensors->subscribeToSensor(InternalSensors::TYPE_PRESSURE);
     return true;
   }
 #elif defined(__APPLE__)
-  internal_sensors = InternalSensors::create(GetIndex());
+  internal_sensors = InternalSensors::Create(GetIndex());
   return (internal_sensors != nullptr);
 #endif
 #endif
@@ -322,8 +344,8 @@ DeviceDescriptor::OpenDroidSoarV2()
   if (ioio_helper == nullptr)
     return false;
 
-  if (i2cbaro[0] == NULL) {
-    i2cbaro[0] = new I2CbaroDevice(GetIndex(), Java::GetEnv(), 
+  if (i2cbaro[0] == nullptr) {
+    i2cbaro[0] = new I2CbaroDevice(GetIndex(), Java::GetEnv(),
                        ioio_helper->GetHolder(),
                        DeviceConfig::PressureUse::STATIC_WITH_VARIO,
                        config.sensor_offset,
@@ -334,8 +356,9 @@ DeviceDescriptor::OpenDroidSoarV2()
     i2cbaro[1] = new I2CbaroDevice(GetIndex(), Java::GetEnv(),
                        ioio_helper->GetHolder(),
                        // needs calibration ?
-                       (config.sensor_factor == fixed(0)) ? DeviceConfig::PressureUse::PITOT_ZERO :
-                                                            DeviceConfig::PressureUse::PITOT,
+                       config.sensor_factor == 0
+                       ? DeviceConfig::PressureUse::PITOT_ZERO
+                       : DeviceConfig::PressureUse::PITOT,
                        config.sensor_offset, 1 + (0x77 << 8) + (46 << 16), 0 ,
                        5,
                        0);
@@ -356,13 +379,13 @@ DeviceDescriptor::OpenI2Cbaro()
     return false;
 
   for (unsigned i=0; i<sizeof i2cbaro/sizeof i2cbaro[0]; i++) {
-    if (i2cbaro[i] == NULL) {
+    if (i2cbaro[i] == nullptr) {
       i2cbaro[i] = new I2CbaroDevice(GetIndex(), Java::GetEnv(),
                        ioio_helper->GetHolder(),
                        // needs calibration ?
-                       (config.sensor_factor == fixed(0) && config.press_use == DeviceConfig::PressureUse::PITOT) ?
-                                          DeviceConfig::PressureUse::PITOT_ZERO :
-                                          config.press_use,
+                       config.sensor_factor == 0 && config.press_use == DeviceConfig::PressureUse::PITOT
+                       ? DeviceConfig::PressureUse::PITOT_ZERO
+                       : config.press_use,
                        config.sensor_offset,
                        config.i2c_bus, config.i2c_addr,
                        config.press_use == DeviceConfig::PressureUse::TEK_PRESSURE ? 20 : 5,
@@ -389,7 +412,7 @@ DeviceDescriptor::OpenBaro()
       baro[i] = new BaroDevice(GetIndex(), Java::GetEnv(),
                        ioio_helper->GetHolder(),
                        // needs calibration ?
-                       (config.sensor_factor == fixed(0) && config.press_use == DeviceConfig::PressureUse::PITOT) ?
+                       (config.sensor_factor == 0 && config.press_use == DeviceConfig::PressureUse::PITOT) ?
                                           DeviceConfig::PressureUse::PITOT_ZERO :
                                           config.press_use,
                        config.sensor_offset, config.sensor_factor,
@@ -447,6 +470,11 @@ DeviceDescriptor::DoOpen(OperationEnvironment &env)
 {
   assert(config.IsAvailable());
 
+  {
+    ScopeLock protect(mutex);
+    error_message.clear();
+  }
+
   if (config.port_type == DeviceConfig::PortType::INTERNAL)
     return OpenInternalSensors();
 
@@ -467,8 +495,31 @@ DeviceDescriptor::DoOpen(OperationEnvironment &env)
 
   reopen_clock.Update();
 
-  Port *port = OpenPort(config, *this);
-  if (port == NULL) {
+  Port *port;
+  try {
+    port = OpenPort(io_service, config, this, *this);
+  } catch (const std::runtime_error &e) {
+    TCHAR name_buffer[64];
+    const TCHAR *name = config.GetPortName(name_buffer, 64);
+
+    LogError(WideToUTF8Converter(name), e);
+
+    StaticString<256> msg;
+
+    const UTF8ToWideConverter what(e.what());
+    if (what.IsValid()) {
+      ScopeLock protect(mutex);
+      error_message = what;
+    }
+
+    msg.Format(_T("%s: %s (%s)"), _("Unable to open port"), name,
+               (const TCHAR *)what);
+
+    env.SetErrorMessage(msg);
+    return false;
+  }
+
+  if (port == nullptr) {
     TCHAR name_buffer[64];
     const TCHAR *name = config.GetPortName(name_buffer, 64);
 
@@ -497,8 +548,9 @@ void
 DeviceDescriptor::Open(OperationEnvironment &env)
 {
   assert(InMainThread());
-  assert(port == NULL);
-  assert(device == NULL);
+  assert(port == nullptr);
+  assert(device == nullptr);
+  assert(second_device == nullptr);
   assert(!ticker);
   assert(!IsBorrowed());
 
@@ -508,7 +560,7 @@ DeviceDescriptor::Open(OperationEnvironment &env)
   CancelAsync();
 
   assert(!IsOccupied());
-  assert(open_job == NULL);
+  assert(open_job == nullptr);
 
   TCHAR buffer[64];
   LogFormat(_T("Opening device %s"), config.GetPortName(buffer, 64));
@@ -525,7 +577,7 @@ DeviceDescriptor::Close()
 
   CancelAsync();
 
-#if defined(ANDROID) || defined(__APPLE__)
+#ifdef HAVE_INTERNAL_GPS
   delete internal_sensors;
   internal_sensors = nullptr;
 #endif
@@ -563,16 +615,20 @@ DeviceDescriptor::Close()
 
   delete old_device;
 
+  delete second_device;
+  second_device = nullptr;
+
   Port *old_port = port;
-  port = NULL;
+  port = nullptr;
   delete old_port;
 
   ticker = false;
 
-  device_blackboard->mutex.Lock();
-  device_blackboard->SetRealState(index).Reset();
-  device_blackboard->ScheduleMerge();
-  device_blackboard->mutex.Unlock();
+  {
+    const ScopeLock lock(device_blackboard->mutex);
+    device_blackboard->SetRealState(index).Reset();
+    device_blackboard->ScheduleMerge();
+  }
 
   settings_sent.Clear();
   settings_received.Clear();
@@ -603,7 +659,7 @@ DeviceDescriptor::AutoReopen(OperationEnvironment &env)
 
 #ifdef ANDROID
   if (config.port_type == DeviceConfig::PortType::RFCOMM &&
-      native_view->GetAPILevel() < 11 && n_failures >= 2) {
+      android_api_level < 11 && n_failures >= 2) {
     /* on Android < 3.0, system_server's "BT EventLoop" thread
        eventually crashes with JNI reference table overflow due to a
        memory leak after too many Bluetooth failures
@@ -631,12 +687,12 @@ DeviceDescriptor::AutoReopen(OperationEnvironment &env)
 bool
 DeviceDescriptor::EnableNMEA(OperationEnvironment &env)
 {
-  if (device == NULL)
+  if (device == nullptr)
     return true;
 
   bool success = device->EnableNMEA(env);
 
-  if (port != NULL)
+  if (port != nullptr)
     /* re-enable the NMEA handler if it has been disabled by the
        driver */
     port->StartRxThread();
@@ -647,21 +703,23 @@ DeviceDescriptor::EnableNMEA(OperationEnvironment &env)
 const TCHAR *
 DeviceDescriptor::GetDisplayName() const
 {
-  return driver != NULL ? driver->display_name : NULL;
+  return driver != nullptr
+    ? driver->display_name
+    : nullptr;
 }
 
 bool
 DeviceDescriptor::IsDriver(const TCHAR *name) const
 {
-  return driver != NULL
-    ? _tcscmp(driver->name, name) == 0
+  return driver != nullptr
+    ? StringIsEqual(driver->name, name)
     : false;
 }
 
 bool
 DeviceDescriptor::CanDeclare() const
 {
-  return driver != NULL &&
+  return driver != nullptr &&
     (driver->CanDeclare() ||
      device_blackboard->IsFLARM(index));
 }
@@ -669,23 +727,23 @@ DeviceDescriptor::CanDeclare() const
 bool
 DeviceDescriptor::IsLogger() const
 {
-  return driver != NULL && driver->IsLogger();
+  return driver != nullptr && driver->IsLogger();
 }
 
 bool
 DeviceDescriptor::IsNMEAOut() const
 {
-  return driver != NULL && driver->IsNMEAOut();
+  return driver != nullptr && driver->IsNMEAOut();
 }
 
 bool
 DeviceDescriptor::IsManageable() const
 {
-  if (driver != NULL) {
+  if (driver != nullptr) {
     if (driver->IsManageable())
       return true;
 
-    if (_tcscmp(driver->name, _T("LX")) == 0 && device != NULL) {
+    if (StringIsEqual(driver->name, _T("LX")) && device != nullptr) {
       const LXDevice &lx = *(const LXDevice *)device;
       return lx.IsV7() || lx.IsNano() || lx.IsLX16xx();
     }
@@ -732,13 +790,13 @@ DeviceDescriptor::IsAlive() const
 bool
 DeviceDescriptor::ParseNMEA(const char *line, NMEAInfo &info)
 {
-  assert(line != NULL);
+  assert(line != nullptr);
 
   /* restore the driver's ExternalSettings */
   const ExternalSettings old_settings = info.settings;
   info.settings = settings_received;
 
-  if (device != NULL && device->ParseNMEA(line, info)) {
+  if (device != nullptr && device->ParseNMEA(line, info)) {
     info.alive.Update(info.clock);
 
     if (!config.sync_from_device)
@@ -759,7 +817,7 @@ DeviceDescriptor::ParseNMEA(const char *line, NMEAInfo &info)
 
   // Additional "if" to find GPS strings
   if (parser.ParseLine(line, info)) {
-    info.alive.Update(fixed(MonotonicClockMS()) / 1000);
+    info.alive.Update(info.clock);
     return true;
   }
 
@@ -772,7 +830,7 @@ DeviceDescriptor::ForwardLine(const char *line)
   /* XXX make this method thread-safe; this method can be called from
      any thread, and if the Port gets closed, bad things happen */
 
-  if (IsNMEAOut() && port != NULL) {
+  if (IsNMEAOut() && port != nullptr) {
     Port *p = port;
     p->Write(line);
     p->Write("\r\n");
@@ -782,23 +840,23 @@ DeviceDescriptor::ForwardLine(const char *line)
 bool
 DeviceDescriptor::WriteNMEA(const char *line, OperationEnvironment &env)
 {
-  assert(line != NULL);
+  assert(line != nullptr);
 
-  return port != NULL && PortWriteNMEA(*port, line, env);
+  return port != nullptr && PortWriteNMEA(*port, line, env);
 }
 
 #ifdef _UNICODE
 bool
 DeviceDescriptor::WriteNMEA(const TCHAR *line, OperationEnvironment &env)
 {
-  assert(line != NULL);
+  assert(line != nullptr);
 
-  if (port == NULL)
+  if (port == nullptr)
     return false;
 
   char buffer[_tcslen(line) * 4 + 1];
   if (::WideCharToMultiByte(CP_ACP, 0, line, -1, buffer, sizeof(buffer),
-                            NULL, NULL) <= 0)
+                            nullptr, nullptr) <= 0)
     return false;
 
   return WriteNMEA(buffer, env);
@@ -806,11 +864,11 @@ DeviceDescriptor::WriteNMEA(const TCHAR *line, OperationEnvironment &env)
 #endif
 
 bool
-DeviceDescriptor::PutMacCready(fixed value, OperationEnvironment &env)
+DeviceDescriptor::PutMacCready(double value, OperationEnvironment &env)
 {
   assert(InMainThread());
 
-  if (device == NULL || settings_sent.CompareMacCready(value) ||
+  if (device == nullptr || settings_sent.CompareMacCready(value) ||
       !config.sync_to_device)
     return true;
 
@@ -831,11 +889,11 @@ DeviceDescriptor::PutMacCready(fixed value, OperationEnvironment &env)
 }
 
 bool
-DeviceDescriptor::PutBugs(fixed value, OperationEnvironment &env)
+DeviceDescriptor::PutBugs(double value, OperationEnvironment &env)
 {
   assert(InMainThread());
 
-  if (device == NULL || settings_sent.CompareBugs(value) ||
+  if (device == nullptr || settings_sent.CompareBugs(value) ||
       !config.sync_to_device)
     return true;
 
@@ -856,12 +914,12 @@ DeviceDescriptor::PutBugs(fixed value, OperationEnvironment &env)
 }
 
 bool
-DeviceDescriptor::PutBallast(fixed fraction, fixed overload,
+DeviceDescriptor::PutBallast(double fraction, double overload,
                              OperationEnvironment &env)
 {
   assert(InMainThread());
 
-  if (device == NULL || !config.sync_to_device ||
+  if (device == nullptr || !config.sync_to_device ||
       (settings_sent.CompareBallastFraction(fraction) &&
        settings_sent.CompareBallastOverload(overload)))
     return true;
@@ -889,7 +947,7 @@ DeviceDescriptor::PutVolume(unsigned volume, OperationEnvironment &env)
 {
   assert(InMainThread());
 
-  if (device == NULL || !config.sync_to_device)
+  if (device == nullptr || !config.sync_to_device)
     return true;
 
   if (!Borrow())
@@ -907,7 +965,7 @@ DeviceDescriptor::PutActiveFrequency(RadioFrequency frequency,
 {
   assert(InMainThread());
 
-  if (device == NULL || !config.sync_to_device)
+  if (device == nullptr || !config.sync_to_device)
     return true;
 
   if (!Borrow())
@@ -925,7 +983,7 @@ DeviceDescriptor::PutStandbyFrequency(RadioFrequency frequency,
 {
   assert(InMainThread());
 
-  if (device == NULL || !config.sync_to_device)
+  if (device == nullptr || !config.sync_to_device)
     return true;
 
   if (!Borrow())
@@ -942,7 +1000,7 @@ DeviceDescriptor::PutQNH(const AtmosphericPressure &value,
 {
   assert(InMainThread());
 
-  if (device == NULL || settings_sent.CompareQNH(value) ||
+  if (device == nullptr || settings_sent.CompareQNH(value) ||
       !config.sync_to_device)
     return true;
 
@@ -976,7 +1034,7 @@ DeclareToFLARM(const struct Declaration &declaration,
                OperationEnvironment &env)
 {
   /* enable pass-through mode in the "front" device */
-  if (driver.HasPassThrough() && device != NULL &&
+  if (driver.HasPassThrough() && device != nullptr &&
       !device->EnablePassThrough(env))
     return false;
 
@@ -993,7 +1051,7 @@ DoDeclare(const struct Declaration &declaration,
   text.Format(_T("%s: %s."), _("Sending declaration"), driver.display_name);
   env.SetText(text);
 
-  bool result = device != NULL && device->Declare(declaration, home, env);
+  bool result = device != nullptr && device->Declare(declaration, home, env);
 
   if (flarm) {
     text.Format(_T("%s: FLARM."), _("Sending declaration"));
@@ -1011,16 +1069,24 @@ DeviceDescriptor::Declare(const struct Declaration &declaration,
                           OperationEnvironment &env)
 {
   assert(borrowed);
-  assert(port != NULL);
-  assert(driver != NULL);
-  assert(device != NULL);
+  assert(port != nullptr);
+  assert(driver != nullptr);
+  assert(device != nullptr);
 
-  /* enable the "muxed FLARM" hack? */
-  const bool flarm = device_blackboard->IsFLARM(index) &&
-    !IsDriver(_T("FLARM"));
+  // explicitly set passthrough device? Use it...
+  if (driver->HasPassThrough() && second_device != nullptr) {
+    // set the primary device to passthrough
+    device->EnablePassThrough(env);
+    return second_device != nullptr &&
+      second_device->Declare(declaration, home, env);
+  } else {
+    /* enable the "muxed FLARM" hack? */
+    const bool flarm = device_blackboard->IsFLARM(index) &&
+      !IsDriver(_T("FLARM"));
 
-  return DoDeclare(declaration, *port, *driver, device, flarm,
-                   home, env);
+    return DoDeclare(declaration, *port, *driver, device, flarm,
+                     home, env);
+  }
 }
 
 bool
@@ -1028,35 +1094,57 @@ DeviceDescriptor::ReadFlightList(RecordedFlightList &flight_list,
                                  OperationEnvironment &env)
 {
   assert(borrowed);
-  assert(port != NULL);
-  assert(driver != NULL);
-  assert(device != NULL);
+  assert(port != nullptr);
+  assert(driver != nullptr);
+  assert(device != nullptr);
 
   StaticString<60> text;
-  text.Format(_T("%s: %s."), _("Reading flight list"), driver->display_name);
-  env.SetText(text);
 
-  return device->ReadFlightList(flight_list, env);
+  if (driver->HasPassThrough() && second_device != nullptr) {
+    text.Format(_T("%s: %s."), _("Reading flight list"),
+                second_driver->display_name);
+    env.SetText(text);
+
+    device->EnablePassThrough(env);
+    return second_device->ReadFlightList(flight_list, env);
+  } else {
+    text.Format(_T("%s: %s."), _("Reading flight list"), driver->display_name);
+    env.SetText(text);
+
+    return device->ReadFlightList(flight_list, env);
+  }
 }
 
 bool
 DeviceDescriptor::DownloadFlight(const RecordedFlightInfo &flight,
-                                 const TCHAR *path,
+                                 Path path,
                                  OperationEnvironment &env)
 {
   assert(borrowed);
-  assert(port != NULL);
-  assert(driver != NULL);
-  assert(device != NULL);
+  assert(port != nullptr);
+  assert(driver != nullptr);
+  assert(device != nullptr);
 
-  if (port == NULL || driver == NULL || device == NULL)
+  if (port == nullptr || driver == nullptr || device == nullptr)
     return false;
 
   StaticString<60> text;
-  text.Format(_T("%s: %s."), _("Downloading flight log"), driver->display_name);
-  env.SetText(text);
 
-  return device->DownloadFlight(flight, path, env);
+
+  if (driver->HasPassThrough() && (second_device != nullptr)) {
+    text.Format(_T("%s: %s."), _("Downloading flight log"),
+                second_driver->display_name);
+    env.SetText(text);
+
+    device->EnablePassThrough(env);
+    return second_device->DownloadFlight(flight, path, env);
+  } else {
+    text.Format(_T("%s: %s."), _("Downloading flight log"),
+                driver->display_name);
+    env.SetText(text);
+
+    return device->DownloadFlight(flight, path, env);
+  }
 }
 
 void
@@ -1064,10 +1152,10 @@ DeviceDescriptor::OnSysTicker()
 {
   assert(InMainThread());
 
-  if (port != NULL && port->GetState() == PortState::FAILED && !IsOccupied())
+  if (port != nullptr && port->GetState() == PortState::FAILED && !IsOccupied())
     Close();
 
-  if (device == NULL)
+  if (device == nullptr)
     return;
 
   const bool now_alive = IsAlive();
@@ -1126,22 +1214,54 @@ DeviceDescriptor::OnNotification()
   /* notification from AsyncJobRunner, the Job was finished */
 
   assert(InMainThread());
-  assert(open_job != NULL);
+  assert(open_job != nullptr);
 
-  async.Wait();
+  try {
+    async.Wait();
+  } catch (const std::runtime_error &e) {
+    LogError(e);
+  }
 
   delete open_job;
-  open_job = NULL;
+  open_job = nullptr;
+}
+
+void
+DeviceDescriptor::PortStateChanged()
+{
+  if (port_listener != nullptr)
+    port_listener->PortStateChanged();
+}
+
+void
+DeviceDescriptor::PortError(const char *msg)
+{
+  {
+    TCHAR buffer[64];
+    LogFormat(_T("Error on device %s: %s"),
+              config.GetPortName(buffer, 64), msg);
+  }
+
+  {
+    const UTF8ToWideConverter tmsg(msg);
+    if (tmsg.IsValid()) {
+      ScopeLock protect(mutex);
+      error_message = tmsg;
+    }
+  }
+
+  if (port_listener != nullptr)
+    port_listener->PortError(msg);
 }
 
 void
 DeviceDescriptor::DataReceived(const void *data, size_t length)
 {
-  if (monitor != NULL)
+  if (monitor != nullptr)
     monitor->DataReceived(data, length);
 
   // Pass data directly to drivers that use binary data protocols
-  if (driver != NULL && device != NULL && driver->UsesRawData()) {
+  if (driver != nullptr && device != nullptr && driver->UsesRawData()) {
     ScopeLock protect(device_blackboard->mutex);
     NMEAInfo &basic = device_blackboard->SetRealState(index);
     basic.UpdateClock();
@@ -1167,7 +1287,7 @@ DeviceDescriptor::LineReceived(const char *line)
 {
   NMEALogger::Log(line);
 
-  if (dispatcher != NULL)
+  if (dispatcher != nullptr)
     dispatcher->LineReceived(line);
 
   if (ParseLine(line))

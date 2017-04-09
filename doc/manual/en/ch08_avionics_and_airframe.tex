@@ -18,7 +18,7 @@ and should contain a fuse and a manual isolation switch.
 
 The greatest cause of power drain by the PDA is the LCD back-light,
 however domestic PDAs are not particularly bright so they may need to
-have the back-light up full. However, for EFIS systems such as Altair,
+have the back-light up full. However, for EFIS systems,
 it is recommended to use the lowest back-light settings that are
 comfortable.
 
@@ -33,9 +33,6 @@ is issued by the system, the screen becomes activated.
 Another way to help conserve battery power is to reduce the
 computational load by turning off certain features.  Drawing terrain
 and long snail trails contribute significantly to the CPU load.
-
-For Altair/Vega systems, the external supply voltage is displayed on
-the system status dialogue (see Section~\ref{sec:system-status}).
 
 For other embedded platforms, a \infobox{Battery} InfoBox is available that 
 displays the available battery life remaining, as well as the charge state 
@@ -69,7 +66,7 @@ attempts to restart communication with the device and will then resume waiting.
 This method has shown to provide the most reliable way of recovering from 
 communication errors.
 
-XCSoar can handle up to two GPS sources and it uses them to provide redundancy. 
+XCSoar can handle multiple GPS sources and it uses them to provide redundancy.
 The sources are configured on the System Configuration screen, on the page 
 entitled "Devices".  Device A is the primary GPS data source and Device B is 
 the secondary source.
@@ -100,9 +97,6 @@ sensors:
  triadis engineering's Vega have multiple airframe switches
  and pass this information on to the PDA or EFIS as special
  NMEA sentences.
-\item[1-Wire device]  triadis engineering's Altair glide computer
- and Vega variometer provide a 1-Wire peripheral bus to which
- various digital and analog sensors can be attached.
 \item[Bluetooth device]  Many Pocket PC devices support wireless
  connection to a Bluetooth Game-Pad device that has several buttons.
  This is more suited to user-interface input devices than airframe
@@ -146,12 +140,12 @@ inspection tests or before takeoff.
 \section{Slave mode}
 
 A device type in the configuration settings, ``NMEA Out'' is defined
-for use in joining two Altair or PDA systems in a master-slave mode.
+for use in joining two systems in a master-slave mode.
 In the master, the second com device can be set to NMEA Out, and all
 data received in the first com device (as well as outgoing data) will
 be sent to the slave.  
 
-As an example where two Altairs are being connected together, in the
+As an example where two devices are being connected together, in the
 slave, the first com device can then be set to ``Vega'' or ``Altair
 Pro'' and this system receives all data as if it came from the
 Master's GPS and connected instruments (Vega, FLARM etc).
@@ -171,20 +165,19 @@ view) are updated continuously.
 
 \section{Multiple devices}
 
-You can configure up to two external devices, connected at the same
+You can configure multiple external devices, connected at the same
 time (few PDAs have two serial ports, but Bluetooth can handle any
 number of concurrent connections).
 
-When both provide a valid GPS fix, the first one is chosen by XCSoar,
-and the second GPS fix is ignored.  As soon as the first device fails,
-XCSoar switches to the second one automatically, until the first one
-recovers.
+When both provide a valid GPS fix, the first one (i.e. Device A) is chosen by
+XCSoar, and the second GPS fix is ignored.  As soon as the first device fails,
+XCSoar switches to the second one automatically, until the first one recovers.
 
 The same is true for all values (barometric altitude, vario, airspeed,
 traffic, ...): XCSoar prefers the first device, and uses the second
 device only for values that are not received from the first one.
 
-Example: first device is a CAI 302, and the second device is a FLARM.
+Example: Device A is a CAI 302, and Device B is a FLARM.
 That gives you the best of both: XCSoar has airspeed, vario and
 traffic data.
 

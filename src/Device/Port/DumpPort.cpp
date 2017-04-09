@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -28,8 +28,13 @@ Copyright_License {
 #include <stdint.h>
 #include <stdio.h>
 
+#ifdef __clang__
+/* true, the nullptr cast below is a bad kludge */
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
+
 DumpPort::DumpPort(Port *_port)
-  :Port(*(DataHandler *)NULL), port(_port),
+  :Port(nullptr, *(DataHandler *)nullptr), port(_port),
    until_ms(-1) {}
 
 DumpPort::~DumpPort()

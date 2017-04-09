@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -36,18 +36,21 @@ struct DerivedInfo;
  */
 class WindStore
 {
-  fixed _lastAltitude;
+  double _lastAltitude;
   WindMeasurementList windlist;
 
   /**
    * The time stamp (NMEAInfo::clock) of the last wind update.  It is
    * used to update DerivedInfo::estimated_wind_available.
    */
-  fixed update_clock;
+  double update_clock;
 
   bool updated;
 
 public:
+  /** Clear as if never flown */
+  void reset();
+
   /**
    * Called with new measurements. The quality is a measure for how good the
    * measurement is. Higher quality measurements are more important in the
@@ -63,19 +66,16 @@ public:
    */
   void SlotAltitude(const MoreData &info, DerivedInfo &derived);
 
+  gcc_pure
+  const Vector GetWind(double Time, double h, bool &found) const;
+
+private:
   /**
    * Send if a new wind vector has been established. This may happen as
    * new measurements flow in, but also if the altitude changes.
    */
   void NewWind(const NMEAInfo &info, DerivedInfo &derived, Vector& wind) const;
 
-  gcc_pure
-  const Vector GetWind(fixed Time, fixed h, bool &found) const;
-
-  /** Clear as if never flown */
-  void reset();
-
-private:
   /**
    * Recalculates the wind from the stored measurements.
    * May result in a NewWind signal.

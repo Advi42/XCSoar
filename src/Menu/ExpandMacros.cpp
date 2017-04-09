@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,19 +29,24 @@ Copyright_License {
 #include "Gauge/BigTrafficWidget.hpp"
 #include "Computer/Settings.hpp"
 #include "Components.hpp"
+#include "DataGlobals.hpp"
 #include "MapSettings.hpp"
 #include "Waypoint/Waypoints.hpp"
 #include "Engine/Airspace/Airspaces.hpp"
 #include "Task/ProtectedTaskManager.hpp"
+#include "Engine/Task/TaskManager.hpp"
 #include "Engine/Task/Ordered/OrderedTask.hpp"
+#include "Weather/Rasp/RaspStore.hpp"
 #include "Device/device.hpp"
 #include "PageActions.hpp"
-#include "Util/StringUtil.hpp"
+#include "Util/TruncateString.hpp"
 #include "Util/Macros.hpp"
-#include "Net/Features.hpp"
+#include "Net/HTTP/Features.hpp"
 #include "UIState.hpp"
 
 #include <stdlib.h>
+
+#include <windef.h> /* for MAX_PATH */
 
 /**
  * Replaces ToReplace with ReplaceWith in String
@@ -58,7 +63,7 @@ ReplaceInString(TCHAR *String, const TCHAR *ToReplace,
   size_t iR = _tcslen(ToReplace);
   TCHAR *pC;
 
-  while ((pC = _tcsstr(String, ToReplace)) != NULL) {
+  while ((pC = _tcsstr(String, ToReplace)) != nullptr) {
     _tcscpy(TmpBuf, pC + iR);
     _tcscpy(pC, ReplaceWith);
     _tcscat(pC, TmpBuf);
@@ -111,13 +116,13 @@ ExpandTaskMacros(TCHAR *OutBuffer, size_t Size,
     ReplaceInString(OutBuffer, _T("$(CheckTask)"), _T(""), Size);
   }
 
-  if (protected_task_manager == NULL)
+  if (protected_task_manager == nullptr)
     return true;
 
   ProtectedTaskManager::Lease task_manager(*protected_task_manager);
 
   const AbstractTask *task = task_manager->GetActiveTask();
-  if (task == NULL || !task_stats.task_valid ||
+  if (task == nullptr || !task_stats.task_valid ||
       common_stats.task_type == TaskType::GOTO) {
 
     if (_tcsstr(OutBuffer, _T("$(WaypointNext)"))) {
@@ -200,7 +205,7 @@ ExpandTaskMacros(TCHAR *OutBuffer, size_t Size,
                           _T("$(WaypointNext)"),
                           _("Finish Turnpoint"),
                           _("Next Turnpoint"), Size);
-      
+
     } else if (_tcsstr(OutBuffer, _T("$(WaypointPrevious)"))) {
 
       if (has_optional_starts && !common_stats.active_has_previous) {
@@ -271,38 +276,38 @@ ExpandTaskMacros(TCHAR *OutBuffer, size_t Size,
         ReplaceInString(OutBuffer, _T("$(WaypointPreviousArm)"), _("Disarm turn"), Size);
         break;
       }
-    } 
+    }
   }
 
   if (_tcsstr(OutBuffer, _T("$(AdvanceArmed)"))) {
     switch (task_manager->GetOrderedTask().GetTaskAdvance().GetState()) {
     case TaskAdvance::MANUAL:
-      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"), 
+      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"),
                       _("Advance\n(manual)"), Size);
       invalid = true;
       break;
     case TaskAdvance::AUTO:
-      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"), 
+      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"),
                       _("Advance\n(auto)"), Size);
       invalid = true;
       break;
     case TaskAdvance::START_ARMED:
-      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"), 
+      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"),
                       _("Abort\nStart"), Size);
       invalid = false;
       break;
     case TaskAdvance::START_DISARMED:
-      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"), 
+      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"),
                       _("Arm\nStart"), Size);
       invalid = false;
       break;
     case TaskAdvance::TURN_ARMED:
-      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"), 
+      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"),
                       _("Abort\nTurn"), Size);
       invalid = false;
       break;
     case TaskAdvance::TURN_DISARMED:
-      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"), 
+      ReplaceInString(OutBuffer, _T("$(AdvanceArmed)"),
                       _("Arm\nTurn"), Size);
       invalid = false;
       break;
@@ -322,10 +327,18 @@ ExpandTaskMacros(TCHAR *OutBuffer, size_t Size,
       CondReplaceInString(ordered_task_stats.task_valid,
                           OutBuffer, _T("$(TaskAbortToggleActionName)"),
                           _("Resume"), _("Abort"), Size);
-    } else 
+    } else
       CondReplaceInString(common_stats.task_type == TaskType::ABORT,
                           OutBuffer, _T("$(TaskAbortToggleActionName)"),
                           _("Resume"), _("Abort"), Size);
+  }
+
+  if (_tcsstr(OutBuffer, _T("$(CheckTaskRestart)"))) {
+    if (!(common_stats.task_type == TaskType::ORDERED &&
+          task_stats.start.task_started))
+      invalid = true;
+
+    ReplaceInString(OutBuffer, _T("$(CheckTaskRestart)"), _T(""), Size);
   }
 
   return invalid;
@@ -382,9 +395,9 @@ ButtonLabel::ExpandMacros(const TCHAR *In, TCHAR *OutBuffer, size_t Size)
 {
   // ToDo, check Buffer Size
   bool invalid = false;
-  CopyString(OutBuffer, In, Size);
+  CopyTruncateString(OutBuffer, Size, In);
 
-  if (_tcsstr(OutBuffer, _T("$(")) == NULL)
+  if (_tcsstr(OutBuffer, _T("$(")) == nullptr)
     return false;
 
   if (_tcsstr(OutBuffer, _T("$(CheckAirspace)"))) {
@@ -405,6 +418,13 @@ ButtonLabel::ExpandMacros(const TCHAR *In, TCHAR *OutBuffer, size_t Size)
     ReplaceInString(OutBuffer, _T("$(CheckFLARM)"), _T(""), Size);
   }
 
+  if (_tcsstr(OutBuffer, _T("$(CheckWeather)"))) {
+    const auto rasp = DataGlobals::GetRasp();
+    if (rasp == nullptr || rasp->GetItemCount() == 0)
+      invalid = true;
+    ReplaceInString(OutBuffer, _T("$(CheckWeather)"), _T(""), Size);
+  }
+
   if (_tcsstr(OutBuffer, _T("$(CheckCircling)"))) {
     if (!Calculated().circling)
       invalid = true;
@@ -412,7 +432,7 @@ ButtonLabel::ExpandMacros(const TCHAR *In, TCHAR *OutBuffer, size_t Size)
   }
 
   if (_tcsstr(OutBuffer, _T("$(CheckVega)"))) {
-    if (devVarioFindVega()== NULL)
+    if (devVarioFindVega() == nullptr)
       invalid = true;
     ReplaceInString(OutBuffer, _T("$(CheckVega)"), _T(""), Size);
   }
@@ -534,8 +554,8 @@ ButtonLabel::ExpandMacros(const TCHAR *In, TCHAR *OutBuffer, size_t Size)
                       _T("$(FullScreenToggleActionName)"),
                       _("Off"), _("On"), Size);
   CondReplaceInString(GetMapSettings().auto_zoom_enabled, OutBuffer,
-		                  _T("$(ZoomAutoToggleActionName)"),
-		                  _("Manual"), _("Auto"), Size);
+                      _T("$(ZoomAutoToggleActionName)"),
+                      _("Manual"), _("Auto"), Size);
   CondReplaceInString(GetMapSettings().topography_enabled, OutBuffer,
                       _T("$(TopologyToggleActionName)"),
                       _("Off"), _("On"), Size);

@@ -2,8 +2,8 @@
 
 REM This is an example how the manuals get generated on Windows with MikTeX (2.9)
 
-REM Set the full path to executable pdflatex, or put its installation path to the %PATH% env instead.
-set PDFLATEXBIN="pdflatex"
+REM Set the full path to executable lualalatex, or put its installation path to the %PATH% env instead.
+set PDFLATEXBIN="lualalatex"
 
 cd %~dp0
 mkdir output
@@ -31,4 +31,6 @@ REM  French XCSoar-manual-fr generation
 REM  Polish XCSoar-manual-pl generation
 %PDFLATEXBIN% --halt-on-error --interaction=nonstopmode --include-directory=%~dp0pl --include-directory=%~dp0 --include-directory=%~dp0en --output-directory=%~dp0output  %~dp0pl\XCSoar-manual-pl.tex
 
+REM  Portuguese XCSoar-manual-pt_BR generation
+%PDFLATEXBIN% --halt-on-error --interaction=nonstopmode --include-directory=%~dp0pt_BR --include-directory=%~dp0 --include-directory=%~dp0en --output-directory=%~dp0output  %~dp0pl\XCSoar-manual-pt_BR.tex
 

@@ -2,7 +2,7 @@
 Copyright_License {
 
   XCSoar Glide Computer - http://www.xcsoar.org/
-  Copyright (C) 2000-2014 The XCSoar Project
+  Copyright (C) 2000-2016 The XCSoar Project
   A detailed list of copyright holders can be found in the file "AUTHORS".
 
   This program is free software; you can redistribute it and/or
@@ -29,9 +29,7 @@ Copyright_License {
 
 #include <windef.h>
 
-#ifndef _WIN32_WCE
 class OverlappedEvent;
-#endif
 
 /**
  * Generic SerialPort thread handler class
@@ -42,15 +40,6 @@ class SerialPort : public BufferedPort, protected StoppableThread
 
   HANDLE hPort;
 
-#ifdef _WIN32_WCE
-  /**
-   * @see IsWidcommDevice()
-   */
-  bool is_widcomm;
-#else
-  static constexpr bool is_widcomm = false;
-#endif
-
 public:
   /**
    * Creates a new serial port (RS-232) object, but does not open it yet.
@@ -58,7 +47,7 @@ public:
    * @param _handler the callback object for input received on the
    * port
    */
-  SerialPort(DataHandler &_handler);
+  SerialPort(PortListener *_listener, DataHandler &_handler);
 
   /**
    * Closes the serial port (Destructor)
@@ -97,7 +86,6 @@ protected:
    */
   int GetDataPending() const;
 
-#ifndef _WIN32_WCE
   /**
    * Wait until there is data in the driver's receive buffer.
    *
@@ -105,7 +93,6 @@ protected:
    */
   WaitResult WaitDataPending(OverlappedEvent &overlapped,
                              unsigned timeout_ms) const;
-#endif
 
 public:
   /* virtual methods from class Port */
